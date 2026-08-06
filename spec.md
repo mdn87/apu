@@ -30,7 +30,9 @@ The MVP supports:
 
 - `~/.codex/AGENTS.md`;
 - `~/.claude/CLAUDE.md`;
-- repository and ancestor `AGENTS.md` and `CLAUDE.md`;
+- repository and ancestor `AGENTS.md`, `CLAUDE.md`, and `CLAUDE.local.md`;
+- Claude `@path` imports referenced by supported instruction files;
+- project and user-level Claude rules, including `paths`-scoped rules;
 - skill directories containing `SKILL.md`;
 - Claude session-start hooks and local marketplace metadata;
 - Codex/Claude-compatible shared skills under `~/.agents/skills`;
@@ -61,7 +63,9 @@ report.
 - arbitrary semantic merging of every Markdown format;
 - organization-wide policy enforcement;
 - automatic modification of production repositories;
-- packaging or vendoring the Superpowers framework.
+- packaging or vendoring the Superpowers framework;
+- automatic discovery of organization-managed Claude policy files, which is
+  deferred to v0.2 but remains auditable in v0.1 when supplied explicitly.
 
 ### 2.4 State home
 
@@ -104,7 +108,10 @@ current user's profile ACL and does not emulate POSIX modes.
 apu/
 ├── pyproject.toml
 ├── src/apu/
+│   ├── __init__.py
+│   ├── __main__.py
 │   ├── cli.py
+│   ├── state.py
 │   ├── discovery.py
 │   ├── precedence.py
 │   ├── classify.py
@@ -114,12 +121,17 @@ apu/
 │   ├── rollback.py
 │   ├── validate.py
 │   ├── receipts.py
+│   ├── outcomes.py
 │   ├── models.py
-│   └── adapters/
+│   ├── adapters/
+│   │   ├── base.py
+│   │   ├── codex.py
+│   │   ├── claude.py
+│   │   └── superpowers.py
+│   └── runners/
 │       ├── base.py
 │       ├── codex.py
-│       ├── claude.py
-│       └── superpowers.py
+│       └── claude.py
 ├── skills/
 │   └── optimizing-agent-instructions/
 │       ├── SKILL.md
@@ -253,6 +265,15 @@ requires an approved plan.
     "root_session_id": null
   },
   "surfaces": [],
+  "relationships": [
+    {
+      "type": "imports",
+      "from_surface_id": "sha256:...",
+      "to_surface_id": "sha256:... or null",
+      "status": "active|missing|disabled|unknown",
+      "location": {"line": 12}
+    }
+  ],
   "effective_stacks": [
     {
       "working_directory": "/absolute/repository",
@@ -274,9 +295,14 @@ keys and compact separators, excluding no fields. Absolute paths are retained
 in local artifacts but may be replaced with stable aliases in an explicitly
 sanitized export.
 
+Including `generated_at` is intentional: `inventory_sha256` identifies the
+exact audit artifact approved by the user, not semantic equivalence between
+audits. Surface content hashes and receipt hashes, rather than the inventory
+hash, drive deduplication and drift detection.
+
 `--root-session-id ID` restricts trace aggregation to the named root Codex
 session and sessions whose metadata identifies them as descendants of that
-root. It has no effect unless session paths are also supplied.
+root. Supplying it without at least one `--sessions` path is a usage error.
 
 ### 4.5 Effective precedence
 
@@ -371,7 +397,8 @@ apu init
 - discovers surfaces and precedence;
 - emits findings and sanitized evidence;
 - uses `--root-session-id` only to select one traced session tree from supplied
-  session directories;
+  session directories and rejects the option when no session directory is
+  supplied;
 - writes only when an explicit output path is provided.
 
 `apu propose`
@@ -386,16 +413,17 @@ apu init
 - modifies only the plan artifact;
 - supports accepting, rejecting, editing, relocating, and deferring operations;
 - records operation-level approval decisions and sets the plan to `approved`
-  only when every mutating operation is approved;
+  only when every mutating operation is either approved or rejected, at least
+  one mutating operation is approved, and none is pending or deferred;
 - with `--approve-all-recommended`, approves only high-confidence recommended
-  operations that do not require manual confirmation; unresolved operations
-  keep the plan in `draft` and cause a nonzero exit.
+  operations that do not require manual confirmation; pending or deferred
+  operations keep the plan in `draft` and cause a nonzero exit.
 
 `apu apply`
 
 - accepts only a plan whose status is `approved`;
 - uses `--yes` solely to suppress the final interactive confirmation;
-- rechecks all precondition hashes;
+- rechecks every approved operation's precondition hash;
 - creates backups and an installation receipt;
 - validates temporary results before atomic replacement.
 
@@ -403,6 +431,8 @@ apu init
 
 - checks structure, links, managed sections, plugin metadata, and representative
   behavioral fixtures;
+- validates all active installations in `registry.json` when neither `--plan`
+  nor `--receipt` is supplied;
 - distinguishes passed, failed, skipped, and unavailable checks.
 
 `apu rollback`
@@ -561,9 +591,19 @@ interchange. Human-readable summaries and diffs are generated alongside it.
 
 For `create` and `symlink` operations, `precondition_sha256: null` means the
 target must not exist at apply time. A missing target is therefore an explicit
-precondition, not an unchecked case. An approved plan requires every mutating
-operation to have `approval.status: approved`; preserve, rejected, and deferred
-operations are not executed.
+precondition, not an unchecked case.
+
+A mutating operation is resolved when its approval status is `approved` or
+`rejected`. A plan becomes `approved` only when all mutating operations are
+resolved and at least one is approved. `pending` and `deferred` are unresolved
+states and keep the plan in `draft`; a plan whose mutating operations are all
+rejected also remains `draft`. Apply executes only approved operations.
+Preserve and rejected operations are retained as review history but are never
+executed.
+
+For approval purposes, a mutating operation has an action of `merge`, `create`,
+`relocate`, `remove`, `symlink`, or `configure` and a strategy other than
+`proposal_only`. `preserve` and `proposal_only` operations are non-mutating.
 
 ### 8.1 Outcome record
 
@@ -635,8 +675,9 @@ authority is uncertain. APU emits a candidate diff without mutation.
 
 Before applying:
 
-1. resolve every target without following an unexpected changed symlink;
-2. verify precondition hashes and file modes;
+1. resolve every approved target without following an unexpected changed
+   symlink;
+2. verify approved-operation precondition hashes and file modes;
 3. verify the plan’s approval state;
 4. create a private temporary transaction directory;
 5. copy original bytes and metadata into the transaction;
@@ -682,8 +723,8 @@ An adapter implements:
 
 ```python
 class ProviderAdapter:
-    def discover(self, roots): ...
-    def precedence(self, cwd, surfaces): ...
+    def discover(self, roots): ...  # returns surfaces and relationships
+    def precedence(self, cwd, discovery): ...
     def import_strategy(self, target): ...
     def validate_surface(self, path): ...
     def plan_install(self, policy, inventory): ...
@@ -701,14 +742,23 @@ class ProviderAdapter:
 
 ### 11.2 Claude adapter
 
-- discovers global and hierarchical `CLAUDE.md`;
-- discovers `.claude/rules`, skills, hooks, and marketplaces; `.claude/rules`
-  is a documented Claude Code instruction surface, including user-level rules
-  and path-scoped project rules
+- discovers global and hierarchical `CLAUDE.md` and `CLAUDE.local.md`;
+- follows Claude Code's documented hierarchy, including loading
+  `CLAUDE.local.md` after `CLAUDE.md` at the same directory level;
+- discovers project and user-level `.claude/rules`, skills, hooks, and
+  marketplaces; evaluates `paths` frontmatter when constructing an effective
+  stack; `.claude/rules` is a documented Claude Code instruction surface
   (<https://code.claude.com/docs/en/memory#organize-rules-with-clauderules>);
+- resolves `@path` imports relative to the containing instruction file,
+  recursively up to Claude Code's documented limit, and reports missing,
+  circular, disabled, or unreadable imports;
+- reports an APU-owned sidecar as orphaned when it exists but no active
+  supported instruction surface imports it;
 - prefers a sidecar import when safe;
 - configures canonical local marketplace sources rather than editing caches;
-- reports when a restart is required.
+- reports when a restart is required;
+- defers automatic discovery of organization-managed `CLAUDE.md` policy
+  locations to v0.2; explicit roots remain supported in v0.1.
 
 ### 11.3 Superpowers adapter
 
@@ -781,7 +831,7 @@ fixture-name/
 
 - supported runners;
 - expected proportionality tier;
-- allowed and forbidden delegation/review events;
+- allowed and forbidden normalized delegation/review events;
 - files or outputs expected after execution;
 - deterministic validation commands;
 - seeded-defect success criteria;
@@ -798,6 +848,19 @@ invokes one selected runtime, captures its exit status and supported
 tool/delegation metadata, runs the deterministic checks, and removes the
 temporary checkout after recording a sanitized result. It does not use a
 provider API directly and does not provision credentials.
+
+Each runner adapter declares the normalized event types it can observe for the
+detected CLI version. The Codex adapter consumes `codex exec --json` JSONL
+events; the Claude adapter consumes `claude -p --output-format stream-json`
+events with the additional flags required by that CLI version. Raw provider
+events are translated into the runner's declared capability set rather than
+assuming equivalent schemas.
+
+Each check records its own status. A check that requires an event type the
+selected runner cannot observe is `skipped`, not `failed`. A fixture is
+`passed` only when all required checks pass, `failed` when any observable
+required check fails, and `skipped` when one or more required checks are
+unobservable and none fails.
 
 Every behavioral result is one of:
 
@@ -827,7 +890,8 @@ and may not claim the behavioral fixtures passed.
 The v0.1 MVP is complete when:
 
 1. `apu audit` inventories Codex and Claude global/project surfaces without
-   modifying them.
+   modifying them, including supported Claude local files, rule applicability,
+   and `@path` imports.
 2. The effective precedence stack can be shown for an arbitrary working
    directory.
 3. The deterministic and heuristic classifier identifies seeded universal
@@ -836,15 +900,18 @@ The v0.1 MVP is complete when:
    agent-assisted or manual.
 4. `apu propose` creates a deterministic JSON plan with exact preconditions.
 5. `apu review` can accept, reject, edit, relocate, and defer operations.
-6. `apu apply` accepts only an approved plan, creates backups and a receipt,
-   and refuses stale preconditions.
+6. Approval-state tests prove that rejected operations may coexist with
+   approved operations, pending or deferred operations block approval, and
+   `apu apply` executes only approved operations, refuses stale preconditions,
+   and creates backups and a receipt.
 7. `apu rollback` restores byte-identical fixtures.
 8. Codex and Claude adapters install the shared optimizer skill using canonical
    sources rather than versioned caches.
 9. Structural checks pass unconditionally. Balanced behavioral fixtures,
    including seeded-defect detection, pass when a supported authenticated agent
    runtime is available; otherwise they are reported as unavailable and are
-   never represented as passed.
+   never represented as passed. Event-dependent checks are skipped when the
+   selected runner does not declare the required observation capability.
 10. Exported trace reports contain metrics but no prompt bodies or environment
     values.
 11. The tool installs and runs on macOS, Linux, and Windows with Python 3.11+,
@@ -856,6 +923,8 @@ The v0.1 MVP is complete when:
 13. `apu outcome record` stores local monitoring records, and `apu status`
     reports elapsed days and material-task progress toward the 30-day/10-task
     window.
+14. `apu validate` without an explicit plan or receipt validates every active
+    installation in the local registry.
 
 ## 15. Delivery sequence
 
@@ -864,6 +933,7 @@ The v0.1 MVP is complete when:
 - data models;
 - state-home and registry initialization;
 - Codex and Claude discovery;
+- Claude local-file, rule-applicability, and import resolution;
 - precedence mapping;
 - deterministic findings;
 - sanitized JSON/text reports;
@@ -875,6 +945,7 @@ The v0.1 MVP is complete when:
 - plan schema;
 - proposal generation;
 - interactive review;
+- approval-state transition tests;
 - diff rendering;
 - no mutation beyond explicit plan output.
 
@@ -891,6 +962,7 @@ The v0.1 MVP is complete when:
 
 - balanced behavioral fixtures;
 - optional Codex and Claude CLI runners with unavailable-state reporting;
+- runner capability maps and normalized event handling;
 - seeded-defect evaluation;
 - local outcome recording and monitoring summaries;
 - bundled optimizer skill and templates;
