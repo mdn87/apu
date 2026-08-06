@@ -1,9 +1,9 @@
 # APU v0.1 Product and Technical Specification
 
-**Status:** Initial implementation specification  
-**Repository:** `https://github.com/mdn87/apu`  
-**Product name:** Agent Policy Updater  
-**CLI command:** `apu`
+- **Status:** Initial implementation specification
+- **Repository:** `https://github.com/mdn87/apu`
+- **Product name:** Agent Policy Updater
+- **CLI command:** `apu`
 
 ## 1. Goal
 
@@ -216,31 +216,38 @@ The report distinguishes:
 
 The deterministic classifier applies these rules in order:
 
-1. **Sensitive or volatile local state**  
+1. **Sensitive or volatile local state**
+
    Credentials, permissions, absolute machine paths, installed versions, and
    logs default to `preserve`.
 
-2. **Repository truth**  
+2. **Repository truth**
+
    Build commands, architecture, domain invariants, and local completion
    criteria found above a repository default to `preserve` or `relocate` to the
    closest applicable repository.
 
-3. **Reusable conditional method**  
+3. **Reusable conditional method**
+
    A workflow that should activate only for identifiable task classes defaults
    to `extract_to_skill`.
 
-4. **Mechanical invariant**  
+4. **Mechanical invariant**
+
    A rule expressible as a deterministic block, parser, linter, permission, or
    test defaults to `mechanize`.
 
-5. **Global personal preference**  
+5. **Global personal preference**
+
    A stable cross-project preference that the model cannot reliably infer may
    remain global.
 
-6. **Inferable, duplicated, stale, or speculative guidance**  
+6. **Inferable, duplicated, stale, or speculative guidance**
+
    Defaults to `remove` or `manual`, depending on confidence and risk.
 
-7. **Uncertain authority or scope**  
+7. **Uncertain authority or scope**
+
    Always defaults to `manual`.
 
 A recommendation cannot silently relocate a repository-owned rule into a
