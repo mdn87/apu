@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "seeded-boundary-defect",
+  "supported_runners": ["codex", "claude"],
+  "expected_tier": "direct",
+  "events": {"required": [], "forbidden": ["delegation", "review"]},
+  "expected_outputs": [{"path": "finding.md", "contains": "limit.py"}],
+  "validation_commands": [["{python}", "../checks/check.py"]],
+  "seeded_defect": {"criterion": "names limit.py and the invalid upper boundary"},
+  "timeout_seconds": 30,
+  "cleanup": "always"
+}

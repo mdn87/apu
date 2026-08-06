@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "delegated-independent-analysis",
+  "supported_runners": ["codex", "claude"],
+  "expected_tier": "delegated",
+  "events": {"required": ["delegation"], "forbidden": []},
+  "expected_outputs": [{"path": "analysis.txt", "contains": "alpha"}],
+  "validation_commands": [["{python}", "../checks/check.py"]],
+  "timeout_seconds": 45,
+  "cleanup": "always"
+}

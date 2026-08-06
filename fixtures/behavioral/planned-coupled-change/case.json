@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "planned-coupled-change",
+  "supported_runners": ["codex", "claude"],
+  "expected_tier": "planned",
+  "events": {"required": [], "forbidden": ["delegation"]},
+  "expected_outputs": [{"path": "implementation.txt", "contains": "validated"}],
+  "validation_commands": [["{python}", "../checks/check.py"]],
+  "timeout_seconds": 45,
+  "cleanup": "always"
+}

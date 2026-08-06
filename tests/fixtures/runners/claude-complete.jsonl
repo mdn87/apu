@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"session-secret","tools":["Bash","Agent"],"model":"claude-secret"}
+{"type":"assistant","message":{"id":"msg-secret","role":"assistant","content":[{"type":"text","text":"I will inspect the repository."},{"type":"tool_use","id":"tool-1","name":"Bash","input":{"command":"export ANTHROPIC_API_KEY=secret-value; pytest","env":{"TOKEN":"secret-value"}}},{"type":"tool_use","id":"tool-2","name":"Agent","input":{"description":"Review authentication","prompt":"Inspect private authentication code","subagent_type":"code-reviewer"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"credential=secret-value"}]}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1200,"duration_api_ms":900,"num_turns":1,"result":"Private final answer","session_id":"session-secret","total_cost_usd":0.01}
