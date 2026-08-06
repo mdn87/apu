@@ -10,7 +10,7 @@ import tempfile
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .models import Plan, sha256_bytes
-from .filesystem import hash_object
+from .filesystem import hash_object, symlink_points_to
 from .receipts import load_receipt
 from .runners import (
     BehavioralResult,
@@ -582,7 +582,7 @@ def _validate_installed_target(
     if expected_link is not None:
         if not target.is_symlink():
             return CheckResult(name, "failed", f"{target} is not the installed link")
-        if str(target.readlink()) != str(expected_link):
+        if not symlink_points_to(target, str(expected_link)):
             return CheckResult(name, "failed", f"{target} does not match receipt")
         return CheckResult(name, "passed", f"{target} matches receipt")
 

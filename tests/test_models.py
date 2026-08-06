@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
+import tempfile
 
 import pytest
 
@@ -26,7 +28,7 @@ def operation(
     return PlanOperation(
         id=operation_id,
         action=action,
-        target=f"/tmp/{operation_id}",
+        target=str(Path(tempfile.gettempdir()) / operation_id),
         source=None,
         ownership="apu",
         strategy=strategy,

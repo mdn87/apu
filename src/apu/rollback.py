@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 from typing import Any, Mapping
 
-from .filesystem import hash_object
+from .filesystem import hash_object, symlink_points_to
 from .receipts import (
     load_receipt,
     validate_receipt_for_state,
@@ -98,9 +98,11 @@ def _can_restore(operation: Mapping[str, Any]) -> bool:
     target = Path(operation["target"])
     action = operation.get("action")
     if action == "symlink":
-        if not target.is_symlink():
-            return False
-        return os.readlink(target) == operation.get("created_symlink_target")
+        expected = operation.get("created_symlink_target")
+        return (
+            isinstance(expected, str)
+            and symlink_points_to(target, expected)
+        )
 
     installed_hash = operation.get("installed_sha256")
     if installed_hash is None:

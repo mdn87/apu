@@ -32,3 +32,31 @@ def hash_object(path: Path) -> str:
             digest.update(b"\0")
         return digest.hexdigest()
     raise OSError(f"unsupported filesystem object: {candidate}")
+
+
+def symlink_points_to(link: Path, expected: Path | str) -> bool:
+    """Compare a symlink destination using native path semantics."""
+
+    candidate = Path(link)
+    if not candidate.is_symlink():
+        return False
+    try:
+        raw_target = os.readlink(candidate)
+    except OSError:
+        return False
+    actual = Path(raw_target)
+    if not actual.is_absolute():
+        actual = candidate.parent / actual
+    return _path_identity(actual) == _path_identity(Path(expected))
+
+
+def _path_identity(path: Path) -> str:
+    normalized = os.path.normcase(
+        os.path.normpath(os.path.abspath(os.fspath(path)))
+    )
+    if os.name == "nt":
+        if normalized.startswith("\\\\?\\unc\\"):
+            normalized = "\\\\" + normalized[8:]
+        elif normalized.startswith("\\\\?\\"):
+            normalized = normalized[4:]
+    return normalized
