@@ -32,4 +32,6 @@ apu --help
 
 The product rationale is in [concept.md](concept.md), the behavior contract is
 in [spec.md](spec.md), and implementation sequencing is in
-[implementation-plan.md](implementation-plan.md).
+[implementation-plan.md](implementation-plan.md). For cross-system
+installation, validation, and rollback procedures, see
+[RUNBOOK.md](RUNBOOK.md).
