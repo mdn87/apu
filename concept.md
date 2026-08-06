@@ -193,6 +193,13 @@ Every policy revision is tested for both efficiency and rigor:
 - an explicitly requested skill or review is honored;
 - a seeded realistic defect is still detected.
 
+Structural checks and deterministic fixture validation require no model.
+Behavioral fixtures run through a supported local agent runtime, such as Codex
+or Claude Code, when one is installed and authenticated. If no runtime is
+available, APU reports those checks as unavailable rather than treating them as
+passed; audit, proposal, installation, rollback, and structural validation
+remain fully usable.
+
 For roughly 30 days and at least 10 material tasks after installation, APU
 tracks user-supplied or locally derived outcome summaries: latency, agent and
 review counts, remediation, rework, and escaped defects. A regression tightens
@@ -207,7 +214,8 @@ the specific weak rule rather than restoring the entire previous workflow.
 - Audit reports do not expose prompt bodies or secrets.
 - Representative tasks require fewer agent roles and review cycles.
 - Seeded real defects remain detectable.
-- The package works without requiring an OpenAI or Anthropic API key.
+- Core package operation works without an OpenAI or Anthropic API key;
+  optional behavioral evaluations may use an already installed agent runtime.
 
 ## Non-goals
 

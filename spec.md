@@ -63,6 +63,41 @@ report.
 - automatic modification of production repositories;
 - packaging or vendoring the Superpowers framework.
 
+### 2.4 State home
+
+APU stores its own mutable state under `APU_HOME`.
+
+Default locations:
+
+- macOS and Linux: `${XDG_STATE_HOME}/apu` when `XDG_STATE_HOME` is set,
+  otherwise `~/.local/state/apu`;
+- Windows: `%LOCALAPPDATA%\apu`;
+- explicit override: the absolute path in `APU_HOME`.
+
+```text
+APU_HOME/
+├── inventories/
+├── plans/
+├── installations/
+│   └── <installation-id>/
+│       ├── receipt.json
+│       └── backups/
+├── outcomes/
+│   └── <installation-id>.jsonl
+├── transactions/
+└── registry.json
+```
+
+`registry.json` indexes applied installations and their current receipt.
+Inventories and plans are retained only when the user requests an output or
+uses the guided flow. Transactions are removed after successful apply or
+rollback; failed transactions remain available for diagnosis until explicitly
+cleaned.
+
+On POSIX systems, APU creates state directories with mode `0700` and files with
+mode `0600`, subject to a stricter existing umask. On Windows, APU relies on the
+current user's profile ACL and does not emulate POSIX modes.
+
 ## 3. Package layout
 
 ```text
@@ -125,7 +160,7 @@ that can affect agent behavior.
   "real_path": "/resolved/path",
   "is_symlink": false,
   "content_sha256": "...",
-  "mode": "0644",
+  "mode": "0644 or null when not meaningful",
   "precedence": 30,
   "sensitive": false
 }
@@ -141,31 +176,41 @@ A finding identifies a concrete policy issue or placement concern.
 
 ```json
 {
+  "id": "finding-<stable-hash>",
   "surface_id": "sha256:...",
   "location": {"line": 17},
   "category": "universal-skill-trigger",
   "severity": "high",
   "confidence": "high",
+  "analysis_method": "structural|heuristic|agent-assisted|manual",
   "evidence": ["matched-rule", "trace:019f..."],
   "summary": "Skill invocation is required for every conversation."
 }
 ```
 
-Initial categories:
+The deterministic v0.1 core must detect:
 
 - universal skill or tool trigger;
 - unconditional design/approval gate;
 - microtask planning or commit requirement;
 - per-task implementer/reviewer loop;
-- aggressive priority language;
 - duplicated or contradictory instruction;
 - stale environment or project fact;
-- speculative completeness or impossible-state handling;
-- test ritual detached from behavior risk;
 - misplaced global or repository-specific fact;
 - prose rule better enforced mechanically;
 - unsupported or broken path/import/symlink;
 - secret or sensitive material exposure risk.
+
+Pattern-based findings are labeled `heuristic` and include the matched evidence
+so a human or agent can verify them. Semantic judgments such as aggressive
+priority language, speculative completeness, impossible-state handling, or a
+test ritual detached from behavior risk are advisory `agent-assisted` or
+`manual` findings in v0.1. The no-API core may surface keyword candidates for
+these categories, but it must not claim semantic certainty.
+
+Finding IDs are stable hashes of the surface ID, category, normalized location,
+and detector version. Plans may therefore reference findings without embedding
+their source text.
 
 ### 4.3 Residency recommendation
 
@@ -193,7 +238,47 @@ The recommendation records:
 APU may automatically propose high-confidence classifications. Mutation always
 requires an approved plan.
 
-### 4.4 Effective precedence
+### 4.4 Audit artifact
+
+`apu audit --json` produces the inventory consumed by `apu propose`:
+
+```json
+{
+  "schema_version": 1,
+  "apu_version": "0.1.0",
+  "generated_at": "RFC3339 timestamp",
+  "scope": {
+    "roots": ["/absolute/path"],
+    "working_directories": ["/absolute/repository"],
+    "root_session_id": null
+  },
+  "surfaces": [],
+  "effective_stacks": [
+    {
+      "working_directory": "/absolute/repository",
+      "surface_ids": ["sha256:..."]
+    }
+  ],
+  "findings": [],
+  "evidence_summary": {
+    "sessions": null,
+    "tool_calls": {},
+    "git": null,
+    "privacy": "Message and prompt content is not emitted."
+  }
+}
+```
+
+The canonical inventory hash is SHA-256 over UTF-8 JSON serialized with sorted
+keys and compact separators, excluding no fields. Absolute paths are retained
+in local artifacts but may be replaced with stable aliases in an explicitly
+sanitized export.
+
+`--root-session-id ID` restricts trace aggregation to the named root Codex
+session and sessions whose metadata identifies them as descendants of that
+root. It has no effect unless session paths are also supplied.
+
+### 4.5 Effective precedence
 
 For each requested working directory, APU constructs an ordered effective
 stack using adapter rules:
@@ -261,7 +346,7 @@ apu audit [PATH ...] [--sessions PATH ...] [--git-repo PATH]
 
 apu propose --inventory INVENTORY.json [--output PLAN.json]
 
-apu review PLAN.json
+apu review PLAN.json [--approve-all-recommended] [--output PLAN.json]
 
 apu apply PLAN.json [--yes]
 
@@ -270,6 +355,10 @@ apu validate [--plan PLAN.json | --receipt RECEIPT.json]
 apu rollback --receipt RECEIPT.json
 
 apu status
+
+apu outcome record --receipt RECEIPT.json [METRIC OPTIONS]
+
+apu outcome list [--receipt RECEIPT.json]
 
 apu init
 ```
@@ -281,6 +370,8 @@ apu init
 - is read-only;
 - discovers surfaces and precedence;
 - emits findings and sanitized evidence;
+- uses `--root-session-id` only to select one traced session tree from supplied
+  session directories;
 - writes only when an explicit output path is provided.
 
 `apu propose`
@@ -293,11 +384,17 @@ apu init
 
 - starts the interactive review flow;
 - modifies only the plan artifact;
-- supports accepting, rejecting, editing, relocating, and deferring operations.
+- supports accepting, rejecting, editing, relocating, and deferring operations;
+- records operation-level approval decisions and sets the plan to `approved`
+  only when every mutating operation is approved;
+- with `--approve-all-recommended`, approves only high-confidence recommended
+  operations that do not require manual confirmation; unresolved operations
+  keep the plan in `draft` and cause a nonzero exit.
 
 `apu apply`
 
-- refuses an unapproved plan unless `--yes` is supplied;
+- accepts only a plan whose status is `approved`;
+- uses `--yes` solely to suppress the final interactive confirmation;
 - rechecks all precondition hashes;
 - creates backups and an installation receipt;
 - validates temporary results before atomic replacement.
@@ -319,13 +416,37 @@ apu init
 - shows installed APU version, managed surfaces, drift, current provider
   adapters, last validation, and monitoring progress.
 
+`apu outcome record`
+
+- appends one local outcome to the installation's JSONL monitoring record;
+- accepts elapsed time, agent/review/remediation counts, validation status,
+  rework, and escaped-defect severity when known;
+- permits partial records and marks the source as user, trace, or imported;
+- never runs as a daemon or uploads the record.
+
+`apu outcome list`
+
+- prints raw or summarized outcomes for one installation or all registered
+  installations;
+- shows both elapsed days and material-task count against the 30-day/10-task
+  monitoring target.
+
 `apu init`
 
 - runs audit, proposal, interactive review, validation, and optional apply as a
   guided first-run flow;
-- defaults to stopping after proposal preview.
+- is the entry point for the complete flow in section 7;
+- defaults to stopping after proposal preview; ownership selection, behavioral
+  validation, apply, and postflight are explicit opt-in continuations.
 
 ## 7. Interactive wizard
+
+`apu init` enters the full flow below. `apu review PLAN.json` enters at
+recommendation review for an existing plan and ends after plan preview or
+approval unless the user explicitly continues to validation and apply.
+In `apu init`, steps 1–5 and plan preview are the default path; ownership
+selection, behavioral validation, apply, and postflight are opt-in
+continuations.
 
 ### 7.1 Flow
 
@@ -414,10 +535,15 @@ apu init
       "source": "template or source path",
       "ownership": "user|repository|apu",
       "strategy": "sidecar|managed_section|full_file|proposal_only",
-      "precondition_sha256": "...",
+      "precondition_sha256": "... or null",
       "proposed_sha256": "...",
       "backup_required": true,
       "requires_confirmation": true,
+      "approval": {
+        "status": "pending|approved|rejected|deferred",
+        "recorded_at": "RFC3339 timestamp or null",
+        "method": "interactive|approve-recommended|imported|null"
+      },
       "reason": "...",
       "evidence": ["finding-id"]
     }
@@ -432,6 +558,44 @@ apu init
 
 The plan must be JSON for standard-library parsing and cross-platform
 interchange. Human-readable summaries and diffs are generated alongside it.
+
+For `create` and `symlink` operations, `precondition_sha256: null` means the
+target must not exist at apply time. A missing target is therefore an explicit
+precondition, not an unchecked case. An approved plan requires every mutating
+operation to have `approval.status: approved`; preserve, rejected, and deferred
+operations are not executed.
+
+### 8.1 Outcome record
+
+Each line under `APU_HOME/outcomes/<installation-id>.jsonl` is independently
+parseable:
+
+```json
+{
+  "schema_version": 1,
+  "installation_id": "install-...",
+  "recorded_at": "RFC3339 timestamp",
+  "task_id": "user-supplied-or-generated",
+  "material": true,
+  "source": "user|trace|imported",
+  "elapsed_seconds": null,
+  "agent_count": null,
+  "review_count": null,
+  "remediation_count": null,
+  "validation": "passed|failed|partial|unknown",
+  "rework": false,
+  "escaped_defect": {
+    "present": false,
+    "severity": "none|ordinary|serious",
+    "category": null
+  },
+  "notes": null
+}
+```
+
+Notes are optional, local, and excluded from sanitized exports by default.
+Monitoring completion means both 30 elapsed days and 10 records marked
+`material: true`; it is not an automated quality verdict.
 
 ## 9. Installation strategies
 
@@ -479,8 +643,17 @@ Before applying:
 6. render all proposed outputs;
 7. parse and validate rendered outputs.
 
-Commit the transaction by atomically replacing files where the platform permits
-it. If any operation fails, restore already-applied operations in reverse order.
+Commit the transaction with `os.replace` where the platform permits it. On
+Windows, open-file sharing violations or unsupported replacements fail before
+the affected target is counted as applied; APU retries only a small bounded
+number of transient sharing violations and otherwise rolls back already-applied
+operations in reverse order.
+
+Symlink creation is capability-tested. On Windows, when symlink privilege or
+Developer Mode is unavailable, the adapter must select a reviewed copy,
+managed-section, or proposal-only operation instead of silently substituting a
+different link type. POSIX mode capture and restoration are skipped when the
+platform does not expose meaningful POSIX modes.
 
 The installation receipt contains:
 
@@ -496,6 +669,12 @@ The installation receipt contains:
 - rollback status.
 
 Receipts contain no secrets or full trace contents.
+
+Rollback also removes a symlink created by APU when, and only when, it still
+points to the target recorded in the receipt. A changed link, replacement file,
+or user-created object at that path is reported as drift and left untouched.
+Copied fallbacks and generated files follow the same installed-hash drift rule
+before removal or restoration.
 
 ## 11. Provider adapters
 
@@ -523,7 +702,10 @@ class ProviderAdapter:
 ### 11.2 Claude adapter
 
 - discovers global and hierarchical `CLAUDE.md`;
-- discovers `.claude/rules`, skills, hooks, and marketplaces;
+- discovers `.claude/rules`, skills, hooks, and marketplaces; `.claude/rules`
+  is a documented Claude Code instruction surface, including user-level rules
+  and path-scoped project rules
+  (<https://code.claude.com/docs/en/memory#organize-rules-with-clauderules>);
 - prefers a sidecar import when safe;
 - configures canonical local marketplace sources rather than editing caches;
 - reports when a restart is required.
@@ -543,7 +725,9 @@ class ProviderAdapter:
 - Prompt and message bodies are not emitted from session traces.
 - Environment variables, tokens, cookies, and credential-shaped values are
   redacted or omitted.
-- Backups and receipts use user-only permissions where supported.
+- `APU_HOME`, backups, receipts, plans, and inventories use user-only
+  permissions where POSIX modes are supported and the current user profile ACL
+  on Windows.
 - Destructive operations require exact resolved targets.
 - APU never recursively deletes a workspace, repository root, home directory,
   or configured instruction root.
@@ -580,14 +764,63 @@ callee disagreeing on a renamed field or a boundary check accepting an invalid
 value. Passing requires identifying the defect with concrete evidence without
 inventing unrelated findings.
 
-### 13.3 Transaction tests
+### 13.3 Behavioral execution harness
+
+Behavioral fixtures are optional runtime-backed evaluations, not part of the
+no-model deterministic core. Each fixture contains:
+
+```text
+fixture-name/
+├── case.json
+├── prompt.md
+├── repo/
+└── checks/
+```
+
+`case.json` declares:
+
+- supported runners;
+- expected proportionality tier;
+- allowed and forbidden delegation/review events;
+- files or outputs expected after execution;
+- deterministic validation commands;
+- seeded-defect success criteria;
+- timeout and cleanup behavior.
+
+Runner adapters initially support:
+
+- `codex exec` when a compatible Codex CLI is installed and authenticated;
+- `claude -p` when a compatible Claude Code CLI is installed and authenticated;
+- an exported manual bundle when neither runtime is available.
+
+The runner copies the fixture repository to a private temporary directory,
+invokes one selected runtime, captures its exit status and supported
+tool/delegation metadata, runs the deterministic checks, and removes the
+temporary checkout after recording a sanitized result. It does not use a
+provider API directly and does not provision credentials.
+
+Every behavioral result is one of:
+
+- `passed`;
+- `failed`;
+- `skipped` because the case does not support the selected runtime;
+- `unavailable` because no supported authenticated runtime is present.
+
+Structural validation always runs. Behavioral validation is required for a
+release only when CI or the release environment declares at least one supported
+authenticated runner. Otherwise the release report must show it as unavailable
+and may not claim the behavioral fixtures passed.
+
+### 13.4 Transaction tests
 
 - apply followed by rollback restores byte-identical files and modes;
 - changed precondition hash aborts before mutation;
 - simulated failure midway restores earlier operations;
 - external edits after apply block automatic overwrite;
 - proposal-only operations never write;
-- a broken symlink is reported and not silently replaced.
+- a broken symlink is reported and not silently replaced;
+- Windows fallback fixtures omit POSIX mode assertions and exercise a
+  non-symlink installation strategy.
 
 ## 14. Acceptance criteria
 
@@ -597,27 +830,39 @@ The v0.1 MVP is complete when:
    modifying them.
 2. The effective precedence stack can be shown for an arbitrary working
    directory.
-3. The classifier identifies seeded universal triggers, per-task review loops,
-   stale environment facts, and a mechanical-enforcement candidate.
+3. The deterministic and heuristic classifier identifies seeded universal
+   triggers, per-task review loops, stale environment-pattern candidates, and a
+   mechanical-enforcement candidate while labeling semantic judgments as
+   agent-assisted or manual.
 4. `apu propose` creates a deterministic JSON plan with exact preconditions.
 5. `apu review` can accept, reject, edit, relocate, and defer operations.
-6. `apu apply` creates backups and a receipt and refuses stale preconditions.
+6. `apu apply` accepts only an approved plan, creates backups and a receipt,
+   and refuses stale preconditions.
 7. `apu rollback` restores byte-identical fixtures.
 8. Codex and Claude adapters install the shared optimizer skill using canonical
    sources rather than versioned caches.
-9. Structural and balanced behavioral fixtures pass, including seeded-defect
-   detection.
+9. Structural checks pass unconditionally. Balanced behavioral fixtures,
+   including seeded-defect detection, pass when a supported authenticated agent
+   runtime is available; otherwise they are reported as unavailable and are
+   never represented as passed.
 10. Exported trace reports contain metrics but no prompt bodies or environment
     values.
-11. The tool installs and runs on macOS, Linux, and Windows with Python 3.11+.
+11. The tool installs and runs on macOS, Linux, and Windows with Python 3.11+,
+    using capability-tested platform fallbacks for symlinks, POSIX modes, and
+    file replacement.
 12. The package has no required model API, database, daemon, or web-service
-    dependency.
+    dependency. Optional behavioral evaluation may use an independently
+    installed and authenticated agent CLI.
+13. `apu outcome record` stores local monitoring records, and `apu status`
+    reports elapsed days and material-task progress toward the 30-day/10-task
+    window.
 
 ## 15. Delivery sequence
 
 ### Milestone 1: Read-only foundation
 
 - data models;
+- state-home and registry initialization;
 - Codex and Claude discovery;
 - precedence mapping;
 - deterministic findings;
@@ -639,12 +884,15 @@ The v0.1 MVP is complete when:
 - backups and receipts;
 - apply and rollback;
 - drift detection;
+- platform capability probes and Windows fallbacks;
 - provider postflight checks.
 
 ### Milestone 4: Evaluation and packaging
 
 - balanced behavioral fixtures;
+- optional Codex and Claude CLI runners with unavailable-state reporting;
 - seeded-defect evaluation;
+- local outcome recording and monitoring summaries;
 - bundled optimizer skill and templates;
 - `pipx`/`uv tool` installation;
 - versioned GitHub release artifact;
