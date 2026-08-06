@@ -1,6 +1,6 @@
 # APU v0.1 Implementation Plan
 
-- **Status:** Ready for implementation
+- **Status:** Implemented; release verification pending platform CI
 - **Source:** [concept.md](concept.md) and [spec.md](spec.md)
 - **Target runtime:** Python 3.11+
 - **Primary interface:** `apu` command-line application
@@ -35,7 +35,8 @@ The implementation must not add:
 - automatic organization-wide policy enforcement;
 - arbitrary Markdown rewriting;
 - a dashboard or browser UI;
-- a bundled copy of Superpowers;
+- a Superpowers adapter or bundled copy of Superpowers; optional integration is
+  post-v0.1;
 - automatic reviewer or subagent loops.
 
 No audit command may create `APU_HOME` unless an explicit output or guided-flow
@@ -95,7 +96,15 @@ Apply executes only operations whose decision is `approved`. Rejected and
 preserve operations remain in the artifact as review history. `--yes` may skip
 the final confirmation but must never alter approval state.
 
-### 4.3 Runner capability model
+### 4.3 Atomic relocation
+
+Treat `relocate` as a review choice that the planner normalizes into one
+`remove` plus one `create`. Both operations share an atomic group ID and content
+hash, receive one approval decision, and must pass preflight before either can
+execute. Reject malformed or partially approved groups. Rollback restores the
+pair as one transaction unit.
+
+### 4.4 Runner capability model
 
 Each runner reports:
 
@@ -122,6 +131,10 @@ and performs no unintended writes.
 - Establish `pyproject.toml`, `src/apu/__init__.py`,
   `src/apu/__main__.py`, and the `argparse` command tree in
   `src/apu/cli.py`.
+- Add `.github/workflows/ci.yml` with a GitHub Actions matrix for supported
+  Python versions on Ubuntu, macOS, and Windows. Run the deterministic suite
+  and package smoke checks without model credentials; later milestones extend
+  the same matrix rather than creating separate release-only jobs.
 - Define validated dataclasses and canonical JSON serialization for surfaces,
   import relationships, findings, inventories, validation results, and registry
   entries in `src/apu/models.py`.
@@ -131,12 +144,14 @@ and performs no unintended writes.
   `src/apu/discovery.py`; preserve logical and resolved paths, symlink state,
   content hashes, authority, and scope.
 - Implement Codex discovery for global and hierarchical `AGENTS.md`, shared
-  skills, hooks or manifests in scope, and noncanonical cache reporting.
+  skill directories and their metadata, explicitly supplied roots, and
+  noncanonical generated/versioned cache reporting.
 - Implement Claude discovery for `CLAUDE.md`, `CLAUDE.local.md`, project and
-  user rules, `paths` applicability, and `@path` import relationships. Resolve
-  relative imports from the containing file, cap recursion at the documented
-  provider limit, detect cycles and missing targets, and identify orphaned
-  APU-owned sidecars.
+  user rules, `paths` applicability, `@path` import relationships, project and
+  user skill directories, session-start hook registrations, and local
+  marketplace metadata. Resolve relative imports from the containing file, cap
+  recursion at the documented provider limit, detect cycles and missing
+  targets, and identify orphaned APU-owned sidecars.
 - Implement provider-aware ordering in `src/apu/precedence.py`, including lazy
   or conditional surfaces for each requested working directory.
 - Implement deterministic structural detectors and honestly labeled pattern
@@ -151,7 +166,10 @@ directories. Cover:
 
 - Codex and Claude hierarchy ordering;
 - `CLAUDE.local.md`, user rules, `paths` rules, nested imports, cycles, missing
-  imports, and orphaned sidecars;
+  imports, orphaned sidecars, project/user skills, session-start hooks, and
+  local marketplace metadata;
+- GitHub Actions matrix execution on Ubuntu, macOS, and Windows without
+  credentials or access to the operator's real home directory;
 - symlink and real-path identity without following unexpected cycles;
 - identical surface hashes across repeated scans;
 - distinct inventory hashes when `generated_at` differs;
@@ -161,8 +179,7 @@ directories. Cover:
 - CLI usage failure for `--root-session-id` without `--sessions`.
 
 Milestone 1 exits when the read-only acceptance criteria pass on POSIX and the
-Windows path/mode behavior passes in a Windows CI job or equivalent platform
-fixture.
+Windows path/mode behavior passes in the Windows GitHub Actions matrix job.
 
 ## 6. Milestone 2 — Proposal and review
 
@@ -178,6 +195,9 @@ operation decisions.
   deterministic, heuristic, agent-assisted, and manual findings distinct.
 - Implement deterministic proposal generation, candidate rendering, exact
   preconditions, and unified diffs in `src/apu/planning.py`.
+- Normalize every relocate choice into an atomic `remove` + `create` pair with
+  one group ID, one shared content hash, and group-level approval propagation.
+  Validate the pair before plan status can become approved.
 - Implement the approval derivation contract once and reuse it for interactive
   and non-interactive review paths.
 - Implement the standard-library wizard in `src/apu/wizard.py`. Present
@@ -202,7 +222,9 @@ Use table-driven state tests for every approval combination, including:
   set;
 - plan generation is stable for the same inventory artifact;
 - stale or malformed inventory references fail before plan output;
-- wizard decisions survive reload and render the same final diff.
+- wizard decisions survive reload and render the same final diff;
+- relocation pairs are deterministic, contain exact source and destination
+  preconditions, and cannot be partially approved.
 
 Milestone 2 exits when an operator can audit a fixture, create a plan, review it
 interactively or non-interactively, and reproduce its decisions from the saved
@@ -220,6 +242,13 @@ manage approved changes across supported platforms.
 - Implement sidecar, managed-section, full-file, and proposal-only renderers.
   Claude sidecars use supported `@path` imports; Codex remains managed-section
   or proposal-only where no import mechanism exists.
+- Implement canonical optimizer-skill installation in the Codex and Claude
+  adapters. Resolve the versioned package resource or an explicit canonical
+  checkout, then emit reviewed operations: a `symlink` into
+  `~/.agents/skills/optimizing-agent-instructions` for Codex; a `symlink` into
+  `~/.claude/skills/optimizing-agent-instructions` and, when selected, a
+  separate `configure` operation for Claude local marketplace metadata. Never
+  source installation from a generated/versioned cache.
 - Implement preflight checks in `src/apu/apply.py`: artifact validation,
   approval derivation, target resolution, precondition hashes, platform
   capabilities, private transaction directory, backups, render, and parse.
@@ -237,6 +266,9 @@ manage approved changes across supported platforms.
   clearly without treating it as a validation failure.
 - Implement `apu status` from registry and receipt data, including drift,
   provider postflight state, last validation, and monitoring progress.
+- Extend `apu init` after its Milestone 2 preview so an explicit continuation
+  can resolve ownership, approve/save the resulting plan, apply it, run
+  structural validation and provider postflight, and display the receipt.
 
 ### Focused validation
 
@@ -244,6 +276,9 @@ Exercise transactions entirely in temporary roots:
 
 - unapproved plans fail even with `--yes`;
 - only approved operations execute from a mixed approved/rejected plan;
+- relocation groups fail preflight when incomplete, differently approved,
+  source-drifted, or destination-occupied, and a simulated mid-group failure
+  restores both paths;
 - null create preconditions require a missing target;
 - stale content, changed symlinks, and changed managed sections fail before
   overwrite;
@@ -253,6 +288,9 @@ Exercise transactions entirely in temporary roots:
 - created symlinks are removed only when unchanged;
 - Windows fixtures use copy, managed-section, or proposal-only fallback and
   omit meaningless POSIX mode assertions;
+- canonical skill fixtures cover Codex and Claude symlink plans, Claude
+  marketplace `configure` plans, existing user-managed targets, ignored cache
+  candidates, and the reviewed Windows copy fallback;
 - receipts contain hashes and backup references but no source content, prompts,
   or secrets;
 - `apu validate` with no selector walks all active registry entries.
@@ -287,6 +325,10 @@ tool with its reusable skill and templates.
 - Implement `apu outcome record`, `apu outcome list`, and monitoring summaries
   in `src/apu/outcomes.py`. Store append-only JSONL per installation and
   calculate progress from both elapsed days and material-task count.
+- Complete the `apu init` opt-in path by offering runtime-backed behavioral
+  validation when a capable authenticated runner exists, reporting honest
+  skipped/unavailable states otherwise, and initializing monitoring after a
+  successful installation.
 - Bundle the `optimizing-agent-instructions` skill, provider templates, and
   evaluation references without embedding live user configuration.
 - Add package metadata, console entry point, wheel/sdist inclusion rules, and
@@ -345,4 +387,5 @@ Before declaring v0.1 complete:
 
 Release notes must distinguish tests that passed, checks that were skipped, and
 runtime evaluations that were unavailable. They must not represent absence of
-an authenticated runner as behavioral success.
+an authenticated runner as behavioral success. Superpowers integration is not
+part of the v0.1 release gate.

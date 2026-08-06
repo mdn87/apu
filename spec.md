@@ -63,7 +63,8 @@ report.
 - arbitrary semantic merging of every Markdown format;
 - organization-wide policy enforcement;
 - automatic modification of production repositories;
-- packaging or vendoring the Superpowers framework;
+- a built-in Superpowers adapter or vendored Superpowers framework; optional
+  Superpowers integration is deferred to post-v0.1;
 - automatic discovery of organization-managed Claude policy files, which is
   deferred to v0.2 but remains auditable in v0.1 when supplied explicitly.
 
@@ -106,12 +107,20 @@ current user's profile ACL and does not emulate POSIX modes.
 
 ```text
 apu/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── pyproject.toml
 ├── src/apu/
 │   ├── __init__.py
 │   ├── __main__.py
 │   ├── cli.py
+│   ├── audit.py
 │   ├── state.py
+│   ├── filesystem.py
+│   ├── render.py
+│   ├── resources.py
+│   ├── trace.py
 │   ├── discovery.py
 │   ├── precedence.py
 │   ├── classify.py
@@ -126,8 +135,7 @@ apu/
 │   ├── adapters/
 │   │   ├── base.py
 │   │   ├── codex.py
-│   │   ├── claude.py
-│   │   └── superpowers.py
+│   │   └── claude.py
 │   └── runners/
 │       ├── base.py
 │       ├── codex.py
@@ -142,11 +150,13 @@ apu/
 │   ├── global-AGENTS.md
 │   ├── global-CLAUDE.md
 │   └── repository-instructions.md
-├── fixtures/
-│   ├── direct/
-│   ├── planned/
-│   ├── delegated/
-│   └── high-risk/
+├── fixtures/behavioral/
+│   ├── direct-config-edit/
+│   ├── planned-coupled-change/
+│   ├── delegated-independent-analysis/
+│   ├── high-risk-auth-migration/
+│   ├── explicit-named-skill/
+│   └── seeded-boundary-defect/
 └── tests/
 ```
 
@@ -376,7 +386,8 @@ apu review PLAN.json [--approve-all-recommended] [--output PLAN.json]
 
 apu apply PLAN.json [--yes]
 
-apu validate [--plan PLAN.json | --receipt RECEIPT.json]
+apu validate [--plan PLAN.json | --receipt RECEIPT.json |
+              --fixture FIXTURE --runner codex|claude [--enable-runtime]]
 
 apu rollback --receipt RECEIPT.json
 
@@ -405,6 +416,9 @@ apu init
 
 - converts inventory and findings into operations;
 - never mutates live instruction files;
+- when `--output` is supplied, writes deterministic candidate files beside the
+  plan in a derived `.candidates` directory; without an output path, mutations
+  that require a candidate remain proposal-only;
 - includes exact precondition hashes.
 
 `apu review`
@@ -412,6 +426,8 @@ apu init
 - starts the interactive review flow;
 - modifies only the plan artifact;
 - supports accepting, rejecting, editing, relocating, and deferring operations;
+- accepts an explicit replacement candidate path for edit decisions and
+  normalizes relocate decisions into one atomic remove/create pair;
 - records operation-level approval decisions and sets the plan to `approved`
   only when every mutating operation is either approved or rejected, at least
   one mutating operation is approved, and none is pending or deferred;
@@ -560,13 +576,15 @@ continuations.
   "operations": [
     {
       "id": "op-001",
-      "action": "preserve|merge|create|relocate|remove|symlink|configure",
+      "action": "preserve|merge|create|remove|symlink|configure",
       "target": "/absolute/path",
-      "source": "template or source path",
+      "source": "template or source path or null",
       "ownership": "user|repository|apu",
       "strategy": "sidecar|managed_section|full_file|proposal_only",
       "precondition_sha256": "... or null",
-      "proposed_sha256": "...",
+      "proposed_sha256": "... or null for remove",
+      "atomic_group_id": "relocate-001 or null",
+      "group_content_sha256": "... or null",
       "backup_required": true,
       "requires_confirmation": true,
       "approval": {
@@ -589,9 +607,22 @@ continuations.
 The plan must be JSON for standard-library parsing and cross-platform
 interchange. Human-readable summaries and diffs are generated alongside it.
 
-For `create` and `symlink` operations, `precondition_sha256: null` means the
-target must not exist at apply time. A missing target is therefore an explicit
-precondition, not an unchecked case.
+For `create` and `symlink` operations, and a `configure` operation that creates
+new metadata, `precondition_sha256: null` means the target must not exist at
+apply time. A missing target is therefore an explicit precondition, not an
+unchecked case.
+
+`relocate` is a review decision, not a one-target executable action. Before a
+plan can be approved, the planner expands it into a paired `remove` and
+`create`. The `remove` targets the source and uses its content hash as the
+precondition; the `create` targets the destination, requires that target to be
+missing, and uses the same hash as its proposed content. Both operations carry
+the same non-null `atomic_group_id` and `group_content_sha256`. Review records
+one decision for the group and persists identical approval state on both
+members. Plan validation rejects an incomplete pair, unequal content hashes,
+or divergent decisions. Apply preflights both members before either mutation
+and rolls the pair back as one transaction unit. Non-relocation operations must
+set both atomic-group fields to `null`.
 
 A mutating operation is resolved when its approval status is `approved` or
 `rejected`. A plan becomes `approved` only when all mutating operations are
@@ -602,7 +633,7 @@ Preserve and rejected operations are retained as review history but are never
 executed.
 
 For approval purposes, a mutating operation has an action of `merge`, `create`,
-`relocate`, `remove`, `symlink`, or `configure` and a strategy other than
+`remove`, `symlink`, or `configure` and a strategy other than
 `proposal_only`. `preserve` and `proposal_only` operations are non-mutating.
 
 ### 8.1 Outcome record
@@ -671,6 +702,23 @@ The receipt must still include the prior state and rollback information.
 Use when the provider lacks safe imports, the file structure is unfamiliar, or
 authority is uncertain. APU emits a candidate diff without mutation.
 
+### 9.5 Canonical optimizer-skill installation
+
+The source of the bundled optimizer skill is the versioned package resource or
+an explicit canonical checkout selected by the user. Adapters must resolve and
+hash that source before proposing installation. They must not use a generated
+plugin or marketplace cache as the source.
+
+The Codex adapter proposes a `symlink` from the canonical source to
+`~/.agents/skills/optimizing-agent-instructions`. The Claude adapter proposes a
+`symlink` into `~/.claude/skills/optimizing-agent-instructions` and, when the
+user selects marketplace ownership, a separate `configure` operation that
+points local marketplace metadata at the canonical source. These are ordinary
+reviewable plan operations with exact source and target preconditions. When
+symlinks are unavailable, the adapter may propose an APU-owned copy only after
+the capability fallback is visible in the plan. Existing unknown or
+user-managed targets default to `preserve` or `proposal_only`.
+
 ## 10. Transaction and rollback
 
 Before applying:
@@ -679,16 +727,27 @@ Before applying:
    symlink;
 2. verify approved-operation precondition hashes and file modes;
 3. verify the plan’s approval state;
-4. create a private temporary transaction directory;
-5. copy original bytes and metadata into the transaction;
-6. render all proposed outputs;
-7. parse and validate rendered outputs.
+4. verify every atomic group is complete, internally consistent, and uniformly
+   approved or rejected;
+5. reject duplicate resolved mutation targets, protected filesystem, home,
+   state, and configured roots, and standalone recursive directory removal;
+6. reject an installation ID already present in registry or installation
+   storage;
+7. create a private temporary transaction directory;
+8. copy original bytes and metadata into the transaction;
+9. render all proposed outputs;
+10. parse and validate rendered outputs.
 
 Commit the transaction with `os.replace` where the platform permits it. On
 Windows, open-file sharing violations or unsupported replacements fail before
 the affected target is counted as applied; APU retries only a small bounded
 number of transient sharing violations and otherwise rolls back already-applied
 operations in reverse order.
+Atomic relocation groups are preflighted before either member is committed and
+are restored as a unit if either member fails.
+Temporary symlink names are collision-safe and never cause an unrelated sibling
+to be removed. Tree hashes include object type, symlink destination, empty
+directories, relative paths, and file bytes.
 
 Symlink creation is capability-tested. On Windows, when symlink privilege or
 Developer Mode is unavailable, the adapter must select a reviewed copy,
@@ -710,6 +769,10 @@ The installation receipt contains:
 - rollback status.
 
 Receipts contain no secrets or full trace contents.
+
+Rollback accepts only the canonical receipt registered under the same
+`APU_HOME`, validates every backup path and hash before the first mutation, and
+then applies drift guards to each rollback unit.
 
 Rollback also removes a symlink created by APU when, and only when, it still
 points to the target recorded in the receipt. A changed link, replacement file,
@@ -737,6 +800,8 @@ class ProviderAdapter:
 - discovers shared `~/.agents/skills`;
 - validates skill frontmatter and optional `agents/openai.yaml`;
 - treats generated/versioned plugin caches as noncanonical;
+- plans canonical optimizer-skill installation under `~/.agents/skills` with
+  explicit `symlink` or reviewed capability-fallback operations;
 - uses managed-section or proposal-only installation where imports are not
   supported.
 
@@ -755,18 +820,21 @@ class ProviderAdapter:
 - reports an APU-owned sidecar as orphaned when it exists but no active
   supported instruction surface imports it;
 - prefers a sidecar import when safe;
+- plans canonical optimizer-skill installation under `~/.claude/skills` with
+  explicit `symlink` or reviewed capability-fallback operations;
 - configures canonical local marketplace sources rather than editing caches;
 - reports when a restart is required;
 - defers automatic discovery of organization-managed `CLAUDE.md` policy
   locations to v0.2; explicit roots remain supported in v0.1.
 
-### 11.3 Superpowers adapter
+### 11.3 Post-v0.1 Superpowers integration
 
-- accepts an explicit canonical checkout;
-- checks branch, cleanliness, symlinks, and installed version;
-- scans active skills and session-start injection;
-- proposes patches or validates an already revised fork;
-- never rebases, commits, or pushes without explicit authorization.
+v0.1 ships no Superpowers adapter module, bundled checkout, discovery promise,
+or acceptance requirement. A later optional integration may accept an explicit
+canonical checkout and inspect its branch, cleanliness, installed links, active
+skills, and session-start injection without treating generated caches as
+canonical. That integration requires its own reviewed specification before it
+can mutate, rebase, commit, or push anything.
 
 ## 12. Privacy and safety
 
@@ -856,6 +924,10 @@ events with the additional flags required by that CLI version. Raw provider
 events are translated into the runner's declared capability set rather than
 assuming equivalent schemas.
 
+Every result includes the selected CLI name, detected version when available,
+authentication state after invocation, invocation shape, and effective
+observable-event set.
+
 Each check records its own status. A check that requires an event type the
 selected runner cannot observe is `skipped`, not `failed`. A fixture is
 `passed` only when all required checks pass, `failed` when any observable
@@ -881,6 +953,8 @@ and may not claim the behavioral fixtures passed.
 - simulated failure midway restores earlier operations;
 - external edits after apply block automatic overwrite;
 - proposal-only operations never write;
+- atomic relocation pairs are rejected when incomplete or internally
+  inconsistent and roll back as a unit after a simulated partial failure;
 - a broken symlink is reported and not silently replaced;
 - Windows fallback fixtures omit POSIX mode assertions and exercise a
   non-symlink installation strategy.
@@ -906,7 +980,8 @@ The v0.1 MVP is complete when:
    and creates backups and a receipt.
 7. `apu rollback` restores byte-identical fixtures.
 8. Codex and Claude adapters install the shared optimizer skill using canonical
-   sources rather than versioned caches.
+   sources rather than versioned caches, using explicit reviewed
+   `symlink`/`configure` operations and a visible platform fallback.
 9. Structural checks pass unconditionally. Balanced behavioral fixtures,
    including seeded-defect detection, pass when a supported authenticated agent
    runtime is available; otherwise they are reported as unavailable and are
@@ -933,11 +1008,13 @@ The v0.1 MVP is complete when:
 - data models;
 - state-home and registry initialization;
 - Codex and Claude discovery;
-- Claude local-file, rule-applicability, and import resolution;
+- Claude local-file, rule-applicability, import, skill, session-hook, and local
+  marketplace discovery;
 - precedence mapping;
 - deterministic findings;
 - sanitized JSON/text reports;
-- synthetic fixtures and tests.
+- synthetic fixtures and tests;
+- GitHub Actions matrix for Python 3.11+ on macOS, Linux, and Windows.
 
 ### Milestone 2: Proposal and wizard
 
@@ -946,6 +1023,7 @@ The v0.1 MVP is complete when:
 - proposal generation;
 - interactive review;
 - approval-state transition tests;
+- atomic relocation-pair generation and validation;
 - diff rendering;
 - no mutation beyond explicit plan output.
 
@@ -956,7 +1034,11 @@ The v0.1 MVP is complete when:
 - apply and rollback;
 - drift detection;
 - platform capability probes and Windows fallbacks;
-- provider postflight checks.
+- canonical optimizer-skill installation for Codex and Claude through explicit
+  symlink/configure plan operations;
+- provider postflight checks;
+- `apu init` opt-in continuation through ownership, apply, structural
+  validation, and postflight.
 
 ### Milestone 4: Evaluation and packaging
 
@@ -965,10 +1047,12 @@ The v0.1 MVP is complete when:
 - runner capability maps and normalized event handling;
 - seeded-defect evaluation;
 - local outcome recording and monitoring summaries;
+- `apu init` opt-in behavioral validation and monitoring initialization;
 - bundled optimizer skill and templates;
 - `pipx`/`uv tool` installation;
 - versioned GitHub release artifact;
 - concise operator documentation.
 
 No milestone introduces a dashboard, database, background service, or automatic
-review-agent loop.
+review-agent loop. A Superpowers adapter remains outside the v0.1 package,
+acceptance criteria, and delivery sequence.
