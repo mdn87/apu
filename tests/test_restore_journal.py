@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -19,9 +20,24 @@ from apu.restore_journal import (
 )
 
 
+def is_junction(path: Path) -> bool:
+    path_method = getattr(path, "is_junction", None)
+    if path_method is not None:
+        return bool(path_method())
+    os_method = getattr(os.path, "isjunction", None)
+    if os_method is not None:
+        return bool(os_method(path))
+    metadata = path.lstat()
+    mount_point_tag = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None)
+    return (
+        mount_point_tag is not None
+        and getattr(metadata, "st_reparse_tag", None) == mount_point_tag
+    )
+
+
 def item(target: Path, replacement: Path | None) -> RestoreItem:
     if os.path.lexists(target):
-        if getattr(os.path, "isjunction", lambda _: False)(target):
+        if is_junction(target):
             object_type = "junction"
         elif target.is_symlink():
             object_type = "symlink"
@@ -396,16 +412,16 @@ def test_restore_round_trips_junctions_without_hashing_their_contents(
         journal_id="junction",
     )
 
-    assert os.path.isjunction(target)
+    assert is_junction(target)
     assert target.resolve() == desired_destination.resolve()
     journal = read_journal(tmp_path / "journals", "junction")
     original_artifact = Path(journal["items"][0]["original"]["artifact"])
     assert journal["items"][0]["original"]["type"] == "junction"
-    assert original_artifact.is_junction()
+    assert is_junction(original_artifact)
     assert original_artifact.resolve() == original_destination.resolve()
 
     resume_restore(tmp_path / "journals", "junction", unwind=True)
-    assert target.is_junction()
+    assert is_junction(target)
     assert target.resolve() == original_destination.resolve()
 
 

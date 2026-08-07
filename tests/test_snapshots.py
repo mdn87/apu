@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,21 @@ from apu.snapshots import (
     materialize_snapshot_object,
     resolve_blob_path,
 )
+
+
+def is_junction(path: Path) -> bool:
+    path_method = getattr(path, "is_junction", None)
+    if path_method is not None:
+        return bool(path_method())
+    os_method = getattr(os.path, "isjunction", None)
+    if os_method is not None:
+        return bool(os_method(path))
+    metadata = path.lstat()
+    mount_point_tag = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None)
+    return (
+        mount_point_tag is not None
+        and getattr(metadata, "st_reparse_tag", None) == mount_point_tag
+    )
 
 
 def test_create_captures_files_empty_directories_missing_and_links(
@@ -420,5 +436,5 @@ def test_materialize_reconstructs_nested_junction(tmp_path: Path) -> None:
     )
 
     restored = destination / "nested-junction"
-    assert os.path.isjunction(restored)
+    assert is_junction(restored)
     assert restored.resolve() == target.resolve()
