@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"thread-secret"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item-1","type":"agent_message","text":"I will inspect the repository."}}
+{"type":"item.started","item":{"id":"item-2","type":"command_execution","command":"/bin/zsh -lc 'export OPENAI_API_KEY=secret-value; pytest'","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item-2","type":"command_execution","command":"/bin/zsh -lc 'export OPENAI_API_KEY=secret-value; pytest'","aggregated_output":"credential=secret-value","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item-3","type":"collab_agent_tool_call","tool":"spawn_agent","status":"completed","sender_thread_id":"thread-secret","receiver_thread_ids":["child-secret"],"prompt":"Review the private authentication code","agents_states":{}}}
+{"type":"item.completed","item":{"id":"item-4","type":"entered_review_mode","target":{"type":"uncommitted_changes"},"user_facing_hint":"private review details"}}
+{"type":"item.completed","item":{"id":"item-5","type":"exited_review_mode","review_output":{"findings":[{"body":"private finding"}]}}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":20}}
