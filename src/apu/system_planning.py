@@ -9,11 +9,16 @@ from typing import Any
 
 from apu.classify import AUTO_REMOVABLE_CATEGORIES
 from apu.models import Finding, InstructionSurface, canonical_json, sha256_json
-from apu.system_audit import SystemInventory
+from apu.system_audit import (
+    SYSTEM_INVENTORY_SCHEMA_VERSION,
+    EvaluationContext,
+    SystemInventory,
+)
 
 REMEDIATION_POLICIES = frozenset({"auto", "work-order", "ignore"})
 SENSITIVE_CATEGORY = "sensitive-material-exposure"
-SYSTEM_PLAN_SCHEMA_VERSION = 1
+SYSTEM_PLAN_SCHEMA_VERSION = 2
+LEGACY_SYSTEM_PLAN_SCHEMA_VERSION = 1
 _HEX_DIGITS = frozenset("0123456789abcdef")
 
 
@@ -594,15 +599,35 @@ class SystemPlan:
     auto_operations: tuple[SystemAutoOperation, ...]
     work_orders: tuple[SystemWorkOrder, ...]
     ignored_findings: tuple[RoutedFinding, ...]
+    evaluation_context: Mapping[str, Any] | None = None
 
     def validate(self) -> None:
         if (
             not isinstance(self.schema_version, int)
             or isinstance(self.schema_version, bool)
-            or self.schema_version != SYSTEM_PLAN_SCHEMA_VERSION
+            or self.schema_version
+            not in {
+                LEGACY_SYSTEM_PLAN_SCHEMA_VERSION,
+                SYSTEM_PLAN_SCHEMA_VERSION,
+            }
         ):
             raise SystemPlanningError(
                 f"unsupported system plan schema version: {self.schema_version}"
+            )
+        if self.schema_version == SYSTEM_PLAN_SCHEMA_VERSION:
+            if self.evaluation_context is None:
+                raise SystemPlanningError(
+                    "system plan v2 requires evaluation_context"
+                )
+            try:
+                EvaluationContext.from_dict(self.evaluation_context)
+            except ValueError as error:
+                raise SystemPlanningError(
+                    f"invalid evaluation_context: {error}"
+                ) from error
+        elif self.evaluation_context is not None:
+            raise SystemPlanningError(
+                "legacy system plans cannot contain evaluation_context"
             )
         _require_string(self.apu_version, "apu_version")
         _require_string(self.created_at, "created_at")
@@ -654,6 +679,7 @@ class SystemPlan:
             auto_operations=self.auto_operations,
             work_orders=self.work_orders,
             ignored_findings=self.ignored_findings,
+            evaluation_context=self.evaluation_context,
         )
         if self.id != expected_id:
             raise SystemPlanningError("system plan id does not match its contents")
@@ -663,7 +689,7 @@ class SystemPlan:
         return sha256_json(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "schema_version": self.schema_version,
             "apu_version": self.apu_version,
             "created_at": self.created_at,
@@ -682,10 +708,19 @@ class SystemPlan:
                 finding.to_dict() for finding in self.ignored_findings
             ],
         }
+        if self.schema_version == SYSTEM_PLAN_SCHEMA_VERSION:
+            value["evaluation_context"] = EvaluationContext.from_dict(
+                self.evaluation_context or {}
+            ).to_dict()
+        return value
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> SystemPlan:
-        fields = {
+        if "schema_version" not in value:
+            raise SystemPlanningError(
+                "system plan is missing fields: schema_version"
+            )
+        base_fields = {
             "schema_version",
             "apu_version",
             "created_at",
@@ -698,12 +733,15 @@ class SystemPlan:
             "work_orders",
             "ignored_findings",
         }
-        _require_fields(value, fields, artifact="system plan")
         schema_version = value["schema_version"]
         if not isinstance(schema_version, int) or isinstance(
             schema_version, bool
         ):
             raise SystemPlanningError("schema_version must be an integer")
+        fields = set(base_fields)
+        if schema_version == SYSTEM_PLAN_SCHEMA_VERSION:
+            fields.add("evaluation_context")
+        _require_fields(value, fields, artifact="system plan")
         raw_policy = _require_mapping(
             value["remediation_policy"], "remediation_policy"
         )
@@ -751,6 +789,15 @@ class SystemPlan:
                 for item in _require_array(
                     value["ignored_findings"], "ignored_findings"
                 )
+            ),
+            evaluation_context=(
+                EvaluationContext.from_dict(
+                    _require_mapping(
+                        value["evaluation_context"], "evaluation_context"
+                    )
+                ).to_dict()
+                if schema_version == SYSTEM_PLAN_SCHEMA_VERSION
+                else None
             ),
         )
         result.validate()
@@ -1095,24 +1142,25 @@ def _derive_plan_id(
     auto_operations: tuple[SystemAutoOperation, ...],
     work_orders: tuple[SystemWorkOrder, ...],
     ignored_findings: tuple[RoutedFinding, ...],
+    evaluation_context: Mapping[str, Any] | None,
 ) -> str:
-    return _stable_id(
-        "system-plan",
-        {
-            "inventory_sha256": inventory_sha256,
-            "profile_sha256": profile_sha256,
-            "policy_sha256": policy_sha256,
-            "auto_operations": [
-                operation.to_dict() for operation in auto_operations
-            ],
-            "work_orders": [
-                work_order.to_dict() for work_order in work_orders
-            ],
-            "ignored_findings": [
-                finding.to_dict() for finding in ignored_findings
-            ],
-        },
-    )
+    identity = {
+        "inventory_sha256": inventory_sha256,
+        "profile_sha256": profile_sha256,
+        "policy_sha256": policy_sha256,
+        "auto_operations": [
+            operation.to_dict() for operation in auto_operations
+        ],
+        "work_orders": [work_order.to_dict() for work_order in work_orders],
+        "ignored_findings": [
+            finding.to_dict() for finding in ignored_findings
+        ],
+    }
+    if evaluation_context is not None:
+        identity["evaluation_context"] = EvaluationContext.from_dict(
+            evaluation_context
+        ).to_dict()
+    return _stable_id("system-plan", identity)
 
 
 def propose_system(
@@ -1123,10 +1171,10 @@ def propose_system(
 ) -> SystemPlan:
     """Partition a system inventory without generating or mutating files."""
 
-    if inventory.schema_version != 1:
+    if inventory.schema_version != SYSTEM_INVENTORY_SCHEMA_VERSION:
         raise SystemPlanningError(
-            f"unsupported system inventory schema version: "
-            f"{inventory.schema_version}"
+            "system inventory is legacy or unsupported; rerun "
+            f"`apu system audit` (found schema {inventory.schema_version})"
         )
     _validate_sha256(inventory.profile_sha256, "profile_sha256")
     _require_string(created_at, "created_at")
@@ -1145,6 +1193,7 @@ def propose_system(
         auto_operations=auto_operations,
         work_orders=work_orders,
         ignored_findings=ignored,
+        evaluation_context=inventory.evaluation_context.to_dict(),
     )
     plan = SystemPlan(
         schema_version=SYSTEM_PLAN_SCHEMA_VERSION,
@@ -1158,6 +1207,7 @@ def propose_system(
         auto_operations=auto_operations,
         work_orders=work_orders,
         ignored_findings=ignored,
+        evaluation_context=inventory.evaluation_context.to_dict(),
     )
     plan.validate()
     return plan

@@ -21,6 +21,8 @@ STATE_DIRECTORIES = (
     "snapshots",
     "restore-journals",
     "transactions",
+    "guidance",
+    "models",
 )
 
 

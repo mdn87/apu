@@ -17,7 +17,11 @@ from apu.receipts import load_receipt
 from apu.rollback import rollback_receipt
 from apu.snapshots import create_snapshot
 from apu.state import load_registry
-from apu.system_audit import SystemInventory
+from apu.system_audit import (
+    SYSTEM_INVENTORY_SCHEMA_VERSION,
+    EvaluationContext,
+    SystemInventory,
+)
 from apu.system_campaign import (
     apply_campaign,
     campaign_has_work_orders,
@@ -141,12 +145,13 @@ def _fixture(
         ),
     )
     inventory = SystemInventory(
-        schema_version=1,
+        schema_version=SYSTEM_INVENTORY_SCHEMA_VERSION,
         apu_version="0.3.0.dev0",
         generated_at="2026-08-06T22:00:00Z",
         profile_sha256=profile.artifact_sha256,
         machine_inventory=machine,
         repositories=(),
+        evaluation_context=EvaluationContext.unconfigured(),
     )
     return profile, inventory, auto_target, secret
 
@@ -168,7 +173,11 @@ def test_proposal_persists_private_redacted_campaign_artifacts(
 
     root = Path(bundle["campaign_directory"])
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 2
     assert manifest["campaign_id"] == bundle["campaign_id"]
+    assert manifest["evaluation_context"] == (
+        inventory.evaluation_context.to_dict()
+    )
     assert len(bundle["work_orders"]) == 2
     assert any(item["manual_only"] for item in bundle["work_orders"])
     assert any(
@@ -186,6 +195,27 @@ def test_proposal_persists_private_redacted_campaign_artifacts(
     assert (root / "redactions").is_dir()
     assert (root / "staging").is_dir()
     assert warnings and all("outside APU state protection" in item for item in warnings)
+
+
+def test_legacy_inventory_requires_a_fresh_audit_before_proposal(
+    tmp_path: Path,
+) -> None:
+    profile, inventory, _target, _secret = _fixture(tmp_path)
+    legacy = replace(
+        inventory,
+        schema_version=1,
+        evaluation_context=EvaluationContext.legacy_unverified(),
+    )
+
+    with pytest.raises(ValueError, match="rerun"):
+        propose_campaign(
+            tmp_path / "state",
+            legacy,
+            profile,
+            created_at="2026-08-07T00:00:00Z",
+        )
+
+    assert not (tmp_path / "state" / "campaigns").exists()
 
 
 def test_campaign_apply_snapshots_then_stamps_receipt(
@@ -315,12 +345,13 @@ def test_forged_out_of_profile_inventory_is_rejected_before_persistence(
         ),
     )
     forged = SystemInventory(
-        schema_version=1,
+        schema_version=SYSTEM_INVENTORY_SCHEMA_VERSION,
         apu_version=inventory.apu_version,
         generated_at=inventory.generated_at,
         profile_sha256=profile.artifact_sha256,
         machine_inventory=forged_machine,
         repositories=(),
+        evaluation_context=EvaluationContext.unconfigured(),
     )
     state = tmp_path / "state"
 
@@ -424,12 +455,13 @@ def test_package_authority_work_order_forbids_direct_target_edit(
         ),
     )
     inventory = SystemInventory(
-        schema_version=1,
+        schema_version=SYSTEM_INVENTORY_SCHEMA_VERSION,
         apu_version="0.3.0.dev0",
         generated_at="2026-08-06T22:00:00Z",
         profile_sha256=profile.artifact_sha256,
         machine_inventory=machine,
         repositories=(),
+        evaluation_context=EvaluationContext.unconfigured(),
     )
 
     bundle, _warnings = propose_campaign(

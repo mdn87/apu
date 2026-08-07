@@ -38,7 +38,7 @@ def test_cli_system_audit_writes_rollup_inventory(
     )
 
     inventory = json.loads(output.read_text(encoding="utf-8"))
-    assert inventory["schema_version"] == 1
+    assert inventory["schema_version"] == 2
     assert inventory["repositories"][0]["repository"] == str(
         repository.resolve()
     )

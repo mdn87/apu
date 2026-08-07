@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from apu.audit import build_inventory
+from apu.classify import DetectorPolicy
 from apu.trace import summarize_sessions
 
 
@@ -107,3 +108,34 @@ def test_session_summary_selects_descendants_without_message_content(
     assert summary["descendants"] == 1
     assert summary["tool_calls"] == {"wait_agent": 2}
     assert "private message" not in json.dumps(summary)
+
+
+def test_audit_finding_delta_can_be_caused_by_guidance_detector_policy(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write(
+        repo / "AGENTS.md",
+        "Run focused tests now.\nRun focused tests now.\n",
+    )
+
+    before = build_inventory(
+        [repo],
+        home=home,
+        generated_at="2026-08-07T10:00:00Z",
+    )
+    after = build_inventory(
+        [repo],
+        home=home,
+        generated_at="2026-08-07T10:00:00Z",
+        detector_policy=DetectorPolicy(
+            duplicate_instruction_minimum_words=4,
+        ),
+    )
+
+    assert before.findings == ()
+    assert [finding.category for finding in after.findings] == [
+        "duplicate-instruction"
+    ]

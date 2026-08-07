@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from apu.model_registry import (
+    ModelObservation,
+    PublishedModelSource,
+    model_registry_artifact_sha256,
+    refresh_model_registry,
+)
 from apu.system_audit import (
+    SYSTEM_INVENTORY_SCHEMA_VERSION,
+    EvaluationContext,
     SystemInventory,
     audit_system,
     discover_repositories,
+    load_evaluation_context,
+    verify_evaluation_context,
 )
 from apu.system_profile import ProfileRoot, SystemProfile
 
@@ -169,3 +180,102 @@ def test_system_inventory_round_trips_and_contains_one_child_per_repo(
     assert result.artifact_sha256 == SystemInventory.from_dict(
         encoded
     ).artifact_sha256
+    assert result.schema_version == SYSTEM_INVENTORY_SCHEMA_VERSION
+    assert result.evaluation_context == EvaluationContext.unconfigured()
+
+
+def test_v2_inventory_requires_strict_evaluation_context(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir()
+    result = audit_system(profile_for(root, tmp_path / "home"))
+    value = result.to_dict()
+    value["evaluation_context"]["baseline"]["artifact_sha256"] = "forged"
+
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        SystemInventory.from_dict(value)
+
+
+def test_v2_inventory_rejects_missing_and_unknown_fields(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir()
+    value = audit_system(profile_for(root, tmp_path / "home")).to_dict()
+
+    missing = dict(value)
+    missing.pop("profile_sha256")
+    with pytest.raises(ValueError, match="missing fields: profile_sha256"):
+        SystemInventory.from_dict(missing)
+
+    unknown = dict(value)
+    unknown["surprise"] = True
+    with pytest.raises(ValueError, match="unsupported fields: surprise"):
+        SystemInventory.from_dict(unknown)
+
+
+def test_evaluation_context_rejects_local_model_drift_after_audit(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    observed = ModelObservation(
+        runtime_id="codex-cli",
+        provider="openai",
+        cli_version="1.0.0",
+        configured_model="gpt-test",
+        raw_alias="gpt-test",
+        observed_at="2026-08-07T04:00:00Z",
+    )
+    registry = refresh_model_registry(
+        state,
+        (observed,),
+        {
+            "openai": PublishedModelSource(
+                provider="openai",
+                source_url="https://api.example.test/v1/models",
+            )
+        },
+        fetcher=lambda _source: {"models": ["gpt-test"]},
+        attempted_at="2026-08-07T04:01:00Z",
+    )
+    context = load_evaluation_context(state)
+    assert context.models["artifact_sha256"] == (
+        model_registry_artifact_sha256(registry)
+    )
+    same = replace(observed, observed_at="2026-08-07T04:02:00Z")
+    verify_evaluation_context(
+        state,
+        context,
+        model_observations=(same,),
+    )
+
+    changed = replace(
+        same,
+        cli_version="2.0.0",
+        configured_model="gpt-next",
+        raw_alias="gpt-next",
+    )
+    with pytest.raises(ValueError, match="changed after audit"):
+        verify_evaluation_context(
+            state,
+            context,
+            model_observations=(changed,),
+        )
+
+
+def test_legacy_inventory_reads_as_explicitly_unverified(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir()
+    value = audit_system(profile_for(root, tmp_path / "home")).to_dict()
+    value["schema_version"] = 1
+    value.pop("evaluation_context")
+
+    loaded = SystemInventory.from_dict(value)
+
+    assert loaded.schema_version == 1
+    assert loaded.evaluation_context == EvaluationContext.legacy_unverified()
+    assert SystemInventory.from_dict(loaded.to_dict()) == loaded
+    assert "evaluation_context" not in loaded.to_dict()

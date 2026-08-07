@@ -40,10 +40,20 @@ def _home() -> Path:
     return Path(value).expanduser() if value else Path.home()
 
 
+def _local_model_observations() -> tuple[Any, ...]:
+    from apu.model_registry import observe_local_models
+    from apu.refresh import runtime_model_configs
+
+    return observe_local_models(
+        runtime_model_configs(_home()),
+        observed_at=_timestamp(),
+    )
+
+
 def _read_object(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"artifact must be a JSON object: {path}")
+        raise TypeError(f"artifact must be a JSON object: {path}")
     return value
 
 
@@ -132,6 +142,38 @@ def build_parser() -> argparse.ArgumentParser:
     system_commands.add_parser(
         "status", help="show system snapshots and interrupted restores"
     )
+
+    refresh = commands.add_parser(
+        "refresh", help="explicitly refresh versioned external inputs"
+    )
+    refresh_commands = refresh.add_subparsers(
+        dest="refresh_command", required=True
+    )
+    refresh_guidance = refresh_commands.add_parser(
+        "guidance", help="fetch guidance sources or adopt a reviewed baseline"
+    )
+    refresh_guidance.add_argument("--profile", type=Path)
+    refresh_guidance.add_argument("--output", type=Path)
+    refresh_guidance.add_argument("--adopt", type=Path)
+    refresh_guidance.add_argument("--approval", type=Path)
+    refresh_models = refresh_commands.add_parser(
+        "models", help="resolve observed model selectors from provider listings"
+    )
+    refresh_models.add_argument("--profile", type=Path)
+    refresh_models.add_argument("--output", type=Path)
+
+    guidance = commands.add_parser(
+        "guidance", help="inspect adopted guidance baselines"
+    )
+    guidance_commands = guidance.add_subparsers(
+        dest="guidance_command", required=True
+    )
+    guidance_diff = guidance_commands.add_parser(
+        "diff", help="diff two adopted baseline artifacts"
+    )
+    guidance_diff.add_argument("before", type=Path)
+    guidance_diff.add_argument("after", type=Path)
+    guidance_diff.add_argument("--output", type=Path)
 
     snapshot = commands.add_parser("snapshot", help="manage system restore points")
     snapshot_commands = snapshot.add_subparsers(
@@ -233,7 +275,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--root-session-id requires --sessions")
     try:
         return _dispatch(args)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
         print(f"apu: {error}", file=sys.stderr)
         return 1
 
@@ -243,6 +285,10 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _audit(args)
     if args.command == "system":
         return _system(args)
+    if args.command == "refresh":
+        return _refresh(args)
+    if args.command == "guidance":
+        return _guidance(args)
     if args.command == "snapshot":
         return _snapshot(args)
     if args.command == "propose":
@@ -285,11 +331,36 @@ def _audit(args: argparse.Namespace) -> int:
 
 def _system(args: argparse.Namespace) -> int:
     if args.system_command == "audit":
-        from apu.system_audit import audit_system
+        from apu.guidance import load_guidance_detector_policy
+        from apu.model_registry import (
+            load_model_registry,
+            persist_model_registry_artifact,
+            reconcile_model_registry_observations,
+        )
+        from apu.system_audit import audit_system, load_evaluation_context
         from apu.system_profile import load_system_profile
 
         profile = load_system_profile(args.profile, home=_home())
-        inventory = audit_system(profile, home=_home())
+        state_home = resolve_state_home()
+        observations = _local_model_observations()
+        model_registry = reconcile_model_registry_observations(
+            load_model_registry(state_home),
+            observations,
+        )
+        model_artifact_sha256 = persist_model_registry_artifact(
+            state_home,
+            model_registry,
+        )
+        inventory = audit_system(
+            profile,
+            home=_home(),
+            evaluation_context=load_evaluation_context(
+                state_home,
+                model_registry=model_registry,
+                model_artifact_sha256=model_artifact_sha256,
+            ),
+            detector_policy=load_guidance_detector_policy(state_home),
+        )
         value = inventory.to_dict()
         if args.output:
             _write_artifact(args.output, value)
@@ -311,6 +382,7 @@ def _system(args: argparse.Namespace) -> int:
             profile,
             created_at=_timestamp(),
             emit_prompts=args.emit_prompts,
+            model_observations=_local_model_observations(),
         )
         for warning in warnings:
             print(warning, file=sys.stderr)
@@ -355,16 +427,41 @@ def _system(args: argparse.Namespace) -> int:
         _emit(result)
         return 0
     if args.system_command == "status":
+        from apu.model_registry import (
+            load_model_registry,
+            model_registry_artifact_sha256,
+            reconcile_model_registry_observations,
+        )
         from apu.restore_journal import list_restore_journals
         from apu.snapshots import list_snapshots
+        from apu.system_audit import load_evaluation_context
         from apu.system_campaign import list_campaign_status
 
         state_home = resolve_state_home()
         snapshots = list_snapshots(state_home)
         journals = list_restore_journals(state_home / "restore-journals")
+        stored_registry = load_model_registry(state_home)
+        model_registry = reconcile_model_registry_observations(
+            stored_registry,
+            _local_model_observations(),
+        )
+        has_stored_registry = (
+            stored_registry["refresh_attempted_at"] is not None
+            or bool(stored_registry["models"])
+        )
+        model_artifact_sha256 = (
+            model_registry_artifact_sha256(stored_registry)
+            if has_stored_registry and model_registry == stored_registry
+            else None
+        )
         _emit(
             {
                 "state_home": str(state_home),
+                "evaluation_context": load_evaluation_context(
+                    state_home,
+                    model_registry=model_registry,
+                    model_artifact_sha256=model_artifact_sha256,
+                ).to_dict(),
                 "campaigns": list_campaign_status(state_home),
                 "snapshots": snapshots,
                 "restore_journals": journals,
@@ -372,6 +469,100 @@ def _system(args: argparse.Namespace) -> int:
         )
         return 0
     raise ValueError(f"unsupported system command: {args.system_command}")
+
+
+def _refresh(args: argparse.Namespace) -> int:
+    from apu.system_profile import load_system_profile
+
+    profile = load_system_profile(args.profile, home=_home())
+    state_home = ensure_state_home(resolve_state_home())
+    if args.refresh_command == "guidance":
+        from apu.guidance import (
+            adopt_guidance_baseline,
+            refresh_guidance,
+            write_guidance_distillation_work_order,
+        )
+        from apu.refresh import fetch_guidance_source
+
+        if args.adopt is not None:
+            if args.approval is None:
+                raise ValueError("--adopt requires --approval")
+            value = adopt_guidance_baseline(
+                state_home,
+                _read_object(args.adopt),
+                approval=_read_object(args.approval),
+                adopted_at=_timestamp(),
+            )
+        else:
+            if args.approval is not None:
+                raise ValueError("--approval requires --adopt")
+            refreshed = refresh_guidance(
+                state_home,
+                profile.guidance_sources,
+                fetcher=fetch_guidance_source,
+                retrieved_at=_timestamp(),
+            )
+            work_order = write_guidance_distillation_work_order(
+                state_home,
+                refreshed,
+            )
+            value = {
+                "refresh": refreshed,
+                "distillation_work_order": work_order,
+            }
+    elif args.refresh_command == "models":
+        from apu.model_registry import (
+            model_registry_artifact_sha256,
+            observe_local_models,
+            refresh_model_registry,
+        )
+        from apu.refresh import (
+            fetch_provider_models,
+            published_model_sources,
+            runtime_model_configs,
+        )
+
+        observations = observe_local_models(
+            runtime_model_configs(_home()),
+            observed_at=_timestamp(),
+        )
+        registry = refresh_model_registry(
+            state_home,
+            observations,
+            published_model_sources(),
+            fetcher=fetch_provider_models,
+            attempted_at=_timestamp(),
+        )
+        value = {
+            "artifact_sha256": model_registry_artifact_sha256(registry),
+            "registry": registry,
+        }
+    else:
+        raise ValueError(f"unsupported refresh command: {args.refresh_command}")
+
+    if args.output:
+        _write_artifact(args.output, value)
+        print(args.output)
+    else:
+        _emit(value)
+    return 0
+
+
+def _guidance(args: argparse.Namespace) -> int:
+    if args.guidance_command == "diff":
+        from apu.guidance import diff_guidance_baselines
+
+        value = diff_guidance_baselines(
+            _read_object(args.before),
+            _read_object(args.after),
+        )
+        if args.output:
+            _write_artifact(args.output, value)
+            print(args.output)
+        else:
+            _emit(value)
+        return 0
+    raise ValueError(f"unsupported guidance command: {args.guidance_command}")
 
 
 def _snapshot(args: argparse.Namespace) -> int:

@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from apu.models import Finding, InstructionSurface, Inventory
-from apu.system_audit import RepositoryInventory, SystemInventory
+from apu.system_audit import (
+    SYSTEM_INVENTORY_SCHEMA_VERSION,
+    EvaluationContext,
+    RepositoryInventory,
+    SystemInventory,
+)
 from apu.system_planning import (
     SystemPlan,
     SystemPlanningError,
@@ -88,12 +93,13 @@ def system_inventory(
     repositories: tuple[RepositoryInventory, ...] = (),
 ) -> SystemInventory:
     return SystemInventory(
-        schema_version=1,
+        schema_version=SYSTEM_INVENTORY_SCHEMA_VERSION,
         apu_version="0.2.0.dev0",
         generated_at="2026-08-06T20:00:00Z",
         profile_sha256="f" * 64,
         machine_inventory=machine,
         repositories=repositories,
+        evaluation_context=EvaluationContext.unconfigured(),
     )
 
 
@@ -106,6 +112,11 @@ def propose(
         policy,
         created_at="2026-08-06T20:05:00Z",
     )
+
+
+def test_system_plan_missing_schema_version_is_a_contract_error() -> None:
+    with pytest.raises(SystemPlanningError, match="missing fields: schema_version"):
+        SystemPlan.from_dict({})
 
 
 def test_partitions_and_batches_deterministic_findings_per_target(
@@ -439,6 +450,8 @@ def test_serialization_round_trip_and_file_loader(tmp_path: Path) -> None:
     assert loaded == plan
     assert SystemPlan.from_dict(plan.to_dict()) == plan
     assert loaded.artifact_sha256 == plan.artifact_sha256
+    assert plan.schema_version == 2
+    assert plan.evaluation_context == audit.evaluation_context.to_dict()
 
 
 def test_rejects_unsupported_policy_and_unknown_surface(

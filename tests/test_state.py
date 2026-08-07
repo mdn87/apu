@@ -77,6 +77,8 @@ def test_state_creation_is_explicit_and_private(tmp_path: Path) -> None:
         "snapshots",
         "restore-journals",
         "transactions",
+        "guidance",
+        "models",
     }
     if os.name == "posix":
         assert state_home.stat().st_mode & 0o777 == 0o700

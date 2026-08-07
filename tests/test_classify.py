@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from apu.classify import classify_surface
+from apu.classify import DetectorPolicy, classify_surface
 from apu.models import InstructionSurface
 
 
@@ -61,6 +61,48 @@ def test_duplicate_rule_is_structural() -> None:
     )
     assert duplicate.analysis_method == "structural"
     assert duplicate.location == {"line": 2}
+
+
+def test_typed_detector_policy_changes_only_allowlisted_behavior() -> None:
+    concise_duplicate = "Run focused tests now.\nRun focused tests now.\n"
+
+    assert classify_surface(
+        surface(scope="repository"),
+        concise_duplicate,
+    ) == ()
+    findings = classify_surface(
+        surface(scope="repository"),
+        concise_duplicate,
+        detector_policy=DetectorPolicy(
+            duplicate_instruction_minimum_words=4,
+        ),
+    )
+
+    assert [finding.category for finding in findings] == [
+        "duplicate-instruction"
+    ]
+
+
+def test_typed_policy_can_disable_speculative_threshold_branch() -> None:
+    text = (
+        "If there is even a 1% chance a skill might apply, "
+        "you absolutely must invoke the skill."
+    )
+
+    assert classify_surface(
+        surface(),
+        text,
+        detector_policy=DetectorPolicy(
+            speculative_skill_threshold_enabled=False,
+        ),
+    ) == ()
+
+
+def test_detector_policy_rejects_wrong_typed_values() -> None:
+    with pytest.raises(ValueError, match="between 2 and 100"):
+        DetectorPolicy(duplicate_instruction_minimum_words=True)
+    with pytest.raises(TypeError, match="must be boolean"):
+        DetectorPolicy(speculative_skill_threshold_enabled=1)  # type: ignore[arg-type]
 
 
 def test_global_build_command_is_a_residency_candidate() -> None:
