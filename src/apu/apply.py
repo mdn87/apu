@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from hashlib import sha256
 import os
-from pathlib import Path
 import platform
 import secrets
 import shutil
 import tempfile
 import time
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path
 
-from .models import Plan, PlanOperation, ValidationError, sha256_bytes
 from .filesystem import hash_object
-from .render import render_bytes
+from .models import Plan, PlanOperation, ValidationError, sha256_bytes
 from .receipts import backup_dir, write_receipt
+from .render import render_bytes
 from .state import (
     ensure_private_directory,
     ensure_state_home,
@@ -47,6 +47,8 @@ def apply_plan(
     state_home: Path,
     installation_id: str,
     confirmed: bool = False,
+    campaign_id: str | None = None,
+    snapshot_id: str | None = None,
 ) -> Path:
     """Apply the approved operations in *plan* as one recoverable transaction."""
 
@@ -61,6 +63,16 @@ def apply_plan(
         validate_installation_id(installation_id)
     except ValueError as error:
         raise ApplyError(str(error)) from error
+    if (campaign_id is None) != (snapshot_id is None):
+        raise ApplyError(
+            "campaign_id and snapshot_id must be supplied together"
+        )
+    if campaign_id is not None:
+        try:
+            validate_installation_id(campaign_id)
+            validate_installation_id(snapshot_id or "")
+        except ValueError as error:
+            raise ApplyError(str(error)) from error
 
     operations = plan.executable_operations()
     if not operations:
@@ -99,6 +111,8 @@ def apply_plan(
             installation_id=installation_id,
             prepared=prepared,
             created_directories=created_directories,
+            campaign_id=campaign_id,
+            snapshot_id=snapshot_id,
         )
         receipt_file = write_receipt(root, receipt)
         update_registry(
@@ -411,8 +425,10 @@ def _build_receipt(
     installation_id: str,
     prepared: list[_PreparedOperation],
     created_directories: list[Path],
+    campaign_id: str | None,
+    snapshot_id: str | None,
 ) -> dict:
-    created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    created_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     parent_strings = [str(path) for path in created_directories]
     operations = []
     for item in prepared:
@@ -432,7 +448,7 @@ def _build_receipt(
                 "created_parent_directories": parent_strings,
             }
         )
-    return {
+    receipt = {
         "schema_version": 1,
         "apu_version": plan.apu_version,
         "installation_id": installation_id,
@@ -446,6 +462,21 @@ def _build_receipt(
         "validation": dict(plan.validation),
         "rollback_status": "available",
     }
+    if campaign_id is not None and snapshot_id is not None:
+        receipt.update(
+            {
+                "campaign_id": campaign_id,
+                "snapshot_id": snapshot_id,
+                "idempotency_keys": {
+                    item.operation.id: {
+                        "operation_id": item.operation.id,
+                        "attempt": 1,
+                    }
+                    for item in prepared
+                },
+            }
+        )
+    return receipt
 
 
 def _absolute(value: str, description: str) -> Path:

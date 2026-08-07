@@ -51,6 +51,25 @@ content hashes, and meaningful POSIX modes. Restore is journaled and reverses
 completed swaps on failure; interrupted recovery uses
 `apu snapshot restore --resume JOURNAL_ID [--unwind]`.
 
+## Campaigns and work orders
+
+M6 turns a system inventory into an immutable campaign with deterministic
+operations and privacy-safe work orders:
+
+```console
+apu system propose --inventory system-inventory.json --output campaign.json
+apu system apply campaign.json --auto-only
+apu system status
+```
+
+Add `--emit-prompts DIR` to export hand-run work orders; APU warns that these
+copies are outside private state protection. Credential-exposure findings are
+always manual-only and render file, line, and content hash without the value.
+Other findings on sensitive surfaces use private sanitized staging and
+structurally verified placeholders. Before the first deterministic mutation,
+APU locks the campaign, records a campaign-bound snapshot, and stamps the
+receipt with campaign, snapshot, and idempotency data.
+
 ## Development
 
 ```console

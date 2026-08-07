@@ -16,6 +16,8 @@ STATE_DIRECTORIES = (
     "plans",
     "installations",
     "outcomes",
+    "campaigns",
+    "quarantine",
     "snapshots",
     "restore-journals",
     "transactions",

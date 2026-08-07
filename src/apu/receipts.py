@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
 
 from .state import (
     ensure_private_directory,
@@ -11,7 +12,6 @@ from .state import (
     validate_installation_id,
     write_json_atomic,
 )
-
 
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 _PROHIBITED_CONTENT_KEYS = frozenset(
@@ -90,15 +90,31 @@ def _validate_receipt(receipt: Any) -> None:
     if receipt.get("schema_version") != 1:
         raise ValueError("unsupported receipt schema_version")
     validate_installation_id(receipt.get("installation_id"))
+    campaign_id = receipt.get("campaign_id")
+    snapshot_id = receipt.get("snapshot_id")
+    if (campaign_id is None) != (snapshot_id is None):
+        raise ValueError(
+            "receipt campaign_id and snapshot_id must appear together"
+        )
+    if campaign_id is not None:
+        validate_installation_id(campaign_id)
+        validate_installation_id(snapshot_id)
+        idempotency_keys = receipt.get("idempotency_keys")
+        if not isinstance(idempotency_keys, dict):
+            raise ValueError(
+                "campaign receipt idempotency_keys must be an object"
+            )
 
     operations = receipt.get("operations")
     if not isinstance(operations, list):
         raise ValueError("receipt operations must be a list")
+    operation_ids: list[str] = []
     for index, operation in enumerate(operations):
         if not isinstance(operation, dict):
             raise ValueError(f"receipt operations[{index}] must be an object")
         if not isinstance(operation.get("id"), str) or not operation["id"]:
             raise ValueError(f"receipt operations[{index}].id is required")
+        operation_ids.append(operation["id"])
         for name in ("original_sha256", "installed_sha256"):
             value = operation.get(name)
             if value is not None and (
@@ -119,6 +135,37 @@ def _validate_receipt(receipt: Any) -> None:
             raise ValueError(
                 f"receipt operations[{index}].backup_path must be a path or null"
             )
+        if campaign_id is not None:
+            key = idempotency_keys.get(operation["id"])
+            if not isinstance(key, dict):
+                raise ValueError(
+                    f"receipt operation {operation['id']} idempotency key "
+                    "must be an object"
+                )
+            if set(key) != {"operation_id", "attempt"}:
+                raise ValueError(
+                    f"receipt operation {operation['id']} idempotency key "
+                    "requires exactly operation_id and attempt"
+                )
+            if key["operation_id"] != operation["id"]:
+                raise ValueError(
+                    f"receipt operation {operation['id']} idempotency "
+                    "operation_id does not match"
+                )
+            attempt = key["attempt"]
+            if (
+                not isinstance(attempt, int)
+                or isinstance(attempt, bool)
+                or attempt < 1
+            ):
+                raise ValueError(
+                    f"receipt operation {operation['id']} idempotency attempt "
+                    "must be a positive integer"
+                )
+    if campaign_id is not None and set(idempotency_keys) != set(operation_ids):
+        raise ValueError(
+            "campaign receipt idempotency_keys must match receipt operations"
+        )
 
     rollback_status = receipt.get("rollback_status")
     if not isinstance(rollback_status, str) or not rollback_status:
