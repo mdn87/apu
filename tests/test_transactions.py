@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -86,6 +86,39 @@ def test_apply_executes_only_approved_operations(tmp_path: Path) -> None:
     assert not rejected_target.exists()
     receipt = load_receipt(receipt_path)
     assert [item["operation_id"] for item in receipt["operations"]] == ["approved"]
+
+
+def test_campaign_apply_stamps_snapshot_and_idempotency_keys(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.write_bytes(b"campaign")
+    target = tmp_path / "target"
+    change = operation(
+        "campaign-op",
+        action="create",
+        target=target,
+        source=source,
+        proposed=sha256_bytes(b"campaign"),
+    )
+
+    receipt_path = apply_plan(
+        plan(change),
+        state_home=tmp_path / "state",
+        installation_id="install-campaign",
+        campaign_id="campaign-1",
+        snapshot_id="a" * 64,
+    )
+
+    receipt = load_receipt(receipt_path)
+    assert receipt["campaign_id"] == "campaign-1"
+    assert receipt["snapshot_id"] == "a" * 64
+    assert receipt["idempotency_keys"] == {
+        "campaign-op": {
+            "operation_id": "campaign-op",
+            "attempt": 1,
+        }
+    }
 
 
 def test_apply_rejects_draft_plan_even_when_confirmation_is_suppressed(

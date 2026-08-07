@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
-from typing import Any, Sequence
+from collections.abc import Sequence
+from dataclasses import replace
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 from apu import __version__
 from apu.audit import build_inventory
@@ -31,7 +32,7 @@ from apu.wizard import ReviewDecision, review_plan
 
 
 def _timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _home() -> Path:
@@ -113,6 +114,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     system_audit.add_argument("--profile", type=Path)
     system_audit.add_argument("--json", dest="output", type=Path)
+    system_propose = system_commands.add_parser(
+        "propose", help="create a campaign and partitioned system plan"
+    )
+    system_propose.add_argument("--inventory", required=True, type=Path)
+    system_propose.add_argument("--profile", type=Path)
+    system_propose.add_argument("--emit-prompts", type=Path)
+    system_propose.add_argument("--output", type=Path)
+    system_apply = system_commands.add_parser(
+        "apply", help="apply a campaign's deterministic operations"
+    )
+    system_apply.add_argument("plan", type=Path)
+    system_apply.add_argument("--profile", type=Path)
+    system_apply.add_argument("--auto-only", action="store_true")
+    system_apply.add_argument("--yes", action="store_true")
+    system_apply.add_argument("--installation-id")
     system_commands.add_parser(
         "status", help="show system snapshots and interrupted restores"
     )
@@ -281,9 +297,67 @@ def _system(args: argparse.Namespace) -> int:
         else:
             _emit(value)
         return 0
+    if args.system_command == "propose":
+        from apu.system_audit import SystemInventory
+        from apu.system_campaign import propose_campaign
+        from apu.system_profile import load_system_profile
+
+        profile = load_system_profile(args.profile, home=_home())
+        inventory = SystemInventory.from_dict(_read_object(args.inventory))
+        state_home = ensure_state_home(resolve_state_home())
+        bundle, warnings = propose_campaign(
+            state_home,
+            inventory,
+            profile,
+            created_at=_timestamp(),
+            emit_prompts=args.emit_prompts,
+        )
+        for warning in warnings:
+            print(warning, file=sys.stderr)
+        if args.output:
+            _write_artifact(args.output, bundle)
+            print(args.output)
+        else:
+            _emit(bundle)
+        return 0
+    if args.system_command == "apply":
+        from apu.system_campaign import (
+            apply_campaign,
+            campaign_has_work_orders,
+            load_campaign_bundle,
+        )
+        from apu.system_profile import load_system_profile
+
+        bundle = load_campaign_bundle(args.plan)
+        state_home = ensure_state_home(resolve_state_home())
+        if campaign_has_work_orders(state_home, bundle) and not args.auto_only:
+            raise ValueError(
+                "campaign has queued work orders; use --auto-only or attach "
+                "reviewed plan candidates before full apply"
+            )
+        if not args.yes:
+            answer = input(
+                "Snapshot and apply deterministic campaign operations? [y/N] "
+            ).strip().lower()
+            if answer not in {"y", "yes"}:
+                return 1
+        profile = load_system_profile(args.profile, home=_home())
+        installation_id = args.installation_id or (
+            "campaign-"
+            + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        )
+        result = apply_campaign(
+            state_home,
+            bundle,
+            profile,
+            installation_id=installation_id,
+        )
+        _emit(result)
+        return 0
     if args.system_command == "status":
         from apu.restore_journal import list_restore_journals
         from apu.snapshots import list_snapshots
+        from apu.system_campaign import list_campaign_status
 
         state_home = resolve_state_home()
         snapshots = list_snapshots(state_home)
@@ -291,6 +365,7 @@ def _system(args: argparse.Namespace) -> int:
         _emit(
             {
                 "state_home": str(state_home),
+                "campaigns": list_campaign_status(state_home),
                 "snapshots": snapshots,
                 "restore_journals": journals,
             }
@@ -450,7 +525,7 @@ def _apply(args: argparse.Namespace) -> int:
         if answer not in {"y", "yes"}:
             return 1
     installation_id = args.installation_id or (
-        "install-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        "install-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     )
     receipt = apply_plan(
         plan,
@@ -530,7 +605,7 @@ def _outcome(args: argparse.Namespace) -> int:
             "schema_version": 1,
             "installation_id": receipt["installation_id"],
             "recorded_at": _timestamp(),
-            "task_id": args.task_id or "task-" + datetime.now(timezone.utc).strftime(
+            "task_id": args.task_id or "task-" + datetime.now(UTC).strftime(
                 "%Y%m%dT%H%M%S%fZ"
             ),
             "material": not args.non_material,
@@ -571,7 +646,7 @@ def _outcome(args: argparse.Namespace) -> int:
 def _init(args: argparse.Namespace) -> int:
     state_home = ensure_state_home(resolve_state_home())
     plan_path = state_home / "plans" / (
-        "init-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".json"
+        "init-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + ".json"
     )
     inventory = build_inventory(
         [args.path],
@@ -632,7 +707,7 @@ def _init(args: argparse.Namespace) -> int:
     from apu.validate import validate_receipt_path
 
     installation_id = (
-        "install-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        "install-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     )
     receipt = apply_plan(
         reviewed,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from apu.classify import classify_surface
 from apu.models import InstructionSurface
 
@@ -83,6 +85,24 @@ def test_secret_shaped_text_is_reported_without_secret_in_evidence() -> None:
     )
     assert secret not in repr(finding.to_dict())
     assert finding.evidence == ("credential-shaped-value",)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "password=hunter2",
+        "access_token=short-token",
+        "api_key=abc12345",
+        '{"api_key":"abc12345"}',
+    ],
+)
+def test_short_credential_assignments_are_sensitive_material(text: str) -> None:
+    findings = classify_surface(surface(), text)
+
+    assert any(
+        finding.category == "sensitive-material-exposure"
+        for finding in findings
+    )
 
 
 def test_fenced_examples_are_not_instructions() -> None:

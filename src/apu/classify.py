@@ -74,7 +74,9 @@ _BUILD_COMMAND_PATTERN = re.compile(
     r"(?:test|check|build|verify)\b"
 )
 _CREDENTIAL_PATTERN = re.compile(
-    r"\b(?:sk-proj-[a-z0-9_-]{12,}|api[_ -]?key\s*[:=]\s*\S{12,}|"
+    r"\b(?:sk-proj-[a-z0-9_-]{12,}|"
+    r"(?:api[_ -]?key|access[_ -]?token|password)"
+    r"\b[\"']?\s*[:=]\s*[\"']?[^\s\"',;}\]]+|"
     r"bearer\s+[a-z0-9._-]{16,})",
     re.IGNORECASE,
 )

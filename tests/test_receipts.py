@@ -31,6 +31,23 @@ def _receipt(state_home: Path) -> dict:
     }
 
 
+def _campaign_receipt(state_home: Path) -> dict:
+    receipt = _receipt(state_home)
+    receipt.update(
+        {
+            "campaign_id": "campaign-1",
+            "snapshot_id": "snapshot-1",
+            "idempotency_keys": {
+                "op-1": {
+                    "operation_id": "op-1",
+                    "attempt": 1,
+                }
+            },
+        }
+    )
+    return receipt
+
+
 def test_receipt_paths_are_side_effect_free_until_creation(tmp_path: Path) -> None:
     state_home = tmp_path / "state"
 
@@ -116,3 +133,44 @@ def test_write_receipt_rejects_embedded_source_content_and_external_backups(
         write_receipt(tmp_path, external_receipt)
 
     assert not (tmp_path / "installations").exists()
+
+
+@pytest.mark.parametrize(
+    ("key", "message"),
+    [
+        ("op-1:1", "must be an object"),
+        ({"operation_id": "op-1"}, "requires exactly"),
+        (
+            {"operation_id": "op-1", "attempt": 1, "extra": True},
+            "requires exactly",
+        ),
+        (
+            {"operation_id": "different", "attempt": 1},
+            "operation_id does not match",
+        ),
+        ({"operation_id": "op-1", "attempt": 0}, "positive integer"),
+        ({"operation_id": "op-1", "attempt": True}, "positive integer"),
+        ({"operation_id": "op-1", "attempt": "1"}, "positive integer"),
+    ],
+)
+def test_campaign_receipt_requires_structured_idempotency_keys(
+    tmp_path: Path,
+    key: object,
+    message: str,
+) -> None:
+    receipt = _campaign_receipt(tmp_path)
+    receipt["idempotency_keys"]["op-1"] = key
+
+    with pytest.raises(ValueError, match=message):
+        write_receipt(tmp_path, receipt)
+
+
+def test_campaign_receipt_rejects_extra_idempotency_keys(tmp_path: Path) -> None:
+    receipt = _campaign_receipt(tmp_path)
+    receipt["idempotency_keys"]["not-an-operation"] = {
+        "operation_id": "not-an-operation",
+        "attempt": 1,
+    }
+
+    with pytest.raises(ValueError, match="must match receipt operations"):
+        write_receipt(tmp_path, receipt)

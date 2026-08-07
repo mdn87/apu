@@ -6,7 +6,15 @@ from pathlib import Path
 import shutil
 from typing import Any, Mapping
 
+from .campaigns import (
+    CampaignLock,
+    load_campaign_index,
+    reconcile_campaign_locked,
+    register_leaf_artifact,
+    scan_leaf_artifacts,
+)
 from .filesystem import hash_object, symlink_points_to
+from .models import sha256_json
 from .receipts import (
     load_receipt,
     validate_receipt_for_state,
@@ -27,6 +35,39 @@ def rollback_receipt(receipt_path: Path) -> dict[str, Any]:
     if len(path.parents) < 3:
         raise RollbackError("receipt path is outside an APU state directory")
     state_home = path.parents[2]
+    campaign_id = receipt.get("campaign_id")
+    if campaign_id is not None:
+        try:
+            with CampaignLock(
+                state_home,
+                campaign_id,
+                purpose="rollback",
+            ):
+                return _rollback_loaded_receipt(
+                    state_home,
+                    path,
+                    receipt,
+                    campaign_id=campaign_id,
+                )
+        except RuntimeError as error:
+            if isinstance(error, RollbackError):
+                raise
+            raise RollbackError(f"campaign rollback failed: {error}") from error
+    return _rollback_loaded_receipt(
+        state_home,
+        path,
+        receipt,
+        campaign_id=None,
+    )
+
+
+def _rollback_loaded_receipt(
+    state_home: Path,
+    path: Path,
+    receipt: dict[str, Any],
+    *,
+    campaign_id: str | None,
+) -> dict[str, Any]:
     try:
         validate_receipt_for_state(state_home, path, receipt)
         registry = load_registry(state_home)
@@ -38,6 +79,41 @@ def rollback_receipt(receipt_path: Path) -> dict[str, Any]:
             registered = state_home / registered
         if registered.resolve() != path:
             raise ValueError("registry receipt does not match supplied receipt")
+        if campaign_id is not None:
+            committed = _committed_campaign_rollback(
+                state_home,
+                campaign_id,
+                receipt,
+            )
+            if committed is not None:
+                update_registry(
+                    state_home,
+                    receipt["installation_id"],
+                    {
+                        "status": committed["status"],
+                        "receipt": str(path.relative_to(state_home)),
+                        "rolled_back_at": committed["recorded_at"],
+                        "drifted_operation_ids": committed[
+                            "drifted_operation_ids"
+                        ],
+                    },
+                )
+                return {
+                    "status": committed["status"],
+                    "drifted_operation_ids": committed[
+                        "drifted_operation_ids"
+                    ],
+                }
+        if campaign_id is not None and entry.get("status") in {
+            "rolled_back",
+            "drifted",
+        }:
+            return {
+                "status": entry["status"],
+                "drifted_operation_ids": list(
+                    entry.get("drifted_operation_ids", ())
+                ),
+            }
         _preflight_backups(receipt["operations"])
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise RollbackError(f"rollback preflight failed: {error}") from error
@@ -46,34 +122,109 @@ def rollback_receipt(receipt_path: Path) -> dict[str, Any]:
     drifted: list[str] = []
 
     for unit in reversed(units):
-        if not all(_can_restore(operation) for operation in unit):
+        states = [
+            (
+                "restored"
+                if _is_restored(operation)
+                else "installed"
+                if _can_restore(operation)
+                else "drifted"
+            )
+            for operation in unit
+        ]
+        if "drifted" in states:
             drifted.extend(operation["id"] for operation in unit)
             continue
         try:
-            for operation in reversed(unit):
-                _restore(operation)
+            for operation, state in reversed(tuple(zip(unit, states, strict=True))):
+                if state == "installed":
+                    _restore(operation)
         except OSError as error:
             raise RollbackError(f"rollback failed: {error}") from error
 
     status = "drifted" if drifted else "rolled_back"
-    receipt["rollback_status"] = status
-    if drifted:
-        receipt["drifted_operation_ids"] = drifted
+    rolled_back_at = (
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    )
+    if campaign_id is None:
+        receipt["rollback_status"] = status
+        if drifted:
+            receipt["drifted_operation_ids"] = drifted
+        else:
+            receipt.pop("drifted_operation_ids", None)
+        write_receipt(state_home, receipt)
     else:
-        receipt.pop("drifted_operation_ids", None)
-    write_receipt(state_home, receipt)
+        snapshot_id = receipt["snapshot_id"]
+        index = load_campaign_index(state_home, campaign_id)
+        register_leaf_artifact(
+            state_home,
+            campaign_id,
+            {
+                "schema_version": 1,
+                "campaign_id": campaign_id,
+                "artifact_type": "rollback",
+                "artifact_id": receipt["installation_id"],
+                "snapshot_id": snapshot_id,
+                "idempotency_key": {
+                    "operation_id": "rollback",
+                    "attempt": 1,
+                },
+                "source_receipt_sha256": sha256_json(receipt),
+                "status": status,
+                "drifted_operation_ids": drifted,
+                "recorded_at": rolled_back_at,
+            },
+        )
+        reconcile_campaign_locked(
+            state_home,
+            campaign_id,
+            expected_revision=index["revision"],
+        )
     update_registry(
         state_home,
         receipt["installation_id"],
         {
             "status": status,
             "receipt": str(path.relative_to(state_home)),
-            "rolled_back_at": datetime.now(timezone.utc)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "rolled_back_at": rolled_back_at,
+            "drifted_operation_ids": drifted,
         },
     )
     return {"status": status, "drifted_operation_ids": drifted}
+
+
+def _committed_campaign_rollback(
+    state_home: Path,
+    campaign_id: str,
+    receipt: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    matches = [
+        artifact
+        for artifact in scan_leaf_artifacts(state_home, campaign_id)
+        if artifact["artifact_type"] == "rollback"
+        and artifact["artifact_id"] == receipt["installation_id"]
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise RollbackError("campaign has duplicate rollback evidence")
+    artifact = matches[0]
+    if artifact.get("source_receipt_sha256") != sha256_json(receipt):
+        raise RollbackError("campaign rollback evidence refers to another receipt")
+    if artifact.get("snapshot_id") != receipt.get("snapshot_id"):
+        raise RollbackError("campaign rollback evidence has the wrong snapshot")
+    status = artifact.get("status")
+    drifted = artifact.get("drifted_operation_ids")
+    recorded_at = artifact.get("recorded_at")
+    if (
+        status not in {"rolled_back", "drifted"}
+        or not isinstance(drifted, list)
+        or any(not isinstance(item, str) or not item for item in drifted)
+        or not isinstance(recorded_at, str)
+        or not recorded_at
+    ):
+        raise RollbackError("campaign rollback evidence is invalid")
+    return artifact
 
 
 def _rollback_units(operations: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
@@ -111,6 +262,19 @@ def _can_restore(operation: Mapping[str, Any]) -> bool:
         return False
     try:
         return _hash_object(target) == installed_hash
+    except OSError:
+        return False
+
+
+def _is_restored(operation: Mapping[str, Any]) -> bool:
+    target = Path(operation["target"])
+    original_hash = operation.get("original_sha256")
+    if original_hash is None:
+        return not os.path.lexists(target)
+    if not os.path.lexists(target):
+        return False
+    try:
+        return _hash_object(target) == original_hash
     except OSError:
         return False
 
