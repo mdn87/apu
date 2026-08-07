@@ -26,6 +26,7 @@ def test_probe_uses_same_workspace_policy_and_reports_denied(
 
     def fake_run(command, **kwargs):
         seen["command"] = command
+        seen["env"] = kwargs["env"]
         return type("Completed", (), {"returncode": 0})()
 
     monkeypatch.setattr("apu.dispatch_runtime.subprocess.run", fake_run)
@@ -44,9 +45,10 @@ def test_probe_uses_same_workspace_policy_and_reports_denied(
     assert ":workspace" in seen["command"]
     if os.name == "nt":
         assert 'windows.sandbox="unelevated"' in seen["command"]
+        assert str(live.resolve()) in seen["command"][-1]
     else:
         assert 'windows.sandbox="unelevated"' not in seen["command"]
-    assert str(live.resolve()) in seen["command"][-1]
+        assert seen["env"]["APU_DISPATCH_PROBE_TARGET"] == str(live.resolve())
 
 
 def test_runner_uses_ephemeral_workspace_and_parses_schema_result(
