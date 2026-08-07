@@ -1,8 +1,8 @@
 # APU Cross-System Runbook
 
 This runbook covers installing and operating APU on another workstation. APU
-is a source-distributed beta: its deterministic workflow is ready for
-controlled use, while a tagged release and PyPI package are still pending.
+is a tagged beta whose deterministic workflow is ready for controlled use.
+PyPI publication is not currently provided.
 
 ## Supported environment
 
@@ -20,10 +20,10 @@ repository suite before installing a development commit.
 
 ## Install
 
-For a reproducible installation, pin the reviewed commit:
+For a reproducible installation, pin the release tag:
 
 ```console
-pipx install "git+https://github.com/mdn87/apu.git@APPROVED_COMMIT"
+pipx install "git+https://github.com/mdn87/apu.git@v0.5.0"
 apu --version
 apu --help
 ```
@@ -31,11 +31,11 @@ apu --help
 With `uv`, use:
 
 ```console
-uv tool install "git+https://github.com/mdn87/apu.git@APPROVED_COMMIT"
+uv tool install "git+https://github.com/mdn87/apu.git@v0.5.0"
 ```
 
-The quoted Git URL works in POSIX shells and PowerShell. To test an unpublished
-checkout instead:
+The quoted Git URL works in POSIX shells and PowerShell. To test a checkout
+instead:
 
 ```console
 git clone https://github.com/mdn87/apu.git
@@ -182,10 +182,10 @@ state.
 
 ## Updating
 
-Until a tagged release exists, update deliberately to a reviewed commit:
+Update deliberately to a reviewed release tag:
 
 ```console
-pipx install --force "git+https://github.com/mdn87/apu.git@APPROVED_COMMIT"
+pipx install --force "git+https://github.com/mdn87/apu.git@v0.5.0"
 ```
 
 Re-run `apu --version`, `apu validate`, and `apu status` after updating. Do not
@@ -193,9 +193,8 @@ point production automation at an unpinned branch.
 
 ## Current release limitations
 
-- There is no Git tag, GitHub Release, or PyPI publication yet.
-- Installation is therefore from a Git commit rather than a signed release
-  artifact or package index.
+- There is no PyPI publication yet; install from the Git tag or the wheel
+  attached to the GitHub Release.
 - Live Codex and Claude behavioral checks depend on locally available,
   authenticated CLIs and are not part of the deterministic release gate.
 - Provider-managed package upgrades remain unavailable unless the provider can

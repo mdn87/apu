@@ -1,6 +1,6 @@
 # APU v0.1 Implementation Plan
 
-- **Status:** Implemented; release verification pending platform CI
+- **Status:** Implemented and verified on Windows, macOS, and Linux
 - **Source:** [concept.md](concept.md) and [spec.md](spec.md)
 - **Target runtime:** Python 3.11+
 - **Primary interface:** `apu` command-line application
