@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-policy-updater"
-version = "0.4.0.dev0"
+version = "0.5.0.dev0"
 description = "Audit, simplify, install, and evaluate durable coding-agent instructions."
 readme = "README.md"
 requires-python = ">=3.11"

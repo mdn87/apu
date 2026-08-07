@@ -119,6 +119,7 @@ Then compare one installed package with its latest stable candidate:
 
 ```console
 apu research packages superpowers --profile profile.toml
+apu research packages superpowers --profile profile.toml --upgrade-capability
 ```
 
 Installed and candidate trees run through the same frozen classifier policy.
@@ -131,6 +132,46 @@ through that virtual view. Until a provider exposes a documented exact-version
 pin or APU gains a journaled provider-update protocol, research emits `hold`
 or `work-order` and reports upgrade mutation as unavailable instead of
 claiming an unverified install.
+
+## Isolated dispatch and efficacy
+
+Dispatch accepts only a work order inside APU's private campaign state. On
+Windows, the Codex adapter first proves that its confined context can write the
+disposable stage but cannot open the live target for writing. If that probe
+fails, dispatch is unavailable and the work order stays in the hand-run queue.
+Claude dispatch currently fails closed because an equivalent enforced
+isolation adapter is not implemented.
+
+```console
+apu dispatch %LOCALAPPDATA%\apu\campaigns\CAMPAIGN_ID\work-orders\WORK_ORDER_ID.md
+apu review %LOCALAPPDATA%\apu\campaigns\CAMPAIGN_ID\plans\PLAN_ID.json \
+  --output reviewed-plan.json
+apu apply reviewed-plan.json --yes
+```
+
+The runner sees only an exact staged copy, or a sanitized copy with structural
+placeholders on sensitive surfaces. Returned content is secret-scanned and
+quarantined on any file-set, placeholder, relocation, or secret violation.
+Accepted output becomes a pending full-file plan; it cannot mutate live files
+until reviewed and applied. The resulting receipt remains bound to the
+campaign snapshot.
+
+Campaign-bound outcomes derive installed categories from the immutable
+campaign rather than trusting user input. `--activate` records an explicit
+user attestation; empty activation evidence remains the default.
+
+```console
+apu outcome record --receipt RECEIPT.json --task-id TASK_ID \
+  --activate guidance-conflict --validation passed
+apu outcome promotion --receipt RECEIPT.json --category guidance-conflict \
+  --profile profile.toml --deterministic-remediation
+apu system status --profile profile.toml
+```
+
+Promotion only emits a review-required profile-edit proposal after ten
+distinct material activations, a closed monitoring window, no implicating
+defects, and green close-window fixtures. One implicating escaped defect writes
+a visible APU-private demotion override without editing the profile.
 
 ## Development
 

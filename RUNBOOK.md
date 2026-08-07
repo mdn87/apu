@@ -1,7 +1,7 @@
 # APU Cross-System Runbook
 
 This runbook covers installing and operating APU on another workstation. APU
-v0.1 is a source-distributed beta: its deterministic workflow is ready for
+is a source-distributed beta: its deterministic workflow is ready for
 controlled use, while a tagged release and PyPI package are still pending.
 
 ## Supported environment
@@ -15,23 +15,23 @@ The core audit, planning, application, validation, and rollback workflow does
 not require a model API key. Optional behavioral validation requires a locally
 installed and authenticated Codex or Claude CLI.
 
-APU is tested in GitHub Actions on macOS, Ubuntu, and Windows with Python 3.11
-and 3.13. The v0.1 implementation also passes the repository's 111-test suite.
+APU is tested in GitHub Actions on macOS, Ubuntu, and Windows. Run the current
+repository suite before installing a development commit.
 
 ## Install
 
-For a reproducible installation, pin the reviewed v0.1 implementation:
+For a reproducible installation, pin the reviewed commit:
 
 ```console
-pipx install "git+https://github.com/mdn87/apu.git@7742d4e"
+pipx install "git+https://github.com/mdn87/apu.git@APPROVED_COMMIT"
 apu --version
 apu --help
 ```
 
-The expected version is `0.1.0`. With `uv`, use:
+With `uv`, use:
 
 ```console
-uv tool install "git+https://github.com/mdn87/apu.git@7742d4e"
+uv tool install "git+https://github.com/mdn87/apu.git@APPROVED_COMMIT"
 ```
 
 The quoted Git URL works in POSIX shells and PowerShell. To test an unpublished
@@ -131,6 +131,22 @@ Behavioral results distinguish passed, failed, skipped, and unavailable
 checks. Runner-specific metadata that the selected CLI cannot observe is
 skipped rather than treated as a failure.
 
+## Dispatch a campaign work order
+
+Use only the private path printed by `apu system propose`; exported prompts are
+deliberately non-dispatchable through the automated command.
+
+```console
+apu dispatch /path/to/APU_HOME/campaigns/CAMPAIGN_ID/work-orders/WORK_ORDER_ID.md
+apu review /path/to/APU_HOME/campaigns/CAMPAIGN_ID/plans/PLAN_ID.json \
+  --output reviewed-plan.json
+apu apply reviewed-plan.json
+```
+
+Dispatch creates or reuses the campaign snapshot before invoking the runner.
+It fails closed if live-root write denial cannot be demonstrated. Accepted
+runner output is still only a draft plan; review and apply remain separate.
+
 ## Roll back
 
 Use the exact receipt path printed by `apu apply` or `apu init --apply`:
@@ -182,8 +198,9 @@ point production automation at an unpinned branch.
   artifact or package index.
 - Live Codex and Claude behavioral checks depend on locally available,
   authenticated CLIs and are not part of the deterministic release gate.
-- The optional Superpowers adapter is deferred beyond v0.1.
+- Provider-managed package upgrades remain unavailable unless the provider can
+  select an exact version and prove rollback to the captured version and tree.
 
-Use v0.1 first on a non-critical repository, retain the generated plan and
+Use APU first on a non-critical repository, retain the generated plan and
 receipt, and promote it more broadly only after structural validation passes
 and the resulting effective instruction stack has been inspected.

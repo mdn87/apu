@@ -99,9 +99,58 @@ packages = []
     )
     monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
 
-    assert (
-        main(["research", "packages", "--profile", str(profile)])
-        == 1
-    )
+    assert main(["research", "packages", "--profile", str(profile)]) == 1
     assert "does not track any packages" in capsys.readouterr().err
     assert not (tmp_path / "state").exists()
+
+
+def test_upgrade_capability_is_read_only_and_fail_closed(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    state = tmp_path / "state"
+    profile = tmp_path / "profile.toml"
+    profile.write_text(
+        f"""
+schema_version = 1
+roots = ["{tmp_path.as_posix()}"]
+global_surfaces = []
+packages = ["superpowers@claude-plugins-official"]
+""",
+        encoding="utf-8",
+    )
+
+    class Capability:
+        @staticmethod
+        def to_dict():
+            return {
+                "status": "unavailable",
+                "package_id": "claude:superpowers@claude-plugins-official",
+                "reason_codes": ["provider-verifiable-rollback-unsupported"],
+            }
+
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(
+        "apu.package_upgrade.assess_claude_package_upgrade",
+        lambda *_args, **_kwargs: Capability(),
+    )
+
+    assert (
+        main(
+            [
+                "research",
+                "packages",
+                "superpowers",
+                "--profile",
+                str(profile),
+                "--upgrade-capability",
+            ]
+        )
+        == 1
+    )
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["capabilities"][0]["status"] == "unavailable"
+    assert not state.exists()
