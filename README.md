@@ -70,6 +70,40 @@ structurally verified placeholders. Before the first deterministic mutation,
 APU locks the campaign, records a campaign-bound snapshot, and stamps the
 receipt with campaign, snapshot, and idempotency data.
 
+## Guidance and model refresh
+
+M7 makes guidance and model identity explicit, versioned inputs. These are the
+only system commands that use the network:
+
+```console
+apu refresh guidance --profile profile.toml --output guidance-refresh.json
+apu refresh models --profile profile.toml --output model-refresh.json
+apu system audit --profile profile.toml --json system-inventory.json
+```
+
+Guidance refresh stores bounded exact-byte HTTPS snapshots privately and emits
+a distillation work order. It never adopts model-written guidance
+automatically. After reviewing a returned candidate and approval artifact:
+
+```console
+apu refresh guidance --profile profile.toml \
+  --adopt baseline-candidate.json --approval approval.json
+apu guidance diff BEFORE_BASELINE AFTER_BASELINE
+```
+
+Model refresh observes installed CLI versions and configured selectors
+offline, then resolves them only against fixed official provider listing
+endpoints. Provider credentials are read at request time from the process
+environment and are never persisted. Exact published model IDs can resolve
+directly; aliases and omitted defaults remain visibly unverified unless the
+authoritative listing supplies their mapping. Failed refreshes preserve the
+matching last-known identity as stale rather than presenting it as current.
+
+System inventories now carry a typed baseline/model evaluation context. New
+campaigns verify its immutable private artifacts and freeze it in the campaign
+manifest; older M6 campaigns remain readable, while v1 inventories must be
+regenerated before creating a new campaign.
+
 ## Development
 
 ```console

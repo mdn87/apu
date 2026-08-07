@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from hashlib import sha256
 import re
+from collections import defaultdict
+from dataclasses import dataclass
+from hashlib import sha256
 
 from apu.models import Finding, InstructionSurface
-
 
 DETECTOR_VERSION = "2"
 
@@ -82,6 +82,30 @@ _CREDENTIAL_PATTERN = re.compile(
 )
 
 
+@dataclass(frozen=True)
+class DetectorPolicy:
+    """Allowlisted, typed guidance inputs consumed by deterministic detectors."""
+
+    duplicate_instruction_minimum_words: int = _DUPLICATE_MINIMUM_WORDS
+    speculative_skill_threshold_enabled: bool = True
+
+    def __post_init__(self) -> None:
+        minimum = self.duplicate_instruction_minimum_words
+        if (
+            not isinstance(minimum, int)
+            or isinstance(minimum, bool)
+            or not 2 <= minimum <= 100
+        ):
+            raise ValueError(
+                "duplicate_instruction_minimum_words must be an integer "
+                "between 2 and 100"
+            )
+        if not isinstance(self.speculative_skill_threshold_enabled, bool):
+            raise TypeError(
+                "speculative_skill_threshold_enabled must be boolean"
+            )
+
+
 def _finding_id(surface_id: str, category: str, line: int) -> str:
     seed = f"{surface_id}\0{category}\0{line}\0{DETECTOR_VERSION}".encode()
     return "finding-" + sha256(seed).hexdigest()[:20]
@@ -112,10 +136,14 @@ def _finding(
 
 
 def classify_surface(
-    surface: InstructionSurface, content: str
+    surface: InstructionSurface,
+    content: str,
+    *,
+    detector_policy: DetectorPolicy | None = None,
 ) -> tuple[Finding, ...]:
     """Return local structural and heuristic findings without exporting content."""
 
+    policy = detector_policy or DetectorPolicy()
     findings: list[Finding] = []
     seen_lines: dict[str, list[int]] = defaultdict(list)
     in_fenced_block = False
@@ -141,7 +169,8 @@ def classify_surface(
 
         if (
             seen_lines[normalized]
-            and len(normalized.split()) >= _DUPLICATE_MINIMUM_WORDS
+            and len(normalized.split())
+            >= policy.duplicate_instruction_minimum_words
         ):
             findings.append(
                 _finding(
@@ -166,7 +195,10 @@ def classify_surface(
                 normalized
             ) and _OBLIGATION_PATTERN.search(normalized):
                 evidence.append("universal-trigger-pattern")
-            if _SPECULATIVE_THRESHOLD_PATTERN.search(normalized):
+            if (
+                policy.speculative_skill_threshold_enabled
+                and _SPECULATIVE_THRESHOLD_PATTERN.search(normalized)
+            ):
                 evidence.append("speculative-threshold-trigger")
             if evidence:
                 universal_trigger = True

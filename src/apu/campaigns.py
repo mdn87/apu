@@ -14,6 +14,7 @@ from .models import canonical_json
 from .state import ensure_private_directory, write_json_atomic
 
 CAMPAIGN_SCHEMA_VERSION = 1
+CAMPAIGN_MANIFEST_SCHEMA_VERSION = 2
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EXECUTION_ARTIFACT_TYPES = frozenset(
     {"receipt", "rollback", "work-order-result"}
@@ -66,11 +67,16 @@ def build_campaign_manifest(
     work_order_bindings: list[Mapping[str, Any] | str] | tuple[
         Mapping[str, Any] | str, ...
     ],
+    evaluation_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a validated immutable campaign manifest."""
 
-    manifest = {
-        "schema_version": CAMPAIGN_SCHEMA_VERSION,
+    manifest: dict[str, Any] = {
+        "schema_version": (
+            CAMPAIGN_MANIFEST_SCHEMA_VERSION
+            if evaluation_context is not None
+            else CAMPAIGN_SCHEMA_VERSION
+        ),
         "campaign_id": campaign_id,
         "inventory_hash": inventory_hash,
         "profile_hash": profile_hash,
@@ -79,6 +85,8 @@ def build_campaign_manifest(
         "plan_binding": _json_copy(plan_binding),
         "work_order_bindings": _json_copy(list(work_order_bindings)),
     }
+    if evaluation_context is not None:
+        manifest["evaluation_context"] = _json_copy(evaluation_context)
     _validate_manifest(manifest)
     return manifest
 
@@ -527,12 +535,18 @@ def _validate_manifest(value: Any) -> None:
         "plan_binding",
         "work_order_bindings",
     }
+    schema_version = value.get("schema_version")
+    if schema_version == CAMPAIGN_MANIFEST_SCHEMA_VERSION:
+        required.add("evaluation_context")
     if set(value) != required:
         raise ValueError(
             "campaign manifest fields must be exactly: "
             + ", ".join(sorted(required))
         )
-    if value["schema_version"] != CAMPAIGN_SCHEMA_VERSION:
+    if schema_version not in {
+        CAMPAIGN_SCHEMA_VERSION,
+        CAMPAIGN_MANIFEST_SCHEMA_VERSION,
+    }:
         raise ValueError("unsupported campaign manifest schema_version")
     _validate_component(value["campaign_id"], "campaign_id")
     for name in ("inventory_hash", "profile_hash"):
@@ -552,6 +566,24 @@ def _validate_manifest(value: Any) -> None:
             raise TypeError("work-order bindings must be objects or strings")
         if isinstance(binding, str) and not binding:
             raise ValueError("work-order bindings must not be empty")
+    if schema_version == CAMPAIGN_MANIFEST_SCHEMA_VERSION:
+        from .system_audit import EvaluationContext
+
+        context = EvaluationContext.from_dict(value["evaluation_context"])
+        expected_baseline = (
+            context.baseline["version"] or "baseline-unconfigured"
+        )
+        expected_generation = (
+            context.models["generation"] or "model-unverified"
+        )
+        if value["baseline_version"] != expected_baseline:
+            raise ValueError(
+                "campaign baseline_version does not match evaluation_context"
+            )
+        if value["model_generation"] != expected_generation:
+            raise ValueError(
+                "campaign model_generation does not match evaluation_context"
+            )
     _json_copy(value)
 
 

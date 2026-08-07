@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import subprocess
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-import subprocess
-from typing import Any, Iterable
+from typing import Any
 
 from apu import __version__
-from apu.classify import classify_surface
+from apu.classify import DetectorPolicy, classify_surface
 from apu.discovery import discover
 from apu.models import Finding, Inventory, SurfaceRelationship
 from apu.trace import summarize_sessions
-
 
 _CLASSIFIABLE_KINDS = frozenset(
     {
@@ -26,7 +26,7 @@ _CLASSIFIABLE_KINDS = frozenset(
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _relationship_finding(relationship: SurfaceRelationship) -> Finding | None:
@@ -97,6 +97,7 @@ def build_inventory(
     root_session_id: str | None = None,
     git_repository: Path | None = None,
     generated_at: str | None = None,
+    detector_policy: DetectorPolicy | None = None,
 ) -> Inventory:
     roots = tuple(Path(root).expanduser().resolve() for root in roots)
     working_directories = tuple(
@@ -121,7 +122,13 @@ def build_inventory(
             )
         except OSError:
             continue
-        findings.extend(classify_surface(surface, content))
+        findings.extend(
+            classify_surface(
+                surface,
+                content,
+                detector_policy=detector_policy,
+            )
+        )
     findings.extend(
         finding
         for relationship in discovery.relationships

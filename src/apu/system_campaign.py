@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,11 @@ from .receipts import load_receipt
 from .snapshot_scope import snapshot_surfaces_for_profile
 from .snapshots import create_snapshot, load_snapshot
 from .state import ensure_private_directory, write_json_atomic
-from .system_audit import SystemInventory
+from .system_audit import (
+    SYSTEM_INVENTORY_SCHEMA_VERSION,
+    SystemInventory,
+    verify_evaluation_context,
+)
 from .system_planning import SystemPlan, propose_system
 from .system_profile import SystemProfile
 from .work_orders import (
@@ -59,14 +64,32 @@ def propose_campaign(
     profile: SystemProfile,
     *,
     created_at: str,
-    baseline_version: str = "baseline-unconfigured",
-    model_generation: str = "model-unverified",
     emit_prompts: Path | None = None,
+    model_observations: Iterable[Any] | None = None,
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
     """Create one immutable campaign and its private proposal artifacts."""
 
     if inventory.profile_sha256 != profile.artifact_sha256:
         raise ValueError("inventory profile hash does not match the selected profile")
+    if inventory.schema_version != SYSTEM_INVENTORY_SCHEMA_VERSION:
+        raise ValueError(
+            "system inventory is legacy or unsupported; rerun "
+            "`apu system audit` before proposing a campaign"
+        )
+    verify_evaluation_context(
+        state_home,
+        inventory.evaluation_context,
+        model_observations=model_observations,
+    )
+    evaluation_context = inventory.evaluation_context.to_dict()
+    baseline_version = (
+        inventory.evaluation_context.baseline["version"]
+        or "baseline-unconfigured"
+    )
+    model_generation = (
+        inventory.evaluation_context.models["generation"]
+        or "model-unverified"
+    )
     campaign_id = f"campaign-{uuid4().hex}"
     system_plan = propose_system(
         inventory,
@@ -78,8 +101,13 @@ def propose_campaign(
     root = campaign_directory(state_home, campaign_id)
     candidates = _render_auto_candidates(system_plan)
     auto_plan = _build_auto_plan(system_plan, root, profile, candidates)
+    guidance = _guidance_citations(state_home, inventory)
     rendered_orders = tuple(
-        _render_system_work_order(campaign_id, item)
+        _render_system_work_order(
+            campaign_id,
+            item,
+            guidance=guidance,
+        )
         for item in system_plan.work_orders
     )
     plan_binding = {
@@ -127,6 +155,7 @@ def propose_campaign(
         model_generation=model_generation,
         plan_binding=plan_binding,
         work_order_bindings=work_order_bindings,
+        evaluation_context=evaluation_context,
     )
     create_campaign(state_home, manifest)
 
@@ -362,6 +391,24 @@ def list_campaign_status(state_home: Path) -> list[dict[str, Any]]:
                     "profile_hash": manifest["profile_hash"],
                     "baseline_version": manifest["baseline_version"],
                     "model_generation": manifest["model_generation"],
+                    "evaluation_context": manifest.get(
+                        "evaluation_context",
+                        {
+                            "baseline": {
+                                "version": None,
+                                "status": "legacy-unverified",
+                                "retrieved_at": None,
+                                "artifact_sha256": None,
+                            },
+                            "models": {
+                                "generation": None,
+                                "status": "legacy-unverified",
+                                "retrieved_at": None,
+                                "artifact_sha256": None,
+                                "identities": [],
+                            },
+                        },
+                    ),
                     "revision": index["revision"],
                     "snapshot_id": index["snapshot_id"],
                     "artifacts": index["artifacts"],
@@ -763,6 +810,8 @@ def _render_line_removal(
 def _render_system_work_order(
     campaign_id: str,
     work_order: Any,
+    *,
+    guidance: tuple[GuidanceCitation, ...],
 ) -> WorkOrderArtifact:
     findings: list[WorkOrderFinding] = []
     for finding in work_order.findings:
@@ -796,16 +845,7 @@ def _render_system_work_order(
         campaign_id=campaign_id,
         work_order_id=work_order.id,
         findings=findings,
-        guidance=(
-            GuidanceCitation(
-                guidance=(
-                    "Preserve user authority and route every mutation through "
-                    "plan, approval, receipt, and rollback."
-                ),
-                source="roadmap.md",
-                locator="Work-order prompt",
-            ),
-        ),
+        guidance=guidance,
         constraints=tuple(constraints),
         acceptance_criteria=(
             "The returned candidate resolves every listed finding.",
@@ -816,6 +856,56 @@ def _render_system_work_order(
             "Run the category-specific behavioral fixture when available.",
         ),
     )
+
+
+def _guidance_citations(
+    state_home: Path,
+    inventory: SystemInventory,
+) -> tuple[GuidanceCitation, ...]:
+    stamp = inventory.evaluation_context.baseline
+    version = stamp["version"]
+    if version is None:
+        return (
+            GuidanceCitation(
+                guidance=(
+                    "No reviewed guidance baseline is adopted; treat the "
+                    "finding and campaign constraints as the full authority."
+                ),
+                source="APU evaluation context",
+                locator=f"baseline:{stamp['status']}",
+            ),
+        )
+    path = (
+        Path(state_home)
+        / "guidance"
+        / "baselines"
+        / f"{version}.json"
+    )
+    try:
+        baseline = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot load guidance baseline {version}") from error
+    citations: list[GuidanceCitation] = []
+    for principle in baseline["principles"]:
+        sources = sorted(
+            {
+                source["source_url"]
+                for source in principle["sources"]
+            }
+        )
+        citations.append(
+            GuidanceCitation(
+                guidance=principle["statement"],
+                source=", ".join(sources),
+                locator=(
+                    f"baseline:{version} "
+                    f"principle:{principle['principle_id']}"
+                ),
+            )
+        )
+    if not citations:
+        raise ValueError(f"guidance baseline has no principles: {version}")
+    return tuple(citations)
 
 
 def _write_sanitized_stage(root: Path, work_order: Any) -> None:

@@ -5,7 +5,11 @@ from pathlib import Path
 
 from apu.cli import main
 from apu.models import Finding, InstructionSurface, Inventory, sha256_bytes
-from apu.system_audit import SystemInventory
+from apu.system_audit import (
+    SYSTEM_INVENTORY_SCHEMA_VERSION,
+    EvaluationContext,
+    SystemInventory,
+)
 from apu.system_profile import load_system_profile
 
 
@@ -95,12 +99,13 @@ def test_cli_campaign_propose_apply_and_status(
         ),
     )
     inventory = SystemInventory(
-        schema_version=1,
+        schema_version=SYSTEM_INVENTORY_SCHEMA_VERSION,
         apu_version="0.3.0.dev0",
         generated_at="2026-08-06T22:00:00Z",
         profile_sha256=profile.artifact_sha256,
         machine_inventory=machine,
         repositories=(),
+        evaluation_context=EvaluationContext.unconfigured(),
     )
     inventory_path = tmp_path / "inventory.json"
     inventory_path.write_text(
