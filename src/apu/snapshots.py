@@ -226,10 +226,10 @@ def diff_snapshot(
                 or before["link_kind"] != after["link_kind"]
             ):
                 drift.append("link")
+            if before.get("mode") != after.get("mode"):
+                drift.append("mode")
         if before["target_path"] != after["target_path"]:
             drift.append("target")
-        if before.get("mode") != after.get("mode"):
-            drift.append("mode")
         if drift:
             changes.append(
                 {
