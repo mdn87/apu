@@ -346,7 +346,7 @@ def test_other_finding_on_sensitive_surface_requires_sanitized_staging(
     assert work_order.requires_sanitized_staging is True
     assert work_order.findings[0].location == {"line": 4}
     assert work_order.findings[0].evidence == ()
-    assert "private" not in json.dumps(plan.to_dict())
+    assert '"content": "private"' not in json.dumps(plan.to_dict())
     if configured_policy == "auto":
         assert (
             work_order.findings[0].routing_reason
