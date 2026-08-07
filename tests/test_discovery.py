@@ -324,3 +324,102 @@ def test_nested_root_discovers_ancestor_instructions_and_rule_imports(
         and relationship.status == "active"
         for relationship in result.relationships
     )
+
+
+def test_enabled_plugin_session_start_hooks_are_discovered_without_commands(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write(repo / "CLAUDE.md", "project")
+    write(
+        home / ".claude" / "settings.json",
+        json.dumps(
+            {
+                "enabledPlugins": {
+                    "superpowers@official": True,
+                    "disabled-plugin@official": False,
+                }
+            }
+        ),
+    )
+    hooks = write(
+        home
+        / ".claude"
+        / "plugins"
+        / "cache"
+        / "official"
+        / "superpowers"
+        / "5.0.7"
+        / "hooks"
+        / "hooks.json",
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "matcher": "startup|clear|compact",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "echo TOP_SECRET",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        ),
+    )
+    plugin_skill = write(
+        home
+        / ".claude"
+        / "plugins"
+        / "cache"
+        / "official"
+        / "superpowers"
+        / "5.0.7"
+        / "skills"
+        / "using-superpowers"
+        / "SKILL.md",
+        "---\nname: using-superpowers\n---\n",
+    )
+    write(
+        home
+        / ".claude"
+        / "plugins"
+        / "cache"
+        / "official"
+        / "disabled-plugin"
+        / "1.0.0"
+        / "hooks"
+        / "hooks.json",
+        json.dumps({"hooks": {"SessionStart": [{"matcher": "startup"}]}}),
+    )
+
+    result = discover([repo], home=home, working_directories=[repo])
+    surfaces = by_path(result)
+
+    assert str(hooks) in surfaces
+    # The plugin's own skills are offered in every session, so the text the
+    # model actually sees is the plugin copy, not any user-local variant.
+    assert str(plugin_skill) in surfaces
+    assert surfaces[str(plugin_skill)].authority == "package"
+    plugin_surface = surfaces[str(hooks)]
+    # A session-start injection outranks the user's own instruction files.
+    assert plugin_surface.authority == "package"
+    assert plugin_surface.precedence < surfaces[str(repo / "CLAUDE.md")].precedence
+
+    hook = next(
+        relationship
+        for relationship in result.relationships
+        if relationship.type == "session_start_hook"
+    )
+    assert hook.location["plugin"] == "superpowers@official"
+    assert hook.location["source"] == "plugin"
+    assert "TOP_SECRET" not in repr(hook.to_dict())
+
+    assert not [
+        path for path in surfaces if "disabled-plugin" in path
+    ]

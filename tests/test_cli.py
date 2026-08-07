@@ -21,7 +21,8 @@ def test_audit_and_propose_round_trip_without_creating_state(
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "AGENTS.md").write_text(
-        "You must invoke a workflow skill at the start of every conversation.\n"
+        "Run focused tests for changed behavior.\n"
+        "Run focused tests for changed behavior.\n"
     )
     inventory = tmp_path / "inventory.json"
     plan = tmp_path / "plan.json"

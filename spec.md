@@ -35,6 +35,8 @@ The MVP supports:
 - project and user-level Claude rules, including `paths`-scoped rules;
 - skill directories containing `SKILL.md`;
 - Claude session-start hooks and local marketplace metadata;
+- session-start hooks and skills contributed by enabled Claude plugins, whose
+  text reaches every session even though the user did not write it;
 - Codex/Claude-compatible shared skills under `~/.agents/skills`;
 - explicit files or roots supplied by the user.
 
@@ -373,6 +375,33 @@ The deterministic classifier applies these rules in order:
 
 A recommendation cannot silently relocate a repository-owned rule into a
 user-global file or export sensitive local data.
+
+### 5.1 What the classifier reads
+
+An instruction surface is prose, not a document. The classifier skips fenced
+code blocks, unfenced diagram source, and lines carrying no alphanumeric
+content, because an example command or a repeated separator is not a rule. A
+repeated line is reported as `duplicate-instruction` only when it is
+sentence-length; repeated headings, markers, and short labels are structure.
+
+A build command inside a skill is documentation of a method rather than a
+repository fact that belongs closer to a repository.
+
+### 5.2 What a finding may change
+
+`duplicate-instruction` is the only category whose correct remediation is
+deleting the flagged line. Every other category — including every pressure
+multiplier — is reported as a non-mutating `proposal_only` operation that
+requires confirmation, because removing the line would discard the rule
+instead of rewriting it, and choosing the replacement is the user's decision.
+
+A surface with `package` authority is never rewritten. Its content is replaced
+by the upstream package on the next update, so an edit would be silently lost
+and would desync the local copy.
+
+Each target path yields at most one operation. The same file can be an
+effective surface for more than one provider, and two operations writing one
+file would conflict.
 
 ## 6. Command-line interface
 
@@ -812,7 +841,10 @@ class ProviderAdapter:
   `CLAUDE.local.md` after `CLAUDE.md` at the same directory level;
 - discovers project and user-level `.claude/rules`, skills, hooks, and
   marketplaces; evaluates `paths` frontmatter when constructing an effective
-  stack; `.claude/rules` is a documented Claude Code instruction surface
+  stack; treats no directory at or above the user's home as a repository, so a
+  repository stored beneath home does not re-discover global configuration
+  with repository authority; `.claude/rules` is a documented Claude Code
+  instruction surface
   (<https://code.claude.com/docs/en/memory#organize-rules-with-clauderules>);
 - resolves `@path` imports relative to the containing instruction file,
   recursively up to Claude Code's documented limit, and reports missing,

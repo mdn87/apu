@@ -15,6 +15,7 @@ from .base import (
     deduplicate_surfaces,
     directory_depth,
     make_surface,
+    repository_bases,
     safe_rglob,
     skill_files,
 )
@@ -96,6 +97,11 @@ class ClaudeAdapter:
             surfaces=surfaces,
             relationships=relationships,
         )
+        self._discover_plugins(
+            normalized_home,
+            surfaces=surfaces,
+            relationships=relationships,
+        )
 
         project_bases: set[Path] = set()
         sidecars: list[InstructionSurface] = []
@@ -131,7 +137,9 @@ class ClaudeAdapter:
                             surfaces.append(sidecar)
                             sidecars.append(sidecar)
 
-        for base in sorted(project_bases, key=str):
+        for base in repository_bases(
+            sorted(project_bases, key=str), home=normalized_home
+        ):
             for filename in ("CLAUDE.md", "CLAUDE.local.md"):
                 surface = self._repository_instruction(base / filename)
                 if surface is not None:
@@ -337,6 +345,130 @@ class ClaudeAdapter:
                     to_surface_id=None,
                     status="active",
                     location={"count": len(marketplaces), "scope": scope},
+                )
+            )
+
+    def _discover_plugins(
+        self,
+        home: Path,
+        *,
+        surfaces: list[InstructionSurface],
+        relationships: list[SurfaceRelationship],
+    ) -> None:
+        """Record instructions contributed by enabled plugins.
+
+        A plugin's SessionStart hook injects context before the first turn of
+        every session and its skills are offered in every session, so both are
+        part of the effective instruction stack even though neither lives in a
+        file the user wrote. Only registration metadata is recorded; hook
+        commands are never emitted.
+        """
+
+        plugins_root = home / ".claude" / "plugins"
+        if not plugins_root.is_dir():
+            return
+        settings = _read_json(home / ".claude" / "settings.json")
+        enabled = (
+            settings.get("enabledPlugins")
+            if isinstance(settings, dict)
+            else None
+        )
+        if not isinstance(enabled, dict):
+            return
+
+        for identifier in sorted(
+            str(key) for key, value in enabled.items() if value is not False
+        ):
+            plugin, _, marketplace = identifier.partition("@")
+            if not plugin or not marketplace:
+                continue
+            root = self._plugin_root(plugins_root, marketplace, plugin)
+            if root is None:
+                continue
+            self._discover_plugin_hook_file(
+                root / "hooks" / "hooks.json",
+                identifier=identifier,
+                surfaces=surfaces,
+                relationships=relationships,
+            )
+            for path in skill_files(root / "skills"):
+                surface = self._surface(
+                    path,
+                    kind="skill",
+                    authority="package",
+                    scope="global",
+                    precedence=80,
+                )
+                if surface is not None:
+                    surfaces.append(surface)
+
+    @staticmethod
+    def _plugin_root(
+        plugins_root: Path, marketplace: str, plugin: str
+    ) -> Path | None:
+        """Return the installed copy of a plugin, preferring the active cache."""
+
+        cached = sorted(
+            (plugins_root / "cache" / marketplace / plugin).glob("*"),
+            reverse=True,
+        )
+        for candidate in cached:
+            if candidate.is_dir():
+                return candidate
+        checkout = (
+            plugins_root / "marketplaces" / marketplace / "plugins" / plugin
+        )
+        return checkout if checkout.is_dir() else None
+
+    def _discover_plugin_hook_file(
+        self,
+        path: Path,
+        *,
+        identifier: str,
+        surfaces: list[InstructionSurface],
+        relationships: list[SurfaceRelationship],
+    ) -> None:
+        surface = self._surface(
+            path,
+            kind="claude-plugin-hooks",
+            authority="package",
+            scope="global",
+            precedence=5,
+        )
+        if surface is None:
+            return
+        surfaces.append(surface)
+        value = _read_json(path)
+        if not isinstance(value, dict):
+            relationships.append(
+                SurfaceRelationship(
+                    type="plugin_hooks",
+                    from_surface_id=surface.id,
+                    to_surface_id=None,
+                    status="unreadable",
+                    location={"plugin": identifier},
+                )
+            )
+            return
+        hooks = value.get("hooks")
+        if not isinstance(hooks, dict):
+            return
+        registrations = hooks.get("SessionStart")
+        if not isinstance(registrations, list):
+            return
+        for index, _registration in enumerate(registrations):
+            relationships.append(
+                SurfaceRelationship(
+                    type="session_start_hook",
+                    from_surface_id=surface.id,
+                    to_surface_id=None,
+                    status="active",
+                    location={
+                        "event": "SessionStart",
+                        "registration_index": index,
+                        "plugin": identifier,
+                        "source": "plugin",
+                    },
                 )
             )
 

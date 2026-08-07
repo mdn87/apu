@@ -6,9 +6,11 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+from apu.classify import AUTO_REMOVABLE_CATEGORIES
 from apu.models import (
     Approval,
     Finding,
+    InstructionSurface,
     Inventory,
     Plan,
     PlanOperation,
@@ -32,31 +34,56 @@ def propose_inventory(
 ) -> Plan:
     surfaces = {surface.id: surface for surface in inventory.surfaces}
     operations: list[PlanOperation] = []
+    # One file is one operation. The same path can be an effective surface for
+    # more than one provider, and two operations writing one file would
+    # conflict.
     grouped: dict[str, list[Finding]] = {}
+    representatives: dict[str, InstructionSurface] = {}
     for finding in sorted(inventory.findings, key=lambda item: item.id):
-        grouped.setdefault(finding.surface_id, []).append(finding)
+        surface = surfaces.get(finding.surface_id)
+        if surface is None:
+            raise ValueError(f"finding references unknown surface: {finding.id}")
+        existing = representatives.get(surface.path)
+        if existing is None or (surface.provider, surface.precedence) < (
+            existing.provider,
+            existing.precedence,
+        ):
+            representatives[surface.path] = surface
+        seen = grouped.setdefault(surface.path, [])
+        if any(
+            item.category == finding.category
+            and item.location == finding.location
+            for item in seen
+        ):
+            continue
+        seen.append(finding)
     if candidate_dir is not None:
         candidate_dir.mkdir(parents=True, exist_ok=True)
 
-    for index, (surface_id, findings) in enumerate(sorted(grouped.items()), 1):
-        surface = surfaces.get(surface_id)
-        if surface is None:
-            raise ValueError(
-                f"finding references unknown surface: {findings[0].id}"
-            )
+    for index, (path, findings) in enumerate(sorted(grouped.items()), 1):
+        surface = representatives[path]
         operation_id = _operation_id(findings[0], index)
         action = "preserve"
         strategy = "proposal_only"
         source: str | None = None
         proposed_sha256 = surface.content_sha256
-        if candidate_dir is not None:
+        removable = [
+            finding
+            for finding in findings
+            if finding.category in AUTO_REMOVABLE_CATEGORIES
+            # Package files are replaced by their upstream on the next update,
+            # so editing one silently loses the change and desyncs the copy.
+            and surface.authority != "package"
+        ]
+        review_only = len(removable) != len(findings)
+        if candidate_dir is not None and removable:
             target = Path(surface.path)
             original = target.read_bytes()
             if sha256_bytes(original) != surface.content_sha256:
                 raise ValueError(f"surface changed after audit: {target}")
             removed_lines = {
                 finding.location["line"]
-                for finding in findings
+                for finding in removable
                 if isinstance(finding.location.get("line"), int)
             }
             rendered = b"".join(
@@ -83,9 +110,8 @@ def propose_inventory(
                 precondition_sha256=surface.content_sha256,
                 proposed_sha256=proposed_sha256,
                 backup_required=action != "preserve",
-                requires_confirmation=any(
-                    finding.confidence != "high" for finding in findings
-                ),
+                requires_confirmation=review_only
+                or any(finding.confidence != "high" for finding in findings),
                 approval=Approval(),
                 reason="; ".join(
                     f"{finding.category}: {finding.summary}"

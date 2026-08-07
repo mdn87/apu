@@ -7,7 +7,77 @@ import re
 from apu.models import Finding, InstructionSurface
 
 
-DETECTOR_VERSION = "1"
+DETECTOR_VERSION = "2"
+
+#: Categories whose only correct remediation is deleting the flagged line.
+#: Every other category is surfaced for an explicit human decision because
+#: removing the line would discard the rule rather than rewrite it.
+AUTO_REMOVABLE_CATEGORIES = frozenset({"duplicate-instruction"})
+
+_FENCE_PATTERN = re.compile(r"^\s*(?:`{3,}|~{3,})")
+_GRAPH_START_PATTERN = re.compile(r"^\s*(?:di)?graph\s+\w*\s*\{")
+_ALPHANUMERIC_PATTERN = re.compile(r"[0-9a-z]")
+
+#: A repeated heading, marker, or short label is document structure. Only a
+#: sentence-length line is substantive enough to call a duplicated instruction.
+_DUPLICATE_MINIMUM_WORDS = 6
+
+#: A rule that states when process is *not* required is not a multiplier.
+_NEGATION_PATTERN = re.compile(
+    r"\b(?:do not|don't|never|avoid|no need|not required|rather than|"
+    r"instead of|does not|doesn't|without)\b"
+)
+
+_OBLIGATION_PATTERN = re.compile(
+    r"\b(?:must|always|required|requiring|require|mandatory|shall|"
+    r"absolutely|need to)\b|\bbefore (?:any|every|each)\b"
+)
+_UNIVERSAL_SCOPE_PATTERN = re.compile(
+    r"\b(?:any|every|each|all)\s+"
+    r"(?:conversation|conversations|response|responses|turn|turns|task|tasks|"
+    r"message|messages|prompt|prompts|request|requests|action|actions|reply)\b"
+    r"|\bstart(?:ing)? (?:of )?(?:any|every|each)\b"
+    r"|\bbefore (?:any|every|each)\b"
+)
+_SKILL_PATTERN = re.compile(r"\b(?:skill|skills|workflow|workflows)\b")
+_SPECULATIVE_THRESHOLD_PATTERN = re.compile(r"\b\d{1,3}\s*%\s*chance\b")
+
+#: "each task" is per item; "all tasks" happens once. Only the former is a
+#: per-task loop.
+_REVIEW_QUANTIFIER_PATTERN = re.compile(
+    r"\b(?:every|each)\s+"
+    r"(?:task|tasks|change|changes|commit|commits|step|steps|feature|features|"
+    r"milestone|milestones|pr|prs)\b"
+)
+_REVIEW_ROLE_PATTERN = re.compile(
+    r"\b(?:reviewer|reviewers|review agent|code[- ]review|implementer|"
+    r"subagent|sub-agent|review cycle|review loop)\b"
+)
+
+_GATE_PATTERN = re.compile(
+    r"\b(?:approval|approve|design review|sign[- ]?off|brainstorm\w*|design|"
+    r"plan|spec|review|use this)\b"
+)
+#: A gate is unconditional only when the process is demanded *before* work,
+#: not merely mentioned alongside a quantifier.
+_GATE_SCOPE_PATTERN = re.compile(r"\bbefore (?:any|every|each|all)\b")
+
+_MICROTASK_PATTERN = re.compile(
+    r"\b(?:two|2)[-– ]to[-– ](?:five|5)[- ]minute\b"
+    r"|\b\d+\s*(?:to|[-–])\s*\d+[- ]minute\b"
+    r"|\bmicro-?tasks?\b"
+    r"|\bbite[- ]sized\b"
+)
+
+_BUILD_COMMAND_PATTERN = re.compile(
+    r"\b(?:npm|pnpm|yarn|pytest|cargo|dotnet|mvn|gradle)\s+"
+    r"(?:test|check|build|verify)\b"
+)
+_CREDENTIAL_PATTERN = re.compile(
+    r"\b(?:sk-proj-[a-z0-9_-]{12,}|api[_ -]?key\s*[:=]\s*\S{12,}|"
+    r"bearer\s+[a-z0-9._-]{16,})",
+    re.IGNORECASE,
+)
 
 
 def _finding_id(surface_id: str, category: str, line: int) -> str:
@@ -46,12 +116,31 @@ def classify_surface(
 
     findings: list[Finding] = []
     seen_lines: dict[str, list[int]] = defaultdict(list)
+    in_fenced_block = False
+    graph_depth = 0
     for line_number, raw_line in enumerate(content.splitlines(), 1):
+        if _FENCE_PATTERN.match(raw_line):
+            in_fenced_block = not in_fenced_block
+            continue
+        if in_fenced_block:
+            # Fenced content is an example or a transcript, not an instruction.
+            continue
+        if graph_depth or _GRAPH_START_PATTERN.match(raw_line):
+            # Diagram source describes a workflow; it does not impose one.
+            graph_depth += raw_line.count("{") - raw_line.count("}")
+            continue
+
         normalized = " ".join(raw_line.strip().lower().split())
         if not normalized or normalized.startswith(("<!--", "#")):
             continue
+        if not _ALPHANUMERIC_PATTERN.search(normalized):
+            # Rules, separators, and table borders repeat by design.
+            continue
 
-        if seen_lines[normalized]:
+        if (
+            seen_lines[normalized]
+            and len(normalized.split()) >= _DUPLICATE_MINIMUM_WORDS
+        ):
             findings.append(
                 _finding(
                     surface,
@@ -66,27 +155,36 @@ def classify_surface(
             )
         seen_lines[normalized].append(line_number)
 
-        if re.search(
-            r"\b(must|always|required to)\b.*\b(skill|workflow)\b.*"
-            r"\b(every (turn|conversation)|start of every)\b",
-            normalized,
-        ):
-            findings.append(
-                _finding(
-                    surface,
-                    line=line_number,
-                    category="universal-skill-trigger",
-                    severity="high",
-                    confidence="high",
-                    method="heuristic",
-                    evidence=("universal-trigger-pattern",),
-                    summary="A skill or workflow appears to be required universally.",
-                )
-            )
+        multiplier_candidate = not _NEGATION_PATTERN.search(normalized)
+        universal_trigger = False
 
-        if re.search(
-            r"\b(every|each)\s+task\b.*\b(implementer|reviewer|review agent)\b",
-            normalized,
+        if multiplier_candidate and _SKILL_PATTERN.search(normalized):
+            evidence: list[str] = []
+            if _UNIVERSAL_SCOPE_PATTERN.search(
+                normalized
+            ) and _OBLIGATION_PATTERN.search(normalized):
+                evidence.append("universal-trigger-pattern")
+            if _SPECULATIVE_THRESHOLD_PATTERN.search(normalized):
+                evidence.append("speculative-threshold-trigger")
+            if evidence:
+                universal_trigger = True
+                findings.append(
+                    _finding(
+                        surface,
+                        line=line_number,
+                        category="universal-skill-trigger",
+                        severity="high",
+                        confidence="high",
+                        method="heuristic",
+                        evidence=tuple(evidence),
+                        summary="A skill or workflow appears to be required universally.",
+                    )
+                )
+
+        if (
+            multiplier_candidate
+            and _REVIEW_QUANTIFIER_PATTERN.search(normalized)
+            and _REVIEW_ROLE_PATTERN.search(normalized)
         ):
             findings.append(
                 _finding(
@@ -101,10 +199,13 @@ def classify_surface(
                 )
             )
 
-        if re.search(
-            r"\b(approval|design review)\b.*\b(before|prior to)\b.*"
-            r"\b(any|every|all)\b",
-            normalized,
+        if (
+            multiplier_candidate
+            # One line gets one primary diagnosis.
+            and not universal_trigger
+            and _OBLIGATION_PATTERN.search(normalized)
+            and _GATE_PATTERN.search(normalized)
+            and _GATE_SCOPE_PATTERN.search(normalized)
         ):
             findings.append(
                 _finding(
@@ -119,7 +220,7 @@ def classify_surface(
                 )
             )
 
-        if re.search(r"\b(two|2)[-– ]to[-– ](five|5)[- ]minute\b", normalized):
+        if multiplier_candidate and _MICROTASK_PATTERN.search(normalized):
             findings.append(
                 _finding(
                     surface,
@@ -133,10 +234,12 @@ def classify_surface(
                 )
             )
 
-        if surface.scope == "global" and re.search(
-            r"\b(npm|pnpm|yarn|pytest|cargo|dotnet|mvn|gradle)\s+"
-            r"(test|check|build|verify)\b",
-            normalized,
+        if (
+            surface.scope == "global"
+            # A skill is portable method; example commands inside one are
+            # documentation, not a repository fact that belongs elsewhere.
+            and surface.kind != "skill"
+            and _BUILD_COMMAND_PATTERN.search(normalized)
         ):
             findings.append(
                 _finding(
@@ -151,12 +254,7 @@ def classify_surface(
                 )
             )
 
-        if re.search(
-            r"\b(sk-proj-[a-z0-9_-]{12,}|api[_ -]?key\s*[:=]\s*\S{12,}|"
-            r"bearer\s+[a-z0-9._-]{16,})",
-            normalized,
-            re.IGNORECASE,
-        ):
+        if _CREDENTIAL_PATTERN.search(normalized):
             findings.append(
                 _finding(
                     surface,

@@ -23,7 +23,11 @@ from apu.planning import (
 from apu.wizard import ReviewDecision, review_plan
 
 
-def inventory(path: Path) -> Inventory:
+def inventory(
+    path: Path,
+    *,
+    categories: tuple[tuple[str, int], ...] = (("universal-skill-trigger", 1),),
+) -> Inventory:
     surface = InstructionSurface(
         id="sha256:" + "a" * 64,
         path=str(path),
@@ -38,16 +42,23 @@ def inventory(path: Path) -> Inventory:
         precedence=30,
         sensitive=False,
     )
-    finding = Finding(
-        id="finding-1",
-        surface_id=surface.id,
-        location={"line": 1},
-        category="universal-skill-trigger",
-        severity="high",
-        confidence="high",
-        analysis_method="heuristic",
-        evidence=("matched-rule",),
-        summary="Universal trigger.",
+    findings = tuple(
+        Finding(
+            id=f"finding-{index}",
+            surface_id=surface.id,
+            location={"line": line},
+            category=category,
+            severity="high",
+            confidence="high",
+            analysis_method=(
+                "structural"
+                if category == "duplicate-instruction"
+                else "heuristic"
+            ),
+            evidence=("matched-rule",),
+            summary=f"{category}.",
+        )
+        for index, (category, line) in enumerate(categories, 1)
     )
     return Inventory(
         schema_version=1,
@@ -55,7 +66,7 @@ def inventory(path: Path) -> Inventory:
         generated_at="2026-08-06T10:00:00Z",
         scope={"roots": [str(path.parent)], "working_directories": []},
         surfaces=(surface,),
-        findings=(finding,),
+        findings=findings,
     )
 
 
@@ -250,11 +261,10 @@ def test_proposal_writes_reviewable_mutation_candidate_when_requested(
 ) -> None:
     target = tmp_path / "AGENTS.md"
     target.write_text(
-        "Always invoke the skill at the start of every conversation.\n"
-        "Run focused tests.\n",
+        "Run focused tests.\nRun focused tests.\n",
         encoding="utf-8",
     )
-    audit = inventory(target)
+    audit = inventory(target, categories=(("duplicate-instruction", 2),))
     actual_surface = replace(
         audit.surfaces[0],
         content_sha256=sha256_bytes(target.read_bytes()),
@@ -272,6 +282,79 @@ def test_proposal_writes_reviewable_mutation_candidate_when_requested(
     assert operation.strategy == "full_file"
     assert Path(operation.source).read_text(encoding="utf-8") == "Run focused tests.\n"
     assert proposed.validation["protected_roots"] == [str(tmp_path)]
+
+
+def test_multiplier_finding_is_proposed_for_review_not_deleted(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "AGENTS.md"
+    body = "Always invoke the skill at the start of every conversation.\n"
+    target.write_text(body, encoding="utf-8")
+    audit = inventory(target)
+    audit = replace(
+        audit,
+        surfaces=(
+            replace(
+                audit.surfaces[0],
+                content_sha256=sha256_bytes(target.read_bytes()),
+            ),
+        ),
+    )
+
+    proposed = propose_inventory(
+        audit,
+        created_at="2026-08-06T11:00:00Z",
+        candidate_dir=tmp_path / "candidates",
+    )
+
+    operation = proposed.operations[0]
+    assert "universal-skill-trigger" in operation.reason
+    # Deleting the line would drop the rule instead of rewriting it, so the
+    # operation stays a reviewable proposal and never edits the file.
+    assert operation.action == "preserve"
+    assert operation.strategy == "proposal_only"
+    assert operation.source is None
+    assert operation.requires_confirmation is True
+    assert target.read_text(encoding="utf-8") == body
+
+
+def test_mixed_findings_remove_only_the_auto_removable_line(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "AGENTS.md"
+    target.write_text(
+        "Always invoke the skill at the start of every conversation.\n"
+        "Run focused tests.\n"
+        "Run focused tests.\n",
+        encoding="utf-8",
+    )
+    audit = inventory(
+        target,
+        categories=(("universal-skill-trigger", 1), ("duplicate-instruction", 3)),
+    )
+    audit = replace(
+        audit,
+        surfaces=(
+            replace(
+                audit.surfaces[0],
+                content_sha256=sha256_bytes(target.read_bytes()),
+            ),
+        ),
+    )
+
+    proposed = propose_inventory(
+        audit,
+        created_at="2026-08-06T11:00:00Z",
+        candidate_dir=tmp_path / "candidates",
+    )
+
+    operation = proposed.operations[0]
+    assert operation.action == "merge"
+    assert operation.requires_confirmation is True
+    assert Path(operation.source).read_text(encoding="utf-8") == (
+        "Always invoke the skill at the start of every conversation.\n"
+        "Run focused tests.\n"
+    )
 
 
 def test_review_can_edit_candidate_or_expand_relocation(tmp_path: Path) -> None:
@@ -325,3 +408,74 @@ def test_review_can_edit_candidate_or_expand_relocation(tmp_path: Path) -> None:
     assert {item.atomic_group_id for item in relocated.operations} == {
         "candidate-relocate"
     }
+
+
+def test_one_file_yields_one_operation_across_providers(tmp_path: Path) -> None:
+    target = tmp_path / "SKILL.md"
+    target.write_text(
+        "Run focused tests.\nRun focused tests.\n", encoding="utf-8",
+    )
+    audit = inventory(target, categories=(("duplicate-instruction", 2),))
+    codex_surface = replace(
+        audit.surfaces[0],
+        content_sha256=sha256_bytes(target.read_bytes()),
+    )
+    # The same file is an effective surface for both providers.
+    claude_surface = replace(
+        codex_surface,
+        id="sha256:" + "c" * 64,
+        provider="claude",
+        precedence=80,
+    )
+    audit = replace(
+        audit,
+        surfaces=(codex_surface, claude_surface),
+        findings=(
+            audit.findings[0],
+            replace(
+                audit.findings[0],
+                id="finding-2",
+                surface_id=claude_surface.id,
+            ),
+        ),
+    )
+
+    proposed = propose_inventory(
+        audit,
+        created_at="2026-08-06T11:00:00Z",
+        candidate_dir=tmp_path / "candidates",
+    )
+
+    assert [operation.target for operation in proposed.operations] == [
+        str(target)
+    ]
+    # The duplicated per-provider finding is recorded once, not twice.
+    assert proposed.operations[0].evidence == ("finding-1",)
+
+
+def test_package_owned_files_are_never_rewritten(tmp_path: Path) -> None:
+    target = tmp_path / "SKILL.md"
+    body = "Run focused tests.\nRun focused tests.\n"
+    target.write_text(body, encoding="utf-8")
+    audit = inventory(target, categories=(("duplicate-instruction", 2),))
+    audit = replace(
+        audit,
+        surfaces=(
+            replace(
+                audit.surfaces[0],
+                authority="package",
+                content_sha256=sha256_bytes(target.read_bytes()),
+            ),
+        ),
+    )
+
+    proposed = propose_inventory(
+        audit,
+        created_at="2026-08-06T11:00:00Z",
+        candidate_dir=tmp_path / "candidates",
+    )
+
+    operation = proposed.operations[0]
+    assert operation.action == "preserve"
+    assert operation.strategy == "proposal_only"
+    assert target.read_text(encoding="utf-8") == body
