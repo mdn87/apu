@@ -457,6 +457,10 @@ asserting it never appears in a rendered work order.
 - **Auto-apply overreach** — the v0.1 lesson (deleting fence lines) at machine
   scale would be destructive. Categories start as `work-order`; `auto`
   requires both deterministic remediation *and* accumulated outcome evidence.
+  Recurred 2026-08-06: an unreceipted batch description rewrite dropped the
+  closing `---` from 15 SKILL.md frontmatter blocks, breaking every
+  superpowers skill in Codex CLI; see
+  `incidents/2026-08-06-skill-frontmatter-close-dropped.md`.
 - **Package upgrades as regressions** — an upgrade op is still a plan op:
   preconditions, receipt, rollback, and a monitoring window like any other
   change.
