@@ -72,6 +72,8 @@ def test_state_creation_is_explicit_and_private(tmp_path: Path) -> None:
         "plans",
         "installations",
         "outcomes",
+        "snapshots",
+        "restore-journals",
         "transactions",
     }
     if os.name == "posix":

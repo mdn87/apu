@@ -12,6 +12,7 @@ from .base import (
     deduplicate_surfaces,
     directory_depth,
     make_surface,
+    repository_bases,
     safe_rglob,
     skill_files,
 )
@@ -60,7 +61,9 @@ class CodexAdapter:
             else:
                 for path in safe_rglob(root, "AGENTS.md"):
                     self._add_repository_instruction(surfaces, path)
-            for directory in ancestor_directories(root):
+            for directory in repository_bases(
+                ancestor_directories(root), home=normalized_home
+            ):
                 self._add_repository_instruction(
                     surfaces, directory / "AGENTS.md"
                 )

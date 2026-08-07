@@ -169,3 +169,30 @@ def ancestor_directories(path: Path) -> tuple[Path, ...]:
     logical = absolute_logical_path(path)
     directory = logical.parent if logical.is_file() else logical
     return tuple(reversed((directory, *directory.parents)))
+
+
+def repository_bases(
+    directories: Iterable[Path], *, home: Path
+) -> tuple[Path, ...]:
+    """Drop directories at or above a user home directory.
+
+    Nothing at or above home is a repository, so a home-level `.claude` or
+    `.agents` tree is a global surface. Without this boundary an ancestor walk
+    from a repository stored beneath home re-discovers the user's own global
+    configuration with repository authority.
+    """
+
+    boundaries = {absolute_logical_path(home)}
+    try:
+        boundaries.add(absolute_logical_path(Path.home()))
+    except (OSError, RuntimeError):  # pragma: no cover - platform dependent
+        pass
+    excluded: set[Path] = set()
+    for boundary in boundaries:
+        excluded.add(boundary)
+        excluded.update(boundary.parents)
+    return tuple(
+        directory
+        for directory in directories
+        if absolute_logical_path(directory) not in excluded
+    )

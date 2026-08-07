@@ -18,7 +18,7 @@ def test_audit_to_rollback_restores_original_tree(tmp_path: Path) -> None:
     repository.mkdir()
     policy = repository / "AGENTS.md"
     original = (
-        "You must invoke a workflow skill at the start of every conversation.\n"
+        "Run focused tests for changed behavior.\n"
         "Run focused tests for changed behavior.\n"
     ).encode()
     policy.write_bytes(original)

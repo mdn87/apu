@@ -104,6 +104,44 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--root-session-id")
     audit.add_argument("--json", dest="output", type=Path)
 
+    system = commands.add_parser("system", help="operate on a system profile")
+    system_commands = system.add_subparsers(
+        dest="system_command", required=True
+    )
+    system_audit = system_commands.add_parser(
+        "audit", help="inventory the configured machine and repositories"
+    )
+    system_audit.add_argument("--profile", type=Path)
+    system_audit.add_argument("--json", dest="output", type=Path)
+    system_commands.add_parser(
+        "status", help="show system snapshots and interrupted restores"
+    )
+
+    snapshot = commands.add_parser("snapshot", help="manage system restore points")
+    snapshot_commands = snapshot.add_subparsers(
+        dest="snapshot_command", required=True
+    )
+    snapshot_create = snapshot_commands.add_parser(
+        "create", help="capture the effective system policy stack"
+    )
+    snapshot_create.add_argument("--profile", type=Path)
+    snapshot_create.add_argument("--label")
+    snapshot_diff = snapshot_commands.add_parser(
+        "diff", help="show drift from a snapshot"
+    )
+    snapshot_diff.add_argument("snapshot")
+    snapshot_commands.add_parser("list", help="list system snapshots")
+    snapshot_restore = snapshot_commands.add_parser(
+        "restore", help="restore all or selected snapshot paths"
+    )
+    snapshot_restore.add_argument("snapshot", nargs="?")
+    snapshot_restore.add_argument("--path", action="append", type=Path, default=[])
+    snapshot_restore.add_argument(
+        "--force-path", action="append", type=Path, default=[]
+    )
+    snapshot_restore.add_argument("--resume", dest="journal_id")
+    snapshot_restore.add_argument("--unwind", action="store_true")
+
     propose = commands.add_parser("propose", help="create a deterministic plan")
     propose.add_argument("--inventory", required=True, type=Path)
     propose.add_argument("--output", type=Path)
@@ -187,6 +225,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "audit":
         return _audit(args)
+    if args.command == "system":
+        return _system(args)
+    if args.command == "snapshot":
+        return _snapshot(args)
     if args.command == "propose":
         return _propose(args)
     if args.command == "review":
@@ -223,6 +265,111 @@ def _audit(args: argparse.Namespace) -> int:
     else:
         _emit(value)
     return 0
+
+
+def _system(args: argparse.Namespace) -> int:
+    if args.system_command == "audit":
+        from apu.system_audit import audit_system
+        from apu.system_profile import load_system_profile
+
+        profile = load_system_profile(args.profile, home=_home())
+        inventory = audit_system(profile, home=_home())
+        value = inventory.to_dict()
+        if args.output:
+            _write_artifact(args.output, value)
+            print(args.output)
+        else:
+            _emit(value)
+        return 0
+    if args.system_command == "status":
+        from apu.restore_journal import list_restore_journals
+        from apu.snapshots import list_snapshots
+
+        state_home = resolve_state_home()
+        snapshots = list_snapshots(state_home)
+        journals = list_restore_journals(state_home / "restore-journals")
+        _emit(
+            {
+                "state_home": str(state_home),
+                "snapshots": snapshots,
+                "restore_journals": journals,
+            }
+        )
+        return 0
+    raise ValueError(f"unsupported system command: {args.system_command}")
+
+
+def _snapshot(args: argparse.Namespace) -> int:
+    from apu.snapshots import (
+        DEFAULT_RETENTION_COUNT,
+        create_snapshot,
+        diff_snapshot,
+        enforce_retention,
+        list_snapshots,
+    )
+
+    state_home = ensure_state_home(resolve_state_home())
+    if args.snapshot_command == "create":
+        from apu.snapshot_scope import snapshot_surfaces_for_profile
+        from apu.system_profile import load_system_profile
+
+        profile = load_system_profile(args.profile, home=_home())
+        surfaces, _inventory = snapshot_surfaces_for_profile(
+            profile, home=_home()
+        )
+        manifest = create_snapshot(
+            state_home,
+            surfaces,
+            label=args.label,
+        )
+        enforce_retention(
+            state_home,
+            keep_last=DEFAULT_RETENTION_COUNT,
+        )
+        _emit(manifest)
+        return 0
+    if args.snapshot_command == "diff":
+        changes = diff_snapshot(state_home, args.snapshot)
+        _emit({"snapshot_id": args.snapshot, "changes": changes})
+        return 0
+    if args.snapshot_command == "list":
+        _emit({"snapshots": list_snapshots(state_home)})
+        return 0
+    if args.snapshot_command == "restore":
+        if args.journal_id is not None:
+            if args.snapshot is not None or args.path or args.force_path:
+                raise ValueError(
+                    "--resume cannot be combined with a snapshot or path selectors"
+                )
+            from apu.restore_journal import resume_restore
+
+            result = resume_restore(
+                state_home / "restore-journals",
+                args.journal_id,
+                unwind=args.unwind,
+            )
+        else:
+            if args.snapshot is None:
+                raise ValueError("snapshot restore requires SNAP or --resume JOURNAL_ID")
+            if args.unwind:
+                raise ValueError("--unwind requires --resume JOURNAL_ID")
+            from apu.snapshot_restore import restore_snapshot
+
+            result = restore_snapshot(
+                state_home,
+                args.snapshot,
+                paths=args.path,
+                force_paths=args.force_path,
+            )
+        _emit(
+            {
+                "journal_id": result.journal_id,
+                "status": result.status,
+                "journal_path": str(result.journal_path),
+            }
+        )
+        return 0
+    raise ValueError(f"unsupported snapshot command: {args.snapshot_command}")
 
 
 def _propose(args: argparse.Namespace) -> int:
