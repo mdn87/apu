@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -41,7 +42,10 @@ def test_probe_uses_same_workspace_policy_and_reports_denied(
     assert result.write_denied is True
     assert result.context_id == result.mechanism
     assert ":workspace" in seen["command"]
-    assert 'windows.sandbox="unelevated"' in seen["command"]
+    if os.name == "nt":
+        assert 'windows.sandbox="unelevated"' in seen["command"]
+    else:
+        assert 'windows.sandbox="unelevated"' not in seen["command"]
     assert str(live.resolve()) in seen["command"][-1]
 
 
