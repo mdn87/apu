@@ -72,8 +72,8 @@ receipt with campaign, snapshot, and idempotency data.
 
 ## Guidance and model refresh
 
-M7 makes guidance and model identity explicit, versioned inputs. These are the
-only system commands that use the network:
+M7 makes guidance and model identity explicit, versioned inputs. Refresh is
+explicit network activity:
 
 ```console
 apu refresh guidance --profile profile.toml --output guidance-refresh.json
@@ -103,6 +103,34 @@ System inventories now carry a typed baseline/model evaluation context. New
 campaigns verify its immutable private artifacts and freeze it in the campaign
 manifest; older M6 campaigns remain readable, while v1 inventories must be
 regenerated before creating a new campaign.
+
+## Package research
+
+M8 observes tracked Claude packages from authoritative installed metadata,
+resolves stable upstream tags during an explicit networked research command,
+and stores candidate trees privately by content hash. Add package coordinates
+to the system profile:
+
+```toml
+packages = ["superpowers@claude-plugins-official"]
+```
+
+Then compare one installed package with its latest stable candidate:
+
+```console
+apu research packages superpowers --profile profile.toml
+```
+
+Installed and candidate trees run through the same frozen classifier policy.
+Reports contain only relative finding metadata, hashes, provenance, and
+explicitly unclassified dynamic surfaces—never instruction bodies. Package
+caches and provider-managed installation metadata remain read-only. Archive
+links are never created or followed on disk: a versioned manifest records
+validated package-internal links, and analysis reads the bound target blob
+through that virtual view. Until a provider exposes a documented exact-version
+pin or APU gains a journaled provider-update protocol, research emits `hold`
+or `work-order` and reports upgrade mutation as unavailable instead of
+claiming an unverified install.
 
 ## Development
 

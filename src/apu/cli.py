@@ -175,6 +175,22 @@ def build_parser() -> argparse.ArgumentParser:
     guidance_diff.add_argument("after", type=Path)
     guidance_diff.add_argument("--output", type=Path)
 
+    research = commands.add_parser(
+        "research", help="compare tracked packages with immutable upstream candidates"
+    )
+    research_commands = research.add_subparsers(
+        dest="research_command",
+        required=True,
+    )
+    research_packages = research_commands.add_parser(
+        "packages",
+        help="research installed packages without mutating live provider state",
+    )
+    research_packages.add_argument("name", nargs="?")
+    research_packages.add_argument("--profile", type=Path)
+    research_packages.add_argument("--candidate-version")
+    research_packages.add_argument("--output", type=Path)
+
     snapshot = commands.add_parser("snapshot", help="manage system restore points")
     snapshot_commands = snapshot.add_subparsers(
         dest="snapshot_command", required=True
@@ -289,6 +305,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _refresh(args)
     if args.command == "guidance":
         return _guidance(args)
+    if args.command == "research":
+        return _research(args)
     if args.command == "snapshot":
         return _snapshot(args)
     if args.command == "propose":
@@ -545,6 +563,74 @@ def _refresh(args: argparse.Namespace) -> int:
         print(args.output)
     else:
         _emit(value)
+    return 0
+
+
+def _research(args: argparse.Namespace) -> int:
+    from apu.guidance import load_guidance_detector_policy
+    from apu.package_coordinates import parse_profile_package
+    from apu.package_research import research_package
+    from apu.system_audit import load_evaluation_context
+    from apu.system_profile import load_system_profile
+
+    if args.research_command != "packages":
+        raise ValueError(f"unsupported research command: {args.research_command}")
+    home = _home()
+    profile = load_system_profile(args.profile, home=home)
+    coordinates = tuple(
+        parse_profile_package(value) for value in profile.packages
+    )
+    if args.name:
+        exact = [
+            coordinate
+            for coordinate in coordinates
+            if args.name
+            in {
+                coordinate.package,
+                coordinate.profile_selector,
+                coordinate.package_id,
+            }
+        ]
+        if len(exact) != 1:
+            raise ValueError(
+                "package name must resolve to exactly one tracked profile package"
+            )
+        coordinates = tuple(exact)
+    if not coordinates:
+        raise ValueError("profile does not track any packages")
+    if args.output is not None and len(coordinates) != 1:
+        raise ValueError("--output requires one selected package")
+
+    state_home = ensure_state_home(resolve_state_home())
+    evaluation = load_evaluation_context(state_home)
+    detector_policy = load_guidance_detector_policy(state_home)
+    results: list[dict[str, Any]] = []
+    exported: dict[str, Any] | None = None
+    for coordinate in coordinates:
+        report, path = research_package(
+            coordinate,
+            home=home,
+            state_home=state_home,
+            profile_sha256=profile.artifact_sha256,
+            detector_policy=detector_policy,
+            baseline_stamp=evaluation.baseline,
+            requested_version=args.candidate_version,
+        )
+        exported = report
+        results.append(
+            {
+                "package_id": coordinate.package_id,
+                "research_id": report["research_id"],
+                "report_path": str(path),
+                "recommendation": report["recommendation"],
+                "classifier_delta": report["classifier_comparison"]["delta"],
+            }
+        )
+    if args.output is not None:
+        _write_artifact(args.output, exported)
+        print(args.output)
+    else:
+        _emit({"reports": results})
     return 0
 
 
