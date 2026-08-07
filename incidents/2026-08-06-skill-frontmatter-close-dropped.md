@@ -2,7 +2,9 @@
 
 - **Date observed:** 2026-08-06 (Codex CLI startup)
 - **Date of mutation:** 2026-08-06 02:51:44 (all files share this mtime — single batch action)
-- **Status:** logged; files not yet repaired at time of writing
+- **Status:** repaired 2026-08-06 — closing `---` re-inserted after the
+  `description:` line in all 15 files (CRLF preserved for prompt-master);
+  every frontmatter block re-verified with a YAML parse
 - **Class:** auto-apply overreach — same category as the v0.1 fence-line-deletion
   lesson recorded in roadmap.md "Standing risks"
 
