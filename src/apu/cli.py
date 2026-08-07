@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -116,9 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--json", dest="output", type=Path)
 
     system = commands.add_parser("system", help="operate on a system profile")
-    system_commands = system.add_subparsers(
-        dest="system_command", required=True
-    )
+    system_commands = system.add_subparsers(dest="system_command", required=True)
     system_audit = system_commands.add_parser(
         "audit", help="inventory the configured machine and repositories"
     )
@@ -139,16 +138,15 @@ def build_parser() -> argparse.ArgumentParser:
     system_apply.add_argument("--auto-only", action="store_true")
     system_apply.add_argument("--yes", action="store_true")
     system_apply.add_argument("--installation-id")
-    system_commands.add_parser(
+    system_status = system_commands.add_parser(
         "status", help="show system snapshots and interrupted restores"
     )
+    system_status.add_argument("--profile", type=Path)
 
     refresh = commands.add_parser(
         "refresh", help="explicitly refresh versioned external inputs"
     )
-    refresh_commands = refresh.add_subparsers(
-        dest="refresh_command", required=True
-    )
+    refresh_commands = refresh.add_subparsers(dest="refresh_command", required=True)
     refresh_guidance = refresh_commands.add_parser(
         "guidance", help="fetch guidance sources or adopt a reviewed baseline"
     )
@@ -165,9 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
     guidance = commands.add_parser(
         "guidance", help="inspect adopted guidance baselines"
     )
-    guidance_commands = guidance.add_subparsers(
-        dest="guidance_command", required=True
-    )
+    guidance_commands = guidance.add_subparsers(dest="guidance_command", required=True)
     guidance_diff = guidance_commands.add_parser(
         "diff", help="diff two adopted baseline artifacts"
     )
@@ -189,12 +185,15 @@ def build_parser() -> argparse.ArgumentParser:
     research_packages.add_argument("name", nargs="?")
     research_packages.add_argument("--profile", type=Path)
     research_packages.add_argument("--candidate-version")
+    research_packages.add_argument(
+        "--upgrade-capability",
+        action="store_true",
+        help="probe exact-version update and rollback support without mutation",
+    )
     research_packages.add_argument("--output", type=Path)
 
     snapshot = commands.add_parser("snapshot", help="manage system restore points")
-    snapshot_commands = snapshot.add_subparsers(
-        dest="snapshot_command", required=True
-    )
+    snapshot_commands = snapshot.add_subparsers(dest="snapshot_command", required=True)
     snapshot_create = snapshot_commands.add_parser(
         "create", help="capture the effective system policy stack"
     )
@@ -230,6 +229,15 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--yes", action="store_true")
     apply.add_argument("--installation-id")
 
+    dispatch = commands.add_parser(
+        "dispatch",
+        help="run a campaign work order in a capability-tested isolated stage",
+    )
+    dispatch.add_argument("work_order", type=Path)
+    dispatch.add_argument("--runner", choices=("codex", "claude"), default="codex")
+    dispatch.add_argument("--attempt", type=int, default=1)
+    dispatch.add_argument("--timeout", type=int, default=900)
+
     validate = commands.add_parser("validate", help="run structural validation")
     selectors = validate.add_mutually_exclusive_group()
     selectors.add_argument("--plan", type=Path)
@@ -249,7 +257,9 @@ def build_parser() -> argparse.ArgumentParser:
     record.add_argument("--receipt", required=True, type=Path)
     record.add_argument("--task-id")
     record.add_argument("--non-material", action="store_true")
-    record.add_argument("--source", choices=("user", "trace", "imported"), default="user")
+    record.add_argument(
+        "--source", choices=("user", "trace", "imported"), default="user"
+    )
     record.add_argument("--elapsed-seconds", type=float)
     record.add_argument("--agent-count", type=int)
     record.add_argument("--review-count", type=int)
@@ -268,8 +278,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
     record.add_argument("--defect-category")
     record.add_argument("--notes")
+    record.add_argument(
+        "--activate",
+        action="append",
+        default=[],
+        metavar="CATEGORY",
+        help="record an explicit user-attested category activation",
+    )
+    record.add_argument(
+        "--fixture-results",
+        type=Path,
+        help="JSON array of provenance-bearing fixture result objects",
+    )
+    record.add_argument(
+        "--close-window",
+        action="store_true",
+        help="close a campaign window after both monitoring thresholds",
+    )
     listing = outcome_commands.add_parser("list")
     listing.add_argument("--receipt", type=Path)
+    promotion = outcome_commands.add_parser(
+        "promotion",
+        help="evaluate evidence and emit a reviewed profile-edit proposal",
+    )
+    promotion.add_argument("--receipt", required=True, type=Path)
+    promotion.add_argument("--category", required=True)
+    promotion.add_argument("--profile", required=True, type=Path)
+    promotion.add_argument("--deterministic-remediation", action="store_true")
+    promotion.add_argument("--output", type=Path)
+    clear_override = outcome_commands.add_parser(
+        "clear-override",
+        help="clear a demotion override after displaying its evidence",
+    )
+    clear_override.add_argument("--category", required=True)
+    clear_override.add_argument("--evidence", required=True, type=Path)
+    clear_override.add_argument("--reviewed-by")
+    clear_override.add_argument("--yes", action="store_true")
 
     init = commands.add_parser("init", help="run the guided first-use flow")
     init.add_argument("path", nargs="?", type=Path, default=Path.cwd())
@@ -315,6 +359,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _review(args)
     if args.command == "apply":
         return _apply(args)
+    if args.command == "dispatch":
+        return _run_dispatch(args)
     if args.command == "validate":
         return _validate(args)
     if args.command == "rollback":
@@ -426,15 +472,16 @@ def _system(args: argparse.Namespace) -> int:
                 "reviewed plan candidates before full apply"
             )
         if not args.yes:
-            answer = input(
-                "Snapshot and apply deterministic campaign operations? [y/N] "
-            ).strip().lower()
+            answer = (
+                input("Snapshot and apply deterministic campaign operations? [y/N] ")
+                .strip()
+                .lower()
+            )
             if answer not in {"y", "yes"}:
                 return 1
         profile = load_system_profile(args.profile, home=_home())
         installation_id = args.installation_id or (
-            "campaign-"
-            + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            "campaign-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         )
         result = apply_campaign(
             state_home,
@@ -445,6 +492,7 @@ def _system(args: argparse.Namespace) -> int:
         _emit(result)
         return 0
     if args.system_command == "status":
+        from apu.efficacy_policy import demotion_status_overlay
         from apu.model_registry import (
             load_model_registry,
             model_registry_artifact_sha256,
@@ -454,8 +502,18 @@ def _system(args: argparse.Namespace) -> int:
         from apu.snapshots import list_snapshots
         from apu.system_audit import load_evaluation_context
         from apu.system_campaign import list_campaign_status
+        from apu.system_profile import ProfileError, load_system_profile
 
         state_home = resolve_state_home()
+        try:
+            profile_policy = load_system_profile(
+                args.profile,
+                home=_home(),
+            ).remediation_policy
+        except ProfileError:
+            if args.profile is not None:
+                raise
+            profile_policy = {}
         snapshots = list_snapshots(state_home)
         journals = list_restore_journals(state_home / "restore-journals")
         stored_registry = load_model_registry(state_home)
@@ -463,10 +521,9 @@ def _system(args: argparse.Namespace) -> int:
             stored_registry,
             _local_model_observations(),
         )
-        has_stored_registry = (
-            stored_registry["refresh_attempted_at"] is not None
-            or bool(stored_registry["models"])
-        )
+        has_stored_registry = stored_registry[
+            "refresh_attempted_at"
+        ] is not None or bool(stored_registry["models"])
         model_artifact_sha256 = (
             model_registry_artifact_sha256(stored_registry)
             if has_stored_registry and model_registry == stored_registry
@@ -481,6 +538,10 @@ def _system(args: argparse.Namespace) -> int:
                     model_artifact_sha256=model_artifact_sha256,
                 ).to_dict(),
                 "campaigns": list_campaign_status(state_home),
+                "remediation_policy": demotion_status_overlay(
+                    profile_policy,
+                    state_home,
+                ),
                 "snapshots": snapshots,
                 "restore_journals": journals,
             }
@@ -577,9 +638,7 @@ def _research(args: argparse.Namespace) -> int:
         raise ValueError(f"unsupported research command: {args.research_command}")
     home = _home()
     profile = load_system_profile(args.profile, home=home)
-    coordinates = tuple(
-        parse_profile_package(value) for value in profile.packages
-    )
+    coordinates = tuple(parse_profile_package(value) for value in profile.packages)
     if args.name:
         exact = [
             coordinate
@@ -601,7 +660,30 @@ def _research(args: argparse.Namespace) -> int:
     if args.output is not None and len(coordinates) != 1:
         raise ValueError("--output requires one selected package")
 
-    state_home = ensure_state_home(resolve_state_home())
+    state_home = resolve_state_home()
+    if args.upgrade_capability:
+        from apu.package_upgrade import assess_claude_package_upgrade
+
+        capabilities = [
+            assess_claude_package_upgrade(
+                coordinate,
+                home=home,
+            ).to_dict()
+            for coordinate in coordinates
+        ]
+        value: Any = (
+            capabilities[0]
+            if args.output is not None and len(capabilities) == 1
+            else {"capabilities": capabilities}
+        )
+        if args.output is not None:
+            _write_artifact(args.output, value)
+            print(args.output)
+        else:
+            _emit(value)
+        return 0 if all(item["status"] == "available" for item in capabilities) else 1
+
+    state_home = ensure_state_home(state_home)
     evaluation = load_evaluation_context(state_home)
     detector_policy = load_guidance_detector_policy(state_home)
     results: list[dict[str, Any]] = []
@@ -666,9 +748,7 @@ def _snapshot(args: argparse.Namespace) -> int:
         from apu.system_profile import load_system_profile
 
         profile = load_system_profile(args.profile, home=_home())
-        surfaces, _inventory = snapshot_surfaces_for_profile(
-            profile, home=_home()
-        )
+        surfaces, _inventory = snapshot_surfaces_for_profile(profile, home=_home())
         manifest = create_snapshot(
             state_home,
             surfaces,
@@ -702,7 +782,9 @@ def _snapshot(args: argparse.Namespace) -> int:
             )
         else:
             if args.snapshot is None:
-                raise ValueError("snapshot restore requires SNAP or --resume JOURNAL_ID")
+                raise ValueError(
+                    "snapshot restore requires SNAP or --resume JOURNAL_ID"
+                )
             if args.unwind:
                 raise ValueError("--unwind requires --resume JOURNAL_ID")
             from apu.snapshot_restore import restore_snapshot
@@ -761,24 +843,20 @@ def _review(args: argparse.Namespace) -> int:
         def decide(operation):
             key = operation.atomic_group_id or operation.id
             if key not in decisions:
-                answer = input(
-                    f"{operation.id} {operation.action} {operation.target} "
-                    "[a]pprove/[r]eject/[d]efer/[e]dit/[m]ove: "
-                ).strip().lower()
+                answer = (
+                    input(
+                        f"{operation.id} {operation.action} {operation.target} "
+                        "[a]pprove/[r]eject/[d]efer/[e]dit/[m]ove: "
+                    )
+                    .strip()
+                    .lower()
+                )
                 if answer == "e":
-                    source = Path(
-                        input("Replacement candidate path: ").strip()
-                    )
-                    return ReviewDecision(
-                        "approved", replacement_source=source
-                    )
+                    source = Path(input("Replacement candidate path: ").strip())
+                    return ReviewDecision("approved", replacement_source=source)
                 if answer == "m":
-                    destination = Path(
-                        input("Relocation destination path: ").strip()
-                    )
-                    return ReviewDecision(
-                        "approved", relocate_target=destination
-                    )
+                    destination = Path(input("Relocation destination path: ").strip())
+                    return ReviewDecision("approved", relocate_target=destination)
                 decisions[key] = {
                     "a": "approved",
                     "r": "rejected",
@@ -787,7 +865,13 @@ def _review(args: argparse.Namespace) -> int:
             return decisions[key]
 
         reviewed = review_plan(plan, decide=decide, recorded_at=_timestamp())
-    destination = args.output or args.plan
+    destination = args.output
+    if destination is None:
+        destination = (
+            args.plan.with_name(f"{args.plan.stem}.reviewed.json")
+            if plan.validation.get("campaign_binding") is not None
+            else args.plan
+        )
     _write_artifact(destination, reviewed.to_dict())
     print(destination)
     return 0 if reviewed.status == "approved" else 1
@@ -795,6 +879,10 @@ def _review(args: argparse.Namespace) -> int:
 
 def _apply(args: argparse.Namespace) -> int:
     from apu.apply import apply_plan
+    from apu.dispatch_apply import (
+        apply_dispatched_plan,
+        dispatch_plan_binding,
+    )
 
     plan = _load_plan(args.plan)
     if not args.yes:
@@ -804,14 +892,73 @@ def _apply(args: argparse.Namespace) -> int:
     installation_id = args.installation_id or (
         "install-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     )
-    receipt = apply_plan(
-        plan,
-        state_home=resolve_state_home(),
-        installation_id=installation_id,
-        confirmed=True,
-    )
+    state_home = resolve_state_home()
+    if dispatch_plan_binding(state_home, plan) is not None:
+        receipt = apply_dispatched_plan(
+            state_home,
+            plan,
+            installation_id=installation_id,
+        )
+    else:
+        receipt = apply_plan(
+            plan,
+            state_home=state_home,
+            installation_id=installation_id,
+            confirmed=True,
+        )
     print(receipt)
     return 0
+
+
+def _run_dispatch(args: argparse.Namespace) -> int:
+    from apu.dispatch import dispatch_work_order
+    from apu.dispatch_runtime import runtime_for
+
+    state_home = ensure_state_home(resolve_state_home()).resolve()
+    supplied = args.work_order.expanduser().resolve()
+    campaign_root = (state_home / "campaigns").resolve()
+    if not supplied.is_relative_to(campaign_root):
+        raise ValueError(
+            "automated dispatch requires a private campaign work-order path"
+        )
+    relative = supplied.relative_to(campaign_root)
+    if (
+        len(relative.parts) != 3
+        or relative.parts[1] != "work-orders"
+        or supplied.suffix != ".md"
+    ):
+        raise ValueError(
+            "work order must be CAMPAIGN/work-orders/WORK_ORDER.md in APU state"
+        )
+    runtime = runtime_for(args.runner, timeout_seconds=args.timeout)
+    result = dispatch_work_order(
+        state_home,
+        relative.parts[0],
+        supplied.stem,
+        runner=runtime.run,
+        isolation_probe=runtime.probe,
+        attempt=args.attempt,
+    )
+    _emit(
+        {
+            "status": result.status,
+            "campaign_id": result.campaign_id,
+            "work_order_id": result.work_order_id,
+            "snapshot_id": result.snapshot_id,
+            "artifact_path": str(result.artifact_path),
+            "plan_path": str(result.plan_path) if result.plan_path else None,
+            "reasons": list(result.reasons),
+            "next": (
+                (
+                    f"apu review {result.plan_path} --output "
+                    f"{result.plan_path.with_name(f'{result.plan_path.stem}.reviewed.json')}"
+                )
+                if result.plan_path is not None
+                else "inspect the quarantine reasons and hand-run the work order"
+            ),
+        }
+    )
+    return 0 if result.status == "accepted" else 1
 
 
 def _validate(args: argparse.Namespace) -> int:
@@ -873,18 +1020,21 @@ def _status(_args: argparse.Namespace) -> int:
 
 
 def _outcome(args: argparse.Namespace) -> int:
+    from apu.models import sha256_bytes, sha256_json
     from apu.receipts import load_receipt
 
     state_home = resolve_state_home()
     if args.outcome_command == "record":
         receipt = load_receipt(args.receipt)
+        recorded_at = _timestamp()
+        task_id = args.task_id or "task-" + datetime.now(UTC).strftime(
+            "%Y%m%dT%H%M%S%fZ"
+        )
         record = {
             "schema_version": 1,
             "installation_id": receipt["installation_id"],
-            "recorded_at": _timestamp(),
-            "task_id": args.task_id or "task-" + datetime.now(UTC).strftime(
-                "%Y%m%dT%H%M%S%fZ"
-            ),
+            "recorded_at": recorded_at,
+            "task_id": task_id,
             "material": not args.non_material,
             "source": args.source,
             "elapsed_seconds": args.elapsed_seconds,
@@ -900,7 +1050,174 @@ def _outcome(args: argparse.Namespace) -> int:
             },
             "notes": args.notes,
         }
+        campaign_id = receipt.get("campaign_id")
+        if campaign_id is not None:
+            context = _campaign_outcome_context(state_home, receipt)
+            categories_installed = context["categories_installed"]
+            unknown = sorted(set(args.activate) - set(categories_installed))
+            if unknown:
+                raise ValueError(
+                    "activated categories are not installed by the campaign: "
+                    + ", ".join(unknown)
+                )
+            activations = []
+            for category in sorted(set(args.activate)):
+                statement_sha256 = sha256_json(
+                    {
+                        "campaign_id": campaign_id,
+                        "installation_id": receipt["installation_id"],
+                        "task_id": task_id,
+                        "category": category,
+                        "recorded_at": recorded_at,
+                    }
+                )
+                activations.append(
+                    {
+                        "category": category,
+                        "activation_source_id": (
+                            "attestation-" + statement_sha256[:24]
+                        ),
+                        "source_kind": "user-attestation",
+                        "provenance": {
+                            "attested_by": getpass.getuser(),
+                            "attested_at": recorded_at,
+                            "statement_sha256": statement_sha256,
+                        },
+                    }
+                )
+            fixture_results: list[dict[str, Any]] = []
+            if args.fixture_results is not None:
+                fixture_value = json.loads(
+                    args.fixture_results.read_text(encoding="utf-8")
+                )
+                if not isinstance(fixture_value, list) or any(
+                    not isinstance(item, dict) for item in fixture_value
+                ):
+                    raise ValueError("--fixture-results must contain a JSON array")
+                fixture_results = sorted(
+                    fixture_value,
+                    key=lambda item: (
+                        str(item.get("category", "")),
+                        str(item.get("fixture_id", "")),
+                        str(item.get("run_id", "")),
+                    ),
+                )
+            opened_at = receipt["created_at"]
+            closed_at = None
+            window_status = "open"
+            if args.close_window:
+                opened = datetime.fromisoformat(opened_at).astimezone(UTC)
+                current = datetime.fromisoformat(recorded_at).astimezone(UTC)
+                existing_material = sum(
+                    item["material"] is True
+                    for item in read_outcomes(
+                        state_home,
+                        receipt["installation_id"],
+                    )
+                )
+                material_count = existing_material + int(not args.non_material)
+                if (current - opened).days < 30 or material_count < 10:
+                    raise ValueError(
+                        "monitoring window requires 30 days and 10 material "
+                        "tasks before close"
+                    )
+                window_status = "closed"
+                closed_at = recorded_at
+            record.update(
+                {
+                    "schema_version": 2,
+                    "campaign_id": campaign_id,
+                    "campaign_provenance": {
+                        "source": "campaign-manifest",
+                        "manifest_sha256": context["manifest_sha256"],
+                    },
+                    "categories_installed": categories_installed,
+                    "categories_activated": activations,
+                    "baseline_version": context["baseline_version"],
+                    "model_generation": context["model_generation"],
+                    "fixture_results": fixture_results,
+                    "monitoring_window": {
+                        "window_id": (
+                            "window-"
+                            + sha256_json(
+                                {
+                                    "campaign_id": campaign_id,
+                                    "installation_id": receipt["installation_id"],
+                                    "opened_at": opened_at,
+                                }
+                            )[:24]
+                        ),
+                        "status": window_status,
+                        "opened_at": opened_at,
+                        "closed_at": closed_at,
+                    },
+                }
+            )
+        elif args.activate or args.fixture_results or args.close_window:
+            raise ValueError(
+                "M9 activation and fixture evidence requires a campaign receipt"
+            )
         path = append_outcome(state_home, record)
+        print(path)
+        return 0
+
+    if args.outcome_command == "promotion":
+        from apu.efficacy_policy import evaluate_category_promotion
+        from apu.system_profile import load_system_profile
+
+        receipt = load_receipt(args.receipt)
+        if receipt.get("campaign_id") is None:
+            raise ValueError("promotion requires a campaign-bound receipt")
+        context = _campaign_outcome_context(state_home, receipt)
+        profile = load_system_profile(args.profile, home=_home())
+        result = evaluate_category_promotion(
+            read_outcomes(state_home, receipt["installation_id"]),
+            category=args.category,
+            deterministic_remediation=args.deterministic_remediation,
+            profile_sha256=profile.artifact_sha256,
+            baseline_version=context["baseline_version"],
+            model_generation=context["model_generation"],
+            current_policy=profile.remediation_policy.get(
+                args.category,
+                "work-order",
+            ),
+        )
+        if args.output:
+            _write_artifact(args.output, result)
+            print(args.output)
+        else:
+            _emit(result)
+        return 0 if result["eligible"] else 1
+
+    if args.outcome_command == "clear-override":
+        from apu.efficacy_policy import (
+            clear_demotion_override,
+            load_demotion_overrides,
+        )
+
+        matches = [
+            item
+            for item in load_demotion_overrides(state_home)
+            if item["category"] == args.category and item["active"]
+        ]
+        if len(matches) != 1:
+            raise ValueError("category has no unique active demotion override")
+        _emit({"review": matches[0]})
+        if not args.yes:
+            answer = input("Clear this demotion override? [y/N] ").strip().lower()
+            if answer not in {"y", "yes"}:
+                return 1
+        evidence_path = args.evidence.expanduser().resolve(strict=True)
+        path = clear_demotion_override(
+            state_home,
+            args.category,
+            {
+                "decision": "clear",
+                "reviewed_by": args.reviewed_by or getpass.getuser(),
+                "reviewed_at": _timestamp(),
+                "evidence_sha256": sha256_bytes(evidence_path.read_bytes()),
+            },
+        )
         print(path)
         return 0
 
@@ -920,10 +1237,67 @@ def _outcome(args: argparse.Namespace) -> int:
     return 0
 
 
+def _campaign_outcome_context(
+    state_home: Path,
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    from apu.campaigns import (
+        campaign_directory,
+        load_campaign_index,
+        load_campaign_manifest,
+    )
+    from apu.models import sha256_json
+    from apu.system_planning import SystemPlan
+
+    campaign_id = receipt.get("campaign_id")
+    snapshot_id = receipt.get("snapshot_id")
+    if not isinstance(campaign_id, str) or not isinstance(snapshot_id, str):
+        raise TypeError("receipt is not campaign-bound")
+    manifest = load_campaign_manifest(state_home, campaign_id)
+    index = load_campaign_index(state_home, campaign_id)
+    if index["snapshot_id"] != snapshot_id:
+        raise ValueError("receipt snapshot does not match campaign state")
+    root = campaign_directory(state_home, campaign_id)
+    system_plan = SystemPlan.from_dict(_read_object(root / "system-plan.json"))
+    if (
+        system_plan.id != manifest["plan_binding"]["system_plan_id"]
+        or system_plan.artifact_sha256 != manifest["plan_binding"]["system_plan_sha256"]
+    ):
+        raise ValueError("campaign system plan binding does not match")
+
+    categories: set[str] = set()
+    validation = receipt.get("validation")
+    dispatch_binding = (
+        validation.get("campaign_binding") if isinstance(validation, Mapping) else None
+    )
+    if isinstance(dispatch_binding, Mapping):
+        work_order_id = dispatch_binding.get("work_order_id")
+        orders = [
+            order for order in system_plan.work_orders if order.id == work_order_id
+        ]
+        if len(orders) != 1:
+            raise ValueError("dispatch receipt work order is not campaign-bound")
+        categories.update(finding.category for finding in orders[0].findings)
+    else:
+        applied_ids = set(receipt["applied_operation_ids"])
+        for operation in system_plan.auto_operations:
+            if operation.id in applied_ids:
+                categories.update(finding.category for finding in operation.findings)
+
+    return {
+        "manifest_sha256": sha256_json(manifest),
+        "baseline_version": manifest["baseline_version"],
+        "model_generation": manifest["model_generation"],
+        "categories_installed": sorted(categories),
+    }
+
+
 def _init(args: argparse.Namespace) -> int:
     state_home = ensure_state_home(resolve_state_home())
-    plan_path = state_home / "plans" / (
-        "init-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + ".json"
+    plan_path = (
+        state_home
+        / "plans"
+        / ("init-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + ".json")
     )
     inventory = build_inventory(
         [args.path],
@@ -983,9 +1357,7 @@ def _init(args: argparse.Namespace) -> int:
     from apu.apply import apply_plan
     from apu.validate import validate_receipt_path
 
-    installation_id = (
-        "install-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    )
+    installation_id = "install-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     receipt = apply_plan(
         reviewed,
         state_home=state_home,
