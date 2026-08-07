@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+import apu.adapters.base as adapter_base
+from apu.adapters.base import safe_rglob
 from apu.discovery import discover
 
 
@@ -17,6 +19,36 @@ def write(path: Path, content: str) -> Path:
 
 def by_path(result) -> dict[str, object]:
     return {surface.path: surface for surface in result.surfaces}
+
+
+def test_safe_rglob_prunes_generated_trees_before_descending(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    visited: list[str] = []
+
+    def walk(root, *, topdown, onerror, followlinks):
+        assert topdown is True
+        assert callable(onerror)
+        assert followlinks is False
+        directory_names = [
+            ".tmp-runs",
+            ".worktrees",
+            "build",
+            "dist",
+            "src",
+        ]
+        yield str(root), directory_names, []
+        assert directory_names == ["src"]
+        visited.extend(directory_names)
+        yield str(Path(root) / "src"), [], ["AGENTS.md"]
+
+    monkeypatch.setattr(adapter_base.os, "walk", walk)
+
+    assert safe_rglob(tmp_path, "AGENTS.md") == (
+        tmp_path / "src" / "AGENTS.md",
+    )
+    assert visited == ["src"]
 
 
 def test_codex_discovery_keeps_logical_symlink_identity_and_skill_metadata(

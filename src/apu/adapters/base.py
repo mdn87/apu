@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import os
-from pathlib import Path
 import re
 import stat
-from typing import Iterable, Protocol
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
 
 from apu.models import (
     InstructionSurface,
@@ -35,6 +36,30 @@ _CREDENTIAL_PATTERN = re.compile(
     rb"(?:sk-[A-Za-z0-9_-]{20,}|api[_-]?key\s*[:=]|"
     rb"access[_-]?token\s*[:=]|password\s*[:=])",
     re.IGNORECASE,
+)
+
+_IGNORED_DISCOVERY_DIRECTORIES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".mypy_cache",
+        ".next",
+        ".nox",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".svn",
+        ".tmp-runs",
+        ".tox",
+        ".venv",
+        ".worktrees",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "node_modules",
+        "site-packages",
+        "target",
+    }
 )
 
 
@@ -118,30 +143,29 @@ def safe_rglob(root: Path, pattern: str) -> Iterable[Path]:
 
     if not root.is_dir():
         return ()
-    ignored_parts = {
-        ".git",
-        ".hg",
-        ".svn",
-        ".venv",
-        "__pycache__",
-        "node_modules",
-    }
     paths: list[Path] = []
-    try:
-        candidates = root.rglob(pattern)
-        for candidate in candidates:
-            relative = candidate.relative_to(root)
-            if any(part in ignored_parts for part in relative.parts):
-                continue
-            if (
-                ".claude" in relative.parts
+    for current, directory_names, file_names in os.walk(
+        root,
+        topdown=True,
+        onerror=lambda _error: None,
+        followlinks=False,
+    ):
+        current_path = Path(current)
+        relative = current_path.relative_to(root)
+        directory_names[:] = sorted(
+            name
+            for name in directory_names
+            if name not in _IGNORED_DISCOVERY_DIRECTORIES
+            and not (
+                name == "cache"
+                and ".claude" in relative.parts
                 and "plugins" in relative.parts
-                and "cache" in relative.parts
-            ):
-                continue
-            paths.append(candidate)
-    except OSError:
-        return ()
+            )
+        )
+        for name in (*directory_names, *sorted(file_names)):
+            candidate = current_path / name
+            if candidate.relative_to(root).match(pattern):
+                paths.append(candidate)
     return tuple(paths)
 
 
