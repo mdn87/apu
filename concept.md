@@ -119,6 +119,137 @@ Primary modes:
 The wizard should emphasize consequential or uncertain decisions rather than
 asking the user to approve every obvious read-only classification.
 
+## Behavioral pressure watch
+
+APU should audit behavior that occurred during real agent runs, not only the
+static policy that might have influenced it. A behavioral watcher is a small,
+named detector for one unwanted pattern. It reads existing logs and the
+effective instruction, skill, hook, tool, and subagent setup, identifies a
+likely pressure source, and offers an intervention that can be tried immediately.
+
+The first watcher is `primary-agent-autonomy-loss`. It looks for a primary
+operating agent that:
+
+- asks the user for information already available in context or repository
+  conventions;
+- asks the user to choose a reasonable, reversible default;
+- stops before satisfying the task without a real external blocker;
+- creates a new prerequisite or approval gate and then treats it as mandatory;
+- treats a minor command or tool failure as terminal without trying an available
+  fallback;
+- delegates work but does not integrate the result and finish the parent task;
+- transfers an action to the user that the agent has the tools and permission to
+  perform.
+
+It should not flag a real permission or credential barrier, a destructive or
+external side effect, an explicit user-requested approval point, or missing
+information that materially changes the requested result.
+
+APU does not need to prove hidden model reasoning. A useful case needs only:
+
+1. the observed blocker, question, or premature stop;
+2. the active behavior-shaping surfaces at that moment;
+3. a short ranked list of likely pressure sources;
+4. the result of any live intervention attempted against the case.
+
+The intervention result is more useful than an elaborate causal argument. If a
+small temporary change lets the agent continue and complete the task, that is
+strong evidence that the changed surface or behavior was involved.
+
+### Memorable live commands
+
+The common path should not require the operator to find session IDs or prepare
+an audit bundle:
+
+```console
+apu-event "asked me to approve a reversible filename choice"
+apu-wtf
+apu-intervene
+```
+
+An optional watcher command keeps configuration equally direct:
+
+```console
+apu-watch
+apu-watch autonomy-loss
+```
+
+- `apu-event` marks an incident against the most recent active session by
+  default and captures only the nearby event range and effective surface hashes
+  needed to inspect it.
+- `apu-wtf` analyzes the marked event, or the most recent incomplete run when no
+  event is marked, and prints one compact diagnosis with evidence and likely
+  pressure sources.
+- `apu-intervene` attempts the smallest temporary correction in the active
+  session or its immediate retry, then records whether the agent resumed and
+  completed the blocked work.
+- `apu-watch` lists, enables, or disables watchers used by audits. It does not
+  start a background service.
+
+These may be thin console entry points over ordinary APU internals. The short
+operator-facing names are part of the product rather than examples that later
+expand into longer required syntax.
+
+### In-situ intervention
+
+`apu-intervene` is a live recovery action, not a durable policy rewrite. Based
+on the diagnosed case, it may:
+
+- send a concise resume instruction to the primary agent;
+- add a temporary instruction overlay to make reasonable reversible decisions;
+- skip one optional skill or hook for the retry;
+- return a child agent's uncertainty to the primary agent instead of the user;
+- select an available fallback tool or command path;
+- retry the blocked step with the suspected pressure source narrowed.
+
+If the current harness can resume or inject into the session, APU should use
+that route. If it cannot, it should produce the shortest continuation command or
+prompt supported by the adapter. The intervention and result are recorded, but
+no global or repository policy is changed.
+
+A successful intervention becomes a candidate for a narrow durable correction
+at the next audit. The operator still chooses whether to remove, narrow,
+relocate, or rewrite the responsible instruction, skill, hook, tool, or
+subagent contract through the normal APU plan and apply path.
+
+### Deliberately small first release
+
+The first implementation should remain useful even if most of the broader idea
+is deferred:
+
+- support Codex JSONL traces first;
+- ship only the `primary-agent-autonomy-loss` watcher;
+- handle one marked event or recent run at a time;
+- select the latest relevant session automatically in the normal case;
+- use one evaluator when semantic judgment helps;
+- prefer an alternate model evaluator, but allow the same model when that is
+  what is available and label the result as self-evaluated;
+- test against real incidents first rather than requiring a fixture suite before
+  use;
+- add a synthetic fixture only after a failure recurs or a durable rule is being
+  promoted;
+- report a likely source instead of waiting for formal causal certainty;
+- make no automatic durable policy changes.
+
+The first release does not need a model jury, generalized agent-event ontology,
+background daemon, dashboard, full cross-provider support, or automatic
+counterfactual experiment system. Those features should not block the live
+mark, diagnose, and intervene loop.
+
+The first release is complete when:
+
+1. `apu-event` can mark a real Codex incident without manual session lookup;
+2. `apu-wtf` can connect the incident to the active policy and harness surfaces
+   and produce a compact ranked diagnosis;
+3. `apu-intervene` can attempt a temporary recovery and record the result;
+4. the flow works on at least one real autonomy-loss case without modifying
+   durable configuration.
+
+Codex Sol should plan this first release only. It should extend APU's existing
+trace, inventory, runner, and outcome machinery rather than redesigning the
+core. Any proposed milestone beyond this live loop should be explicitly marked
+as deferred and should not appear on the critical path.
+
 ## Proportionality ladder
 
 APU’s default policy uses three tiers:
@@ -200,10 +331,16 @@ available, APU reports those checks as unavailable rather than treating them as
 passed; audit, proposal, installation, rollback, and structural validation
 remain fully usable.
 
-For roughly 30 days and at least 10 material tasks after installation, APU
-tracks user-supplied or locally derived outcome summaries: latency, agent and
-review counts, remediation, rework, and escaped defects. A regression tightens
-the specific weak rule rather than restoring the entire previous workflow.
+Behavioral pressure watchers are tested live first. A single operator-marked
+event is enough to diagnose and try an ephemeral intervention. A successful
+intervention is evidence for a durable change, not a requirement to build a
+larger evaluation system before the feature can be used.
+
+For automatic promotion of a policy category, APU may still use a longer
+monitoring window and repeated material tasks. That threshold does not block
+`apu-event`, `apu-wtf`, `apu-intervene`, or a human-reviewed direct correction.
+A regression tightens the specific weak rule rather than restoring the entire
+previous workflow.
 
 ## Success measures
 
@@ -214,12 +351,20 @@ the specific weak rule rather than restoring the entire previous workflow.
 - Audit reports do not expose prompt bodies or secrets.
 - Representative tasks require fewer agent roles and review cycles.
 - Seeded real defects remain detectable.
+- A real incident can move from `apu-event` to diagnosis and live intervention
+  without manual session archaeology.
+- A successful intervention can be converted into one narrow durable change
+  instead of another broad instruction layer.
 - Core package operation works without an OpenAI or Anthropic API key;
   optional behavioral evaluations may use an already installed agent runtime.
 
 ## Non-goals
 
 - A dashboard, hosted service, or policy database
+- A general-purpose agent observability platform
+- A background watcher daemon for the first release
+- A model jury or consensus requirement for ordinary diagnosis
+- Proving a model's hidden reasoning before trying a practical intervention
 - Autonomous rewriting of every repository on a machine
 - Replacing provider permission or sandbox systems
 - Eliminating planning, tests, review, skills, or delegation
