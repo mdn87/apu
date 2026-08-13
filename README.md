@@ -173,6 +173,43 @@ distinct material activations, a closed monitoring window, no implicating
 defects, and green close-window fixtures. One implicating escaped defect writes
 a visible APU-private demotion override without editing the profile.
 
+## Behavioral pressure watch
+
+The first live watcher detects likely `primary-agent-autonomy-loss` in existing
+Codex JSONL sessions. The normal flow automatically selects the most recent
+active session for the current working directory:
+
+```console
+apu-event "asked me to approve a reversible filename choice"
+apu-wtf
+apu-intervene
+```
+
+`apu-wtf` can also analyze the most recent incomplete run when no event has
+been marked. `apu-intervene` resumes a non-interactive Codex session directly;
+for a Codex Desktop session it records and prints the exact `codex resume`
+continuation because APU cannot inject into the desktop process. Add
+`--execute` to launch that interactive continuation or `--dry-run` to only
+record the proposed action. After a manual continuation, record its outcome:
+
+```console
+apu-intervene --result completed
+```
+
+Watcher state is explicit and never starts a background service:
+
+```console
+apu-watch
+apu-watch autonomy-loss --disable
+apu-watch autonomy-loss --enable
+```
+
+Incident artifacts keep the operator's short description, session identity,
+nearby record hashes/types, runtime-setting labels, and active surface hashes.
+They do not persist nearby messages, reasoning, tool inputs or outputs, base
+instructions, or environment content. Interventions are temporary session
+instructions and never rewrite durable policy.
+
 ## Development
 
 ```console

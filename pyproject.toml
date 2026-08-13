@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-policy-updater"
-version = "0.5.0"
+version = "0.6.0"
 description = "Audit, simplify, install, and evaluate durable coding-agent instructions."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,6 +21,10 @@ dev = [
 
 [project.scripts]
 apu = "apu.cli:main"
+apu-event = "apu.behavior_cli:event_main"
+apu-wtf = "apu.behavior_cli:wtf_main"
+apu-intervene = "apu.behavior_cli:intervene_main"
+apu-watch = "apu.behavior_cli:watch_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

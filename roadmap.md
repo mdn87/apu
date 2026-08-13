@@ -441,6 +441,26 @@ placeholder verification, secret-scanned plan-candidate return;
 end-to-end fixture: model release → refresh → audit delta → work orders →
 apply → fixtures still catch the seeded defect.
 
+### M10 — Live behavioral pressure watch
+Codex JSONL support for the single `primary-agent-autonomy-loss` watcher;
+automatic selection of the most recent active session; `apu-event` incident
+marking; `apu-wtf` compact diagnosis with active instruction and harness
+surface hashes; and `apu-intervene` ephemeral resume or continuation through
+the supported Codex resume interface. The command records whether an executed
+non-interactive continuation completed, and accepts an operator result for an
+interactive continuation. `apu-watch` lists, enables, or disables the watcher
+without starting a daemon. Durable policy changes remain exclusively in the
+existing plan/review/apply path.
+
+M10 artifacts are private and content-minimized: the operator's explicit event
+description may be retained after credential-shape rejection, but nearby
+message bodies, reasoning, tool inputs and outputs, base instructions, and
+environment content never enter APU state. Evidence consists of record ranges,
+event types, hashes, counts, detector codes, safe runtime-setting labels, and
+active surface paths/hashes. A possible real credential/permission barrier,
+destructive or external side effect, or material information gap suppresses
+automatic intervention.
+
 Each milestone ships behind the existing gates: full test suite, structural
 validation, byte-for-byte reversibility, and no secret content in any emitted
 artifact — for work orders specifically, the redaction rules above are part
