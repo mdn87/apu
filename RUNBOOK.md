@@ -23,7 +23,7 @@ repository suite before installing a development commit.
 For a reproducible installation, pin the release tag:
 
 ```console
-pipx install "git+https://github.com/mdn87/apu.git@v0.5.0"
+pipx install "git+https://github.com/mdn87/apu.git@v0.6.0"
 apu --version
 apu --help
 ```
@@ -31,7 +31,7 @@ apu --help
 With `uv`, use:
 
 ```console
-uv tool install "git+https://github.com/mdn87/apu.git@v0.5.0"
+uv tool install "git+https://github.com/mdn87/apu.git@v0.6.0"
 ```
 
 The quoted Git URL works in POSIX shells and PowerShell. To test a checkout
@@ -170,6 +170,39 @@ pipx uninstall agent-policy-updater
 Uninstalling the CLI alone does not alter installed instructions or delete APU
 state.
 
+## Diagnose a live autonomy-loss incident
+
+Run these commands from the repository associated with the Codex session:
+
+```console
+apu-event "asked me to approve a reversible filename choice"
+apu-wtf
+apu-intervene
+```
+
+The event command selects the most recent active Codex JSONL session in the
+current working directory. Use `--session-id` or `--trace-root` only when the
+automatic selection is not the intended session. If no event was marked,
+`apu-wtf` selects the most recent incomplete run itself.
+
+For non-interactive Codex sessions, `apu-intervene` sends the temporary resume
+instruction through `codex exec resume`. For Codex Desktop sessions it prints
+and records a `codex resume` continuation; pass `--execute` to launch it. Use
+`--dry-run` to verify selection without resuming anything. When an interactive
+continuation finishes, attest the observed result with one of:
+
+```console
+apu-intervene --result completed
+apu-intervene --result blocked
+apu-intervene --result failed
+```
+
+The watcher refuses automatic intervention when the marked description names a
+credential or permission barrier, destructive or external side effect, or
+material information gap. It never changes global or repository policy. Its
+private artifacts live under `APU_HOME/behavior` and contain hashes and safe
+event metadata rather than transcript or tool content.
+
 ## Platform behavior
 
 - APU probes symlink capability in disposable private state.
@@ -185,7 +218,7 @@ state.
 Update deliberately to a reviewed release tag:
 
 ```console
-pipx install --force "git+https://github.com/mdn87/apu.git@v0.5.0"
+pipx install --force "git+https://github.com/mdn87/apu.git@v0.6.0"
 ```
 
 Re-run `apu --version`, `apu validate`, and `apu status` after updating. Do not

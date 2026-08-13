@@ -23,6 +23,7 @@ STATE_DIRECTORIES = (
     "transactions",
     "guidance",
     "models",
+    "behavior",
 )
 
 
