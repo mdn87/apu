@@ -457,7 +457,7 @@ def _correlation(value: str | None) -> str | None:
 
 
 def _command_class(tool_name: str | None, arguments: Any) -> str | None:
-    if not tool_name or "shell" not in tool_name.lower():
+    if not tool_name or tool_name.lower() not in {"bash", "shell", "shell_command"}:
         return None
     value = arguments
     if isinstance(arguments, str):

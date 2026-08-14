@@ -285,8 +285,36 @@ finding still cannot rewrite durable policy directly. It must pass through the
 existing outcome, promotion, review, and apply controls.
 
 Raw evidence archives, semantic memory extraction, task-graph scheduling,
-cross-session productivity analytics, and agent-lineage storage remain outside
-APU. Other systems may consume APU's normalized findings and evidence references.
+unbounded cross-session productivity mining, and agent-lineage storage remain
+outside APU. Other systems may consume APU's normalized findings and evidence
+references.
+
+### Bounded session audits
+
+The evidence plane supports a deliberately bounded retrospective audit. This is
+not transcript memory: it selects the current project only, considers recent or
+operator-marked sessions, enforces session and source-byte ceilings, and emits
+content-free findings. The normal defaults are seven days, twenty sessions, and
+256 MiB. Incident-marked sessions are prioritized and may bypass the age window,
+but no path bypasses the byte ceiling and there is no all-history mode. At most
+1,000 files per provider are opened for metadata inspection, with exact and
+incident-marked sources prioritized.
+
+The audit may identify repeated identical failures, repeated denied actions,
+unpaired requests or results, work after a completion claim, stale or dirty
+repository state at completion, and mutations after the latest passing test. A
+legitimate credential, permission, destructive-action, external-side-effect, or
+material-information barrier suppresses the corresponding behavioral claim.
+Findings preserve the instruction surfaces captured at incident time separately
+from the surfaces present when the audit runs.
+
+Source integrity and semantic truth remain separate. A transcript-backed event
+can be `verified` against its captured byte prefix; a lifecycle-hook event is
+normally `observed`; an operator incident remains `asserted` unless stronger
+evidence is linked. None of those states proves that a task was correct. Detailed
+normalized events are retention candidates after thirty days or the end of a
+linked monitoring window, but a report never authorizes APU to delete provider
+logs.
 
 ## Proportionality ladder
 

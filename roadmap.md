@@ -479,6 +479,30 @@ operator assertions from observed execution metadata. The evidence layer does no
 archive raw transcripts, prove semantic task correctness, schedule task graphs,
 or bypass the existing outcome and policy-promotion controls.
 
+### M12 — Bounded behavioral session audit
+
+Add `apu behavior audit` as the retrospective consumer of M11 evidence. Its
+default scope is the current project, seven days, twenty sessions, and 256 MiB
+of source data. Incident-marked sessions are selected before ordinary recent
+sessions and may bypass the age filter; explicit session selection also bypasses
+age. Neither path bypasses the source-byte limit, and no all-history option is
+provided. At most 1,000 files per provider are opened for metadata inspection,
+with exact and incident-marked sources prioritized before recency.
+
+The deterministic detector set covers repeated identical tool failures,
+repeated permission denials, unresolved or orphaned request/result pairs,
+post-completion activity, stale or dirty state at completion, and completion
+after a mutation invalidated the last successful test. Operator incident signals
+remain `asserted`; lifecycle-hook facts remain `observed`; replayable Codex
+records become `verified` only when their transcript prefix and source record
+still match. Known legitimate barriers suppress incident findings.
+
+The report binds incident-time surfaces separately from current-at-audit
+surfaces and stores only safe metadata, hashes, references, counts, and detector
+codes. It neither archives nor deletes provider logs. Thirty days or closure of
+a linked monitoring window is recorded as the detailed-event retention target;
+automated pruning requires its own reviewed implementation.
+
 Each milestone ships behind the existing gates: full test suite, structural
 validation, byte-for-byte reversibility, and no secret content in any emitted
 artifact — for work orders specifically, the redaction rules above are part

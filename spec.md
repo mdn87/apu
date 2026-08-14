@@ -101,8 +101,10 @@ APU_HOME/
 ├── outcomes/
 │   └── <installation-id>.jsonl
 ├── behavior/
-│   └── evidence/
-│       └── <provider>/<session-id-sha256>.jsonl
+│   ├── evidence/
+│   │   └── <provider>/<session-id-sha256>.jsonl
+│   └── audits/
+│       └── behavior-audit-<id>.json
 ├── transactions/
 └── registry.json
 ```
@@ -1062,6 +1064,10 @@ The v0.1 MVP is complete when:
     for repeated source records, request/result-correlated where the provider
     exposes an identifier, and replay-verifiable for bounded Codex transcript
     prefixes even after the source file grows.
+16. `apu behavior audit` defaults to the current project, seven days, twenty
+    sessions, and 256 MiB; prioritizes incident-marked sessions; never offers an
+    unbounded history mode; labels source integrity honestly; suppresses
+    barrier-explained incident findings; and emits no provider content.
 
 ## 15. Delivery sequence
 

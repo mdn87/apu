@@ -14,6 +14,7 @@ from typing import Any
 
 from apu import __version__
 from apu.audit import build_inventory
+from apu.behavior_audit_cli import add_behavior_parser, run_behavior
 from apu.evidence_cli import add_evidence_parser, run_evidence
 from apu.models import Inventory, Plan, canonical_json
 from apu.outcomes import append_outcome, read_outcomes, summarize_outcomes
@@ -317,6 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
     clear_override.add_argument("--yes", action="store_true")
 
     add_evidence_parser(commands)
+    add_behavior_parser(commands)
 
     init = commands.add_parser("init", help="run the guided first-use flow")
     init.add_argument("path", nargs="?", type=Path, default=Path.cwd())
@@ -374,6 +376,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _outcome(args)
     if args.command == "evidence":
         return run_evidence(args)
+    if args.command == "behavior":
+        return run_behavior(args)
     if args.command == "init":
         return _init(args)
     raise ValueError(f"unsupported command: {args.command}")
