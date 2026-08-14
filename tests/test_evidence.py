@@ -160,6 +160,7 @@ def test_hook_ingestion_projects_only_safe_metadata(tmp_path: Path) -> None:
     assert event["correlation_sha256"]
     assert event["observation"]["input_sha256"]
     assert event["observation"]["result_sha256"]
+    assert event["observation"]["command_class"] == "shell"
     encoded = path.read_text(encoding="utf-8") if path else ""
     assert "secret-hook-input" not in encoded
     assert "secret-hook-output" not in encoded

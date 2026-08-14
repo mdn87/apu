@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — 2026-08-14
+
+- Add bounded behavioral audits over recent or operator-marked Codex and
+  Claude Code session evidence.
+- Default audits to the current project, seven days, twenty sessions, and 256
+  MiB of source records, with no unbounded all-history mode.
+- Detect repeated failures and denials, incomplete request/result pairs,
+  post-completion activity, stale repository observations, dirty completion,
+  and completion after a later mutation invalidated the last successful test.
+- Verify replayable transcript evidence, preserve hook evidence as observed,
+  suppress incident findings when a legitimate barrier is recorded, and bind
+  findings to incident-time and current-at-audit instruction surfaces.
+- Persist only safe metadata, hashes, evidence references, and detector codes;
+  provider messages, reasoning, commands, tool bodies, and environment content
+  remain outside APU state.
+
 ## 0.7.0 — 2026-08-14
 
 - Add a provider-neutral, content-minimized execution evidence plane.

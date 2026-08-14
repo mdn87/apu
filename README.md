@@ -242,6 +242,42 @@ the path names. Hooks remain lightweight; APU does not archive transcripts or ru
 a background worker. The autonomy-loss intervention adapter remains Codex-first,
 while the evidence contract is provider-neutral.
 
+## Bounded behavior audits
+
+APU can audit recent session evidence for workflow failures without turning the
+provider log directory into permanent memory:
+
+```console
+apu behavior audit
+apu behavior audit --provider codex --since 12h --sessions 10 --max-bytes 64MiB
+apu behavior audit --session-id SESSION_ID --json
+```
+
+The default scope is the current project, the last seven days, at most twenty
+sessions, and at most 256 MiB of source records. Operator-marked incident
+sessions are considered before ordinary recent sessions and may bypass the age
+window, but never the session or byte caps. An exact `--session-id` may also
+bypass age; there is intentionally no unbounded all-history option. At most
+1,000 files per provider are opened for metadata inspection, with exact and
+incident-marked sources considered first.
+
+The audit checks correlated tool requests/results, repeated identical failures,
+permission denials, activity after completion, repository state at completion,
+and whether a mutation made the last passing test stale. Replayable Codex
+records are verified against their captured transcript prefix. Hook records are
+labeled `observed`, not promoted to `verified` merely because APU stored them.
+Recorded credential, permission, destructive-action, external-side-effect, and
+material-information barriers suppress behavioral incident findings rather than
+counting them as autonomy failures.
+
+Reports live under `APU_HOME/behavior/audits`. They store detector codes, safe
+labels, hashes, evidence references, counts, and explicit incident-time versus
+current-at-audit surface bindings. They do not store messages, reasoning,
+commands, tool input/output bodies, environment content, changed path names, or
+raw provider records. APU does not delete or archive provider logs. Detailed APU
+events are marked as candidates for expiry after thirty days or when their linked
+monitoring window closes; automated pruning remains a separate future operation.
+
 ## Development
 
 ```console
