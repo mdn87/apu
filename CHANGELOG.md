@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 — 2026-08-14
+
+- Add a provider-neutral, content-minimized execution evidence plane.
+- Normalize Codex JSONL and lifecycle-hook inputs into invocation, result, and
+  repository-state observations without retaining message, command, or result
+  bodies.
+- Bind Codex evidence to replay-verifiable transcript prefixes and correlate
+  tool requests with results through hashed identifiers.
+- Add `apu evidence` ingestion, state observation, reconciliation, and source
+  verification commands.
+- Attach normalized evidence references to autonomy-loss incidents and detect
+  repeated identical tool failures and repeated permission denials.
+
 ## 0.6.0 — 2026-08-12
 
 - Add the `primary-agent-autonomy-loss` Codex JSONL watcher.

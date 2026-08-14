@@ -461,6 +461,24 @@ active surface paths/hashes. A possible real credential/permission barrier,
 destructive or external side effect, or material information gap suppresses
 automatic intervention.
 
+### M11 — Provider-neutral execution evidence
+
+Add a strict, append-only evidence contract for invocation, result, and
+repository-state observations. Codex JSONL records are normalized behind an
+adapter and bound to a byte-counted transcript prefix so later appends do not
+invalidate earlier evidence. Lifecycle-hook JSON can be projected through the
+same contract for providers such as Claude Code. Unknown fields and all message,
+reasoning, command, tool-input, tool-output, and environment bodies are discarded
+before persistence.
+
+`apu evidence` ingests Codex sessions or hook events, records optional independent
+Git state, correlates tool requests and results through hashed identifiers,
+detects repeated identical failures and permission denials, and verifies replayable
+source references. Behavior incidents carry evidence references and distinguish
+operator assertions from observed execution metadata. The evidence layer does not
+archive raw transcripts, prove semantic task correctness, schedule task graphs,
+or bypass the existing outcome and policy-promotion controls.
+
 Each milestone ships behind the existing gates: full test suite, structural
 validation, byte-for-byte reversibility, and no secret content in any emitted
 artifact — for work orders specifically, the redaction rules above are part

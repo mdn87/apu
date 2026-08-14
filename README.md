@@ -210,6 +210,38 @@ They do not persist nearby messages, reasoning, tool inputs or outputs, base
 instructions, or environment content. Interventions are temporary session
 instructions and never rewrite durable policy.
 
+## Execution evidence plane
+
+APU normalizes provider execution records into three content-minimized evidence
+classes: invocation, result, and repository-state observation. Provider message
+bodies, reasoning, tool inputs, tool outputs, and command text are inspected only
+in memory and never enter APU state. Stored records contain safe labels, hashes,
+exit status, duration, correlation hashes, and optional Git state.
+
+Ingest the most recent Codex session for the current repository, then inspect its
+request/result reconciliation and verify that its source records still match the
+captured transcript prefix:
+
+```console
+apu evidence ingest-codex --json
+apu evidence show --provider codex --session-id SESSION_ID --verify --json
+```
+
+Provider lifecycle hooks can stream one JSON object on standard input. The hook
+adapter projects only recognized metadata and discards unrecognized or sensitive
+fields before the append-only record is written:
+
+```console
+apu evidence ingest-hook --provider claude-code --event PreToolUse
+apu evidence ingest-hook --provider claude-code --event TaskCompleted --observe-state
+```
+
+`--observe-state` adds an independent Git observation after the hook event. It
+stores the current commit/tree IDs, dirty state, and hashes of changed paths—not
+the path names. Hooks remain lightweight; APU does not archive transcripts or run
+a background worker. The autonomy-loss intervention adapter remains Codex-first,
+while the evidence contract is provider-neutral.
+
 ## Development
 
 ```console
