@@ -226,10 +226,14 @@ def test_source_byte_cap_stops_selection_before_ingestion(tmp_path: Path) -> Non
         item["session_id"] == "older" and item["reason"] == "source-byte-limit"
         for item in report["selection"]["skipped"]
     )
-    assert not any(
-        path.name.endswith(".jsonl") and "older" in path.read_text(encoding="utf-8")
-        for path in (state / "behavior" / "evidence" / "codex").glob("*.jsonl")
-    )
+    evidence_files = list((state / "behavior" / "evidence" / "codex").glob("*.jsonl"))
+    assert len(evidence_files) == 1
+    stored_session_ids = {
+        json.loads(line)["session_id"]
+        for line in evidence_files[0].read_text(encoding="utf-8").splitlines()
+        if line
+    }
+    assert stored_session_ids == {"newer"}
 
 
 def test_metadata_discovery_cap_prioritizes_marked_source(
