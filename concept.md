@@ -250,6 +250,44 @@ trace, inventory, runner, and outcome machinery rather than redesigning the
 core. Any proposed milestone beyond this live loop should be explicitly marked
 as deferred and should not appear on the critical path.
 
+### Provider-neutral evidence after the first live loop
+
+Once a live watcher has demonstrated value, APU may strengthen findings with a
+small provider-neutral evidence plane. The purpose is not to preserve session
+history. It is to distinguish an operator or agent assertion from what a provider
+recorded and from what APU independently observed in the repository.
+
+The normalized contract has three evidence classes:
+
+1. **Invocation evidence** — a provider reported that a tool, permission, task,
+   or agent action was requested.
+2. **Result evidence** — the provider reported the corresponding completion,
+   failure, denial, or stop.
+3. **State evidence** — APU independently observed repository identity, commit,
+   tree, dirty state, and content-free changed-path hashes.
+
+Provider hooks are the preferred live input. Existing provider transcripts are a
+backfill and replay source. Both stay behind adapters; neither provider's raw
+schema becomes APU's domain model. APU may retain event types, safe labels,
+correlation hashes, result codes, durations, source record hashes, verifiable
+source boundaries, and Git object IDs. It does not retain prompt bodies,
+reasoning, command text, tool input/output bodies, environment content, or raw
+transcripts.
+
+Evidence states are explicit: `asserted`, `observed`, `verified`, `stale`,
+`contradicted`, or `unverifiable`. `verified` means the referenced evidence can be
+replayed or independently matched; it does not claim that the agent's broader
+task or architectural judgment was correct.
+
+This layer may detect repeated identical failures, repeated permission denials,
+missing request/result pairs, or behavioral findings bound to stale evidence. A
+finding still cannot rewrite durable policy directly. It must pass through the
+existing outcome, promotion, review, and apply controls.
+
+Raw evidence archives, semantic memory extraction, task-graph scheduling,
+cross-session productivity analytics, and agent-lineage storage remain outside
+APU. Other systems may consume APU's normalized findings and evidence references.
+
 ## Proportionality ladder
 
 APU’s default policy uses three tiers:

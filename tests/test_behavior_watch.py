@@ -141,13 +141,23 @@ def test_selects_active_session_and_marks_content_free_evidence(tmp_path: Path) 
 
     encoded = path.read_text(encoding="utf-8")
     assert incident["session"]["session_id"] == "active-session"
+    assert incident["claim"]["verification_status"] == "asserted"
     assert "reversible-choice-escalation" in incident["observed_signals"]
     assert incident["nearby_evidence"]["tool_calls"] == {"shell_command": 1}
     assert incident["runtime_context"]["base_instructions_sha256"]
+    assert incident["evidence_plane"]["provider"] == "codex"
+    assert incident["evidence_plane"]["verification_status"] == "observed"
+    assert incident["evidence_plane"]["event_refs"]
+    assert incident["evidence_plane"]["source_boundary"]["snapshot_sha256"]
+    evidence_path = Path(incident["evidence_plane"]["evidence_path"])
+    evidence_encoded = evidence_path.read_text(encoding="utf-8")
     assert "secret user prompt" not in encoded
     assert "private command" not in encoded
     assert "private base instructions" not in encoded
     assert "private command output" not in encoded
+    assert "secret user prompt" not in evidence_encoded
+    assert "private command" not in evidence_encoded
+    assert "private command output" not in evidence_encoded
 
 
 def test_diagnosis_ranks_active_instruction_without_copying_content(
@@ -180,6 +190,7 @@ def test_diagnosis_ranks_active_instruction_without_copying_content(
     assert diagnosis["likely_sources"][0]["path"] == str(agents)
     assert diagnosis["likely_sources"][0]["line_numbers"] == [1]
     assert diagnosis["recommended_intervention"]["durable_policy_mutation"] is False
+    assert diagnosis["evaluation"]["verification_status"] == "observed"
     assert "Ask for approval" not in path.read_text(encoding="utf-8")
 
 
@@ -245,6 +256,7 @@ def test_noninteractive_intervention_resumes_and_records_completion(
     assert seen["command"][:3] == ["codex", "exec", "resume"]
     assert seen["kwargs"]["cwd"] == cwd
     assert result["durable_policy_mutation"] is False
+    assert result["verification_status"] == "observed"
     assert path.is_file()
 
 
@@ -286,6 +298,7 @@ def test_desktop_intervention_returns_continuation_without_launching(
         recorded_at="2026-08-12T10:03:30Z",
     )
     assert attestation["result"] == "completed"
+    assert attestation["verification_status"] == "asserted"
     assert attestation["intervention_id"] == result["intervention_id"]
     assert result_path.is_file()
 

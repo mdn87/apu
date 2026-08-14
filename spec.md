@@ -47,6 +47,7 @@ provider’s paths.
 ### 2.2 Optional evidence sources
 
 - Codex JSONL session directories;
+- provider lifecycle-hook JSON objects;
 - Git repositories and revision ranges;
 - user-provided incident notes;
 - previous APU installation receipts;
@@ -55,6 +56,14 @@ provider’s paths.
 Trace analysis emits metadata and aggregate counts only. It must not copy
 messages, prompts, command arguments, environment values, or secrets into the
 report.
+
+Provider execution evidence is normalized into `invocation`, `result`, and
+`state` classes. Every persisted event uses a strict allowlisted schema and one
+of `asserted`, `observed`, `verified`, `stale`, `contradicted`, or
+`unverifiable`. Provider schemas remain adapter inputs rather than APU domain
+models. A `verified` source status proves only that the referenced record or
+independent state observation still matches; it does not prove semantic task
+correctness.
 
 ### 2.3 Out of scope for v0.1
 
@@ -91,6 +100,9 @@ APU_HOME/
 │       └── backups/
 ├── outcomes/
 │   └── <installation-id>.jsonl
+├── behavior/
+│   └── evidence/
+│       └── <provider>/<session-id-sha256>.jsonl
 ├── transactions/
 └── registry.json
 ```
@@ -133,6 +145,8 @@ apu/
 │   ├── validate.py
 │   ├── receipts.py
 │   ├── outcomes.py
+│   ├── evidence.py
+│   ├── evidence_cli.py
 │   ├── models.py
 │   ├── adapters/
 │   │   ├── base.py
@@ -425,6 +439,15 @@ apu status
 apu outcome record --receipt RECEIPT.json [METRIC OPTIONS]
 
 apu outcome list [--receipt RECEIPT.json]
+
+apu evidence ingest-codex [--session-id ID] [--trace-root PATH] [--cwd PATH]
+
+apu evidence ingest-hook --provider PROVIDER --event EVENT [--input JSON]
+                         [--observe-state]
+
+apu evidence observe-state --provider PROVIDER --session-id ID [--cwd PATH]
+
+apu evidence show --provider PROVIDER --session-id ID [--verify]
 
 apu init
 ```
@@ -873,6 +896,9 @@ can mutate, rebase, commit, or push anything.
 - Audit is read-only.
 - Exported inventory defaults to paths, hashes, categories, and counts.
 - Prompt and message bodies are not emitted from session traces.
+- Evidence records never contain reasoning, command text, tool input/output
+  bodies, environment content, or raw provider records. Hook inputs are
+  projected before persistence; changed repository paths are stored as hashes.
 - Environment variables, tokens, cookies, and credential-shaped values are
   redacted or omitted.
 - `APU_HOME`, backups, receipts, plans, and inventories use user-only
@@ -1032,6 +1058,10 @@ The v0.1 MVP is complete when:
     window.
 14. `apu validate` without an explicit plan or receipt validates every active
     installation in the local registry.
+15. Provider execution evidence is append-only, content-minimized, idempotent
+    for repeated source records, request/result-correlated where the provider
+    exposes an identifier, and replay-verifiable for bounded Codex transcript
+    prefixes even after the source file grows.
 
 ## 15. Delivery sequence
 

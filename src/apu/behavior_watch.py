@@ -15,6 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 from .audit import build_inventory
+from .evidence import ingest_codex_trace, reconcile_evidence
 from .models import canonical_json, sha256_bytes
 from .state import ensure_state_home, write_json_atomic
 from .work_orders import find_secret_spans
@@ -597,12 +598,30 @@ def mark_incident(
         session_id=session_id,
         cwd=cwd,
     )
+    evidence_path, normalized_events, source_boundary = ingest_codex_trace(
+        state_home, session.path
+    )
+    evidence_reconciliation = reconcile_evidence(normalized_events)
     timestamp = recorded_at or _timestamp()
     incident_id = f"incident-{uuid4().hex}"
     surfaces = _effective_codex_surfaces(session.cwd)
     description_signals = _signals(note)
     barriers = _barriers(note)
     events = session.evidence_events
+    line_start = events[0]["line"] if events else None
+    line_end = events[-1]["line"] if events else None
+    evidence_refs = [
+        item["event_id"]
+        for item in normalized_events
+        if line_start is not None
+        and line_end is not None
+        and item["source"]["line"] is not None
+        and line_start <= item["source"]["line"] <= line_end
+    ]
+    evidence_signals = set(evidence_reconciliation["reason_codes"]) & {
+        "repeated-identical-tool-failure",
+        "repeated-permission-denial",
+    }
     artifact = {
         "schema_version": _SCHEMA_VERSION,
         "incident_id": incident_id,
@@ -610,6 +629,10 @@ def mark_incident(
         "recorded_at": timestamp,
         "description": note,
         "description_sha256": sha256_bytes(note.encode("utf-8")),
+        "claim": {
+            "source": "operator-attestation",
+            "verification_status": "asserted",
+        },
         "session": {
             "session_id": session.session_id,
             "trace_path": str(session.path),
@@ -623,8 +646,8 @@ def mark_incident(
             "last_event_at": session.last_event_at,
         },
         "nearby_evidence": {
-            "line_start": events[0]["line"] if events else None,
-            "line_end": events[-1]["line"] if events else None,
+            "line_start": line_start,
+            "line_end": line_end,
             "record_count": len(events),
             "event_counts": dict(session.event_counts),
             "tool_calls": dict(session.tool_calls),
@@ -634,7 +657,7 @@ def mark_incident(
             "events": [dict(item) for item in events],
         },
         "observed_signals": sorted(
-            set(description_signals) | set(session.signal_codes)
+            set(description_signals) | set(session.signal_codes) | evidence_signals
         ),
         "possible_barriers": list(barriers),
         "runtime_context": {
@@ -643,9 +666,23 @@ def mark_incident(
             "dynamic_tools_sha256": session.dynamic_tools_sha256,
         },
         "surface_refs": [dict(item) for item in surfaces],
+        "evidence_plane": {
+            "schema_version": 1,
+            "provider": "codex",
+            "session_id": session.session_id,
+            "verification_status": "observed",
+            "event_refs": evidence_refs,
+            "evidence_path": str(evidence_path) if evidence_path is not None else None,
+            "source_boundary": {
+                "snapshot_bytes": source_boundary["snapshot_bytes"],
+                "snapshot_sha256": source_boundary["snapshot_sha256"],
+            },
+            "reconciliation": evidence_reconciliation,
+        },
         "privacy": (
             "Nearby message bodies, reasoning, tool input/output, and environment "
-            "content are not persisted; only hashes, types, counts, and detector codes are stored."
+            "content are not persisted; only hashes, types, counts, safe labels, "
+            "result metadata, Git object IDs, and detector codes are stored."
         ),
     }
     ensure_state_home(state_home)
@@ -762,6 +799,24 @@ def diagnose_incident(
                 "score": 60,
             }
         )
+    if "repeated-identical-tool-failure" in signals:
+        sources.append(
+            {
+                "kind": "runtime-behavior",
+                "reason_codes": ["repeated-identical-tool-failure"],
+                "score": 75,
+            }
+        )
+    if "repeated-permission-denial" in signals:
+        sources.append(
+            {
+                "kind": "harness-setting",
+                "setting": "permission-flow",
+                "value": "repeated-denial",
+                "reason_codes": ["repeated-permission-denial"],
+                "score": 70,
+            }
+        )
     collaboration_mode = settings.get("collaboration_mode")
     if collaboration_mode and "plan" in collaboration_mode.lower():
         sources.append(
@@ -808,6 +863,7 @@ def diagnose_incident(
         "evaluation": {
             "method": "deterministic",
             "semantic_evaluator_used": False,
+            "verification_status": "observed",
             "reason": "deterministic signals were sufficient"
             if signals
             else "no signal matched",
@@ -918,6 +974,7 @@ def intervene(
         "executed": should_execute,
         "returncode": returncode,
         "result_signals": list(result_signals),
+        "verification_status": "observed" if should_execute else "unverifiable",
         "prompt_template_id": "primary-agent-autonomy-resume-v1",
         "prompt_sha256": sha256_bytes(_RESUME_INSTRUCTION.encode("utf-8")),
         "durable_policy_mutation": False,
@@ -956,6 +1013,7 @@ def record_intervention_result(
         "recorded_at": recorded_at or _timestamp(),
         "result": result,
         "source": "operator-attestation",
+        "verification_status": "asserted",
         "durable_policy_mutation": False,
     }
     path = Path(state_home) / "behavior" / "intervention-results" / f"{result_id}.json"
