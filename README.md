@@ -37,6 +37,10 @@ path = "~/Desktop/MyDocs"
 excludes = ["node_modules", "archive/**"]
 ```
 
+Root exclusions are enforced before APU descends into matching directories or
+reads matching instruction surfaces. They constrain both nested repository
+discovery and each selected repository's child inventory.
+
 ```console
 apu system audit --json system-inventory.json
 apu snapshot create --label before-policy-update

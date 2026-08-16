@@ -6,6 +6,7 @@ from typing import Iterable
 from apu.adapters import ClaudeAdapter, CodexAdapter
 from apu.adapters.base import (
     DiscoveryResult,
+    PathFilter,
     ProviderAdapter,
     absolute_logical_path,
     deduplicate_surfaces,
@@ -19,6 +20,7 @@ def discover(
     home: Path | str,
     working_directories: Iterable[Path | str] = (),
     adapters: Iterable[ProviderAdapter] | None = None,
+    path_filter: PathFilter | None = None,
 ) -> DiscoveryResult:
     """Discover supported surfaces and compute provider-specific stacks."""
 
@@ -29,7 +31,11 @@ def discover(
     surfaces = []
     relationships = []
     for adapter in selected_adapters:
-        result = adapter.discover(normalized_roots, home=normalized_home)
+        result = adapter.discover(
+            normalized_roots,
+            home=normalized_home,
+            path_filter=path_filter,
+        )
         surfaces.extend(result.surfaces)
         relationships.extend(result.relationships)
 

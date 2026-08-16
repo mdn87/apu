@@ -7,6 +7,7 @@ from apu.models import InstructionSurface, SurfaceRelationship
 
 from .base import (
     DiscoveryResult,
+    PathFilter,
     absolute_logical_path,
     ancestor_directories,
     deduplicate_surfaces,
@@ -38,7 +39,13 @@ class CodexAdapter:
             symlink_supported=symlink_supported,
         )
 
-    def discover(self, roots: Iterable[Path], *, home: Path) -> DiscoveryResult:
+    def discover(
+        self,
+        roots: Iterable[Path],
+        *,
+        home: Path,
+        path_filter: PathFilter | None = None,
+    ) -> DiscoveryResult:
         normalized_roots = tuple(absolute_logical_path(root) for root in roots)
         normalized_home = absolute_logical_path(home)
         surfaces: list[InstructionSurface] = []
@@ -52,20 +59,31 @@ class CodexAdapter:
             authority="user",
             scope="global",
             precedence=10,
+            path_filter=path_filter,
         )
 
         for root in normalized_roots:
             if root.is_file():
                 if root.name == "AGENTS.md":
-                    self._add_repository_instruction(surfaces, root)
+                    self._add_repository_instruction(
+                        surfaces, root, path_filter=path_filter
+                    )
             else:
-                for path in safe_rglob(root, "AGENTS.md"):
-                    self._add_repository_instruction(surfaces, path)
+                for path in safe_rglob(
+                    root,
+                    "AGENTS.md",
+                    path_filter=path_filter,
+                ):
+                    self._add_repository_instruction(
+                        surfaces, path, path_filter=path_filter
+                    )
             for directory in repository_bases(
                 ancestor_directories(root), home=normalized_home
             ):
                 self._add_repository_instruction(
-                    surfaces, directory / "AGENTS.md"
+                    surfaces,
+                    directory / "AGENTS.md",
+                    path_filter=path_filter,
                 )
 
         skill_roots = [
@@ -83,7 +101,10 @@ class CodexAdapter:
                 == normalized_home / ".agents" / "skills"
             ):
                 continue
-            for skill_file in skill_files(skill_root):
+            for skill_file in skill_files(
+                skill_root,
+                path_filter=path_filter,
+            ):
                 skill_surface = make_surface(
                     skill_file,
                     kind="skill",
@@ -91,6 +112,7 @@ class CodexAdapter:
                     authority=authority,
                     scope=scope,
                     precedence=80,
+                    path_filter=path_filter,
                 )
                 if skill_surface is None:
                     continue
@@ -103,6 +125,7 @@ class CodexAdapter:
                     authority=authority,
                     scope=scope,
                     precedence=81,
+                    path_filter=path_filter,
                 )
                 if manifest_surface is not None:
                     surfaces.append(manifest_surface)
@@ -121,7 +144,11 @@ class CodexAdapter:
         )
 
     def _add_repository_instruction(
-        self, surfaces: list[InstructionSurface], path: Path
+        self,
+        surfaces: list[InstructionSurface],
+        path: Path,
+        *,
+        path_filter: PathFilter | None,
     ) -> None:
         self._add(
             surfaces,
@@ -130,6 +157,7 @@ class CodexAdapter:
             authority="repository",
             scope="hierarchical",
             precedence=20 + directory_depth(path.parent),
+            path_filter=path_filter,
         )
 
     def _add(
@@ -141,6 +169,7 @@ class CodexAdapter:
         authority: str,
         scope: str,
         precedence: int,
+        path_filter: PathFilter | None,
     ) -> None:
         surface = make_surface(
             path,
@@ -149,6 +178,7 @@ class CodexAdapter:
             authority=authority,
             scope=scope,
             precedence=precedence,
+            path_filter=path_filter,
         )
         if surface is not None:
             surfaces.append(surface)

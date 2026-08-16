@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -25,10 +25,19 @@ class DiscoveryResult:
     effective_stacks: tuple[dict[str, object], ...] = ()
 
 
+PathFilter = Callable[[Path], bool]
+
+
 class ProviderAdapter(Protocol):
     name: str
 
-    def discover(self, roots: Iterable[Path], *, home: Path) -> DiscoveryResult:
+    def discover(
+        self,
+        roots: Iterable[Path],
+        *,
+        home: Path,
+        path_filter: PathFilter | None = None,
+    ) -> DiscoveryResult:
         """Discover provider surfaces without mutating the filesystem."""
 
 
@@ -84,8 +93,11 @@ def make_surface(
     authority: str,
     scope: str,
     precedence: int,
+    path_filter: PathFilter | None = None,
 ) -> InstructionSurface | None:
     logical = absolute_logical_path(path)
+    if path_filter is not None and not path_filter(logical):
+        return None
     content = read_bytes(logical)
     if content is None:
         return None
@@ -138,10 +150,17 @@ def deduplicate_surfaces(
     )
 
 
-def safe_rglob(root: Path, pattern: str) -> Iterable[Path]:
+def safe_rglob(
+    root: Path,
+    pattern: str,
+    *,
+    path_filter: PathFilter | None = None,
+) -> Iterable[Path]:
     """Glob beneath a controlled root while excluding generated/cache trees."""
 
-    if not root.is_dir():
+    if not root.is_dir() or (
+        path_filter is not None and not path_filter(root)
+    ):
         return ()
     paths: list[Path] = []
     for current, directory_names, file_names in os.walk(
@@ -156,6 +175,10 @@ def safe_rglob(root: Path, pattern: str) -> Iterable[Path]:
             name
             for name in directory_names
             if name not in _IGNORED_DISCOVERY_DIRECTORIES
+            and (
+                path_filter is None
+                or path_filter(current_path / name)
+            )
             and not (
                 name == "cache"
                 and ".claude" in relative.parts
@@ -164,19 +187,32 @@ def safe_rglob(root: Path, pattern: str) -> Iterable[Path]:
         )
         for name in (*directory_names, *sorted(file_names)):
             candidate = current_path / name
-            if candidate.relative_to(root).match(pattern):
+            if (
+                (path_filter is None or path_filter(candidate))
+                and candidate.relative_to(root).match(pattern)
+            ):
                 paths.append(candidate)
     return tuple(paths)
 
 
-def skill_files(root: Path) -> tuple[Path, ...]:
+def skill_files(
+    root: Path,
+    *,
+    path_filter: PathFilter | None = None,
+) -> tuple[Path, ...]:
     """Discover regular and canonical one-level symlinked skill directories."""
 
-    discovered = set(safe_rglob(root, "SKILL.md"))
+    discovered = set(
+        safe_rglob(root, "SKILL.md", path_filter=path_filter)
+    )
     try:
         for child in root.iterdir():
             candidate = child / "SKILL.md"
-            if child.is_dir() and candidate.is_file():
+            if (
+                child.is_dir()
+                and candidate.is_file()
+                and (path_filter is None or path_filter(candidate))
+            ):
                 discovered.add(candidate)
     except OSError:
         pass
