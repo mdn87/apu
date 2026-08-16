@@ -132,6 +132,15 @@ def build_parser() -> argparse.ArgumentParser:
     system_propose.add_argument("--profile", type=Path)
     system_propose.add_argument("--emit-prompts", type=Path)
     system_propose.add_argument("--output", type=Path)
+    system_propose.add_argument(
+        "--consolidate-instructions",
+        metavar="REPOSITORY",
+        type=Path,
+        help=(
+            "create review-required work orders for the repository's effective "
+            "AGENTS.md and CLAUDE.md stack"
+        ),
+    )
     system_apply = system_commands.add_parser(
         "apply", help="apply a campaign's deterministic operations"
     )
@@ -456,6 +465,7 @@ def _system(args: argparse.Namespace) -> int:
             created_at=_timestamp(),
             emit_prompts=args.emit_prompts,
             model_observations=_local_model_observations(),
+            consolidate_instructions=args.consolidate_instructions,
         )
         for warning in warnings:
             print(warning, file=sys.stderr)

@@ -66,13 +66,35 @@ apu system apply campaign.json --auto-only
 apu system status
 ```
 
+To explicitly ask APU to consolidate the effective `AGENTS.md` and `CLAUDE.md`
+policy for one audited repository, add the repository path:
+
+```console
+apu system propose --inventory system-inventory.json \
+  --consolidate-instructions /path/to/repository \
+  --output instruction-campaign.json
+```
+
+This task is explicit rather than an automatic semantic heuristic. It creates
+review-required, target-scoped work orders even when the deterministic audit has
+no findings. It combines audited machine-level instructions with only the
+repository surfaces present in an effective provider stack, excluding inactive
+nested files. Effective ancestor instructions are eligible for this explicit
+review task; ordinary deterministic operations remain profile-bound. Each work
+order includes the stack as untrusted context and asks the runner to state shared
+behavior once, keep project facts near the project, preserve provider-specific
+syntax, and prefer supported imports when appropriate. APU does not edit live
+files during proposal or dispatch; every accepted candidate still requires
+review and apply.
+
 Add `--emit-prompts DIR` to export hand-run work orders; APU warns that these
 copies are outside private state protection. Credential-exposure findings are
 always manual-only and render file, line, and content hash without the value.
 Other findings on sensitive surfaces use private sanitized staging and
 structurally verified placeholders. Before the first deterministic mutation,
-APU locks the campaign, records a campaign-bound snapshot, and stamps the
-receipt with campaign, snapshot, and idempotency data.
+APU locks the campaign, records a campaign-bound snapshot covering every
+planned target, and stamps the receipt with campaign, snapshot, and idempotency
+data.
 
 ## Guidance and model refresh
 

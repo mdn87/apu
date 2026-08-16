@@ -17,6 +17,15 @@ from apu.system_audit import (
 
 REMEDIATION_POLICIES = frozenset({"auto", "work-order", "ignore"})
 SENSITIVE_CATEGORY = "sensitive-material-exposure"
+INSTRUCTION_CONSOLIDATION_CATEGORY = "instruction-consolidation-request"
+_INSTRUCTION_SURFACE_KINDS = frozenset(
+    {
+        "claude-import",
+        "claude-instructions",
+        "claude-local-instructions",
+        "codex-instructions",
+    }
+)
 SYSTEM_PLAN_SCHEMA_VERSION = 2
 LEGACY_SYSTEM_PLAN_SCHEMA_VERSION = 1
 _HEX_DIGITS = frozenset("0123456789abcdef")
@@ -1018,6 +1027,121 @@ def _route_sources(
     )
 
 
+def _instruction_consolidation_routes(
+    inventory: SystemInventory,
+    repository: Path,
+) -> tuple[RoutedFinding, ...]:
+    requested_identity = _normalized_target(str(repository))
+    matches = tuple(
+        item
+        for item in inventory.repositories
+        if _normalized_target(item.repository) == requested_identity
+    )
+    if len(matches) != 1:
+        raise SystemPlanningError(
+            "instruction consolidation requires exactly one audited repository: "
+            f"{repository}"
+        )
+    selected = matches[0]
+    effective_ids = {
+        str(surface_id)
+        for stack in selected.inventory.effective_stacks
+        for surface_id in stack.get("surface_ids", ())
+    }
+    grouped: dict[str, list[tuple[str, InstructionSurface]]] = {}
+    for surface in selected.inventory.surfaces:
+        if (
+            surface.id not in effective_ids
+            or surface.kind not in _INSTRUCTION_SURFACE_KINDS
+        ):
+            continue
+        grouped.setdefault(_normalized_target(surface.path), []).append(
+            (f"repository:{selected.repository}", surface)
+        )
+    for surface in inventory.machine_inventory.surfaces:
+        if surface.kind not in _INSTRUCTION_SURFACE_KINDS:
+            continue
+        grouped.setdefault(_normalized_target(surface.path), []).append(
+            ("machine", surface)
+        )
+    if not grouped:
+        raise SystemPlanningError(
+            "audited repository has no effective AGENTS.md or CLAUDE.md "
+            f"instruction surfaces: {repository}"
+        )
+
+    routes: list[RoutedFinding] = []
+    summary = (
+        "The user explicitly requested instruction consolidation across the "
+        "effective agent instruction stack."
+    )
+    for normalized_path, members in sorted(grouped.items()):
+        surfaces = [surface for _inventory_ref, surface in members]
+        content_hashes = {surface.content_sha256 for surface in surfaces}
+        if len(content_hashes) != 1:
+            raise SystemPlanningError(
+                "effective instruction surface has conflicting audited hashes: "
+                f"{surfaces[0].path}"
+            )
+        representatives = sorted(
+            surfaces,
+            key=lambda item: (
+                item.authority == "package",
+                item.precedence,
+                item.provider,
+                item.id,
+            ),
+        )
+        representative = representatives[0]
+        sensitive = any(surface.sensitive for surface in surfaces)
+        identity = {
+            "target": normalized_path,
+            "content_sha256": representative.content_sha256,
+            "category": INSTRUCTION_CONSOLIDATION_CATEGORY,
+            "location": {"line": 1},
+            "summary": summary,
+        }
+        route = RoutedFinding(
+            id=_stable_id("finding-route", identity),
+            finding_ids=tuple(
+                sorted(
+                    f"explicit-instruction-consolidation:{surface.id}"
+                    for surface in surfaces
+                )
+            ),
+            inventory_refs=tuple(
+                sorted({inventory_ref for inventory_ref, _surface in members})
+            ),
+            surface_ids=tuple(sorted(surface.id for surface in surfaces)),
+            target=representative.path,
+            surface_content_sha256=representative.content_sha256,
+            authority=(
+                "package"
+                if any(surface.authority == "package" for surface in surfaces)
+                else representative.authority
+            ),
+            scope=representative.scope,
+            category=INSTRUCTION_CONSOLIDATION_CATEGORY,
+            severity="informational",
+            confidence="high",
+            analysis_method="explicit-user-request",
+            location={"line": 1},
+            evidence=(() if sensitive else ("explicit-user-request",)),
+            summary=summary,
+            requested_policy="work-order",
+            effective_policy="work-order",
+            routing_reason=(
+                "sensitive-surface-sanitized"
+                if sensitive
+                else "explicit-user-request"
+            ),
+            surface_sensitive=sensitive,
+        )
+        route.validate()
+        routes.append(route)
+    return tuple(routes)
+
+
 def _build_auto_operations(
     routes: tuple[RoutedFinding, ...],
 ) -> tuple[SystemAutoOperation, ...]:
@@ -1168,6 +1292,7 @@ def propose_system(
     remediation_policy: Mapping[str, str],
     *,
     created_at: str,
+    consolidate_instructions: Path | None = None,
 ) -> SystemPlan:
     """Partition a system inventory without generating or mutating files."""
 
@@ -1181,6 +1306,24 @@ def propose_system(
     policy = _policy_map(remediation_policy)
     policy_sha256 = sha256_json(policy)
     routes = _route_sources(_all_sources(inventory), policy)
+    if consolidate_instructions is not None:
+        routes = tuple(
+            sorted(
+                (
+                    *routes,
+                    *_instruction_consolidation_routes(
+                        inventory,
+                        consolidate_instructions,
+                    ),
+                ),
+                key=lambda item: (
+                    _normalized_target(item.target),
+                    item.category,
+                    canonical_json(item.location),
+                    item.id,
+                ),
+            )
+        )
     auto_operations = _build_auto_operations(routes)
     work_orders = _build_work_orders(routes)
     ignored = tuple(

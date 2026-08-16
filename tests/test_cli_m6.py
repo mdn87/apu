@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from apu.cli import main
+from apu.cli import build_parser, main
 from apu.models import Finding, InstructionSurface, Inventory, sha256_bytes
 from apu.system_audit import (
     SYSTEM_INVENTORY_SCHEMA_VERSION,
@@ -11,6 +11,24 @@ from apu.system_audit import (
     SystemInventory,
 )
 from apu.system_profile import load_system_profile
+
+
+def test_system_propose_accepts_explicit_instruction_consolidation_task(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    args = build_parser().parse_args(
+        [
+            "system",
+            "propose",
+            "--inventory",
+            str(tmp_path / "inventory.json"),
+            "--consolidate-instructions",
+            str(repository),
+        ]
+    )
+
+    assert args.consolidate_instructions == repository
 
 
 def test_cli_campaign_propose_apply_and_status(

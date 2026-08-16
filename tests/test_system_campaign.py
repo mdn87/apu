@@ -20,6 +20,7 @@ from apu.state import load_registry
 from apu.system_audit import (
     SYSTEM_INVENTORY_SCHEMA_VERSION,
     EvaluationContext,
+    RepositoryInventory,
     SystemInventory,
 )
 from apu.system_campaign import (
@@ -216,6 +217,188 @@ def test_legacy_inventory_requires_a_fresh_audit_before_proposal(
         )
 
     assert not (tmp_path / "state" / "campaigns").exists()
+
+
+def test_instruction_consolidation_renders_effective_stack_context(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    repository = projects / "repo"
+    repository.mkdir(parents=True)
+    global_root = tmp_path / "home" / ".codex"
+    global_root.mkdir(parents=True)
+    global_agents_path = global_root / "AGENTS.md"
+    ancestor_agents_path = projects / "AGENTS.md"
+    project_agents_path = repository / "AGENTS.md"
+    project_claude_path = repository / "CLAUDE.md"
+    global_agents_path.write_text(
+        "Use skills only when they materially help.\n",
+        encoding="utf-8",
+    )
+    ancestor_agents_path.write_text(
+        "Keep workspace guidance concise.\n",
+        encoding="utf-8",
+    )
+    project_agents_path.write_text(
+        "## House rules\nRun focused tests.\n",
+        encoding="utf-8",
+    )
+    project_claude_path.write_text("@AGENTS.md\n", encoding="utf-8")
+
+    global_agents = replace(
+        _surface(global_agents_path, identifier="global"),
+        kind="codex-instructions",
+    )
+    ancestor_agents = replace(
+        _surface(ancestor_agents_path, identifier="ancestor-agents"),
+        kind="codex-instructions",
+        authority="repository",
+        scope="repository",
+    )
+    project_agents = replace(
+        _surface(project_agents_path, identifier="project-agents"),
+        kind="codex-instructions",
+        authority="repository",
+        scope="repository",
+    )
+    project_claude = replace(
+        _surface(project_claude_path, identifier="project-claude"),
+        kind="claude-instructions",
+        provider="claude",
+        authority="repository",
+        scope="repository",
+    )
+    profile = SystemProfile(
+        schema_version=1,
+        roots=(ProfileRoot(path=str(repository.resolve()), excludes=()),),
+        global_surfaces=(str(global_root.resolve()),),
+        packages=(),
+        guidance_sources=(),
+        remediation_policy={},
+    )
+    machine = Inventory(
+        schema_version=1,
+        apu_version="0.3.0.dev0",
+        generated_at="2026-08-06T22:00:00Z",
+        scope={"roots": [str(global_root)]},
+        surfaces=(global_agents,),
+        findings=(),
+    )
+    child = Inventory(
+        schema_version=1,
+        apu_version="0.3.0.dev0",
+        generated_at="2026-08-06T22:00:00Z",
+        scope={"roots": [str(repository)]},
+        surfaces=(
+            ancestor_agents,
+            project_agents,
+            project_claude,
+        ),
+        effective_stacks=(
+            {
+                "provider": "codex",
+                "surface_ids": [
+                    ancestor_agents.id,
+                    project_agents.id,
+                ],
+            },
+            {
+                "provider": "claude",
+                "surface_ids": [
+                    project_claude.id,
+                    ancestor_agents.id,
+                    project_agents.id,
+                ],
+            },
+        ),
+        findings=(),
+    )
+    inventory = SystemInventory(
+        schema_version=SYSTEM_INVENTORY_SCHEMA_VERSION,
+        apu_version="0.3.0.dev0",
+        generated_at="2026-08-06T22:00:00Z",
+        profile_sha256=profile.artifact_sha256,
+        machine_inventory=machine,
+        repositories=(
+            RepositoryInventory(
+                repository=str(repository.resolve()),
+                inventory=child,
+            ),
+        ),
+        evaluation_context=EvaluationContext.unconfigured(),
+    )
+
+    bundle, _warnings = propose_campaign(
+        tmp_path / "state",
+        inventory,
+        profile,
+        created_at="2026-08-06T22:01:00Z",
+        consolidate_instructions=repository,
+    )
+
+    assert len(bundle["work_orders"]) == 4
+    rendered = "\n".join(
+        Path(item["path"]).read_text(encoding="utf-8")
+        for item in bundle["work_orders"]
+    )
+    assert "explicitly requested instruction consolidation" in rendered
+    assert "Use skills only when they materially help." in rendered
+    assert "Keep workspace guidance concise." in rendered
+    assert "## House rules\\nRun focused tests." in rendered
+    assert "@AGENTS.md" in rendered
+    assert "highest appropriate user-owned layer" in rendered
+    assert global_agents_path.read_text(encoding="utf-8") == (
+        "Use skills only when they materially help.\n"
+    )
+    assert project_agents_path.read_text(encoding="utf-8") == (
+        "## House rules\nRun focused tests.\n"
+    )
+
+
+def test_instruction_consolidation_fails_closed_on_sensitive_context(
+    tmp_path: Path,
+) -> None:
+    profile, inventory, _auto_target, secret = _fixture(tmp_path)
+    repository = tmp_path / "projects" / "repo"
+    repository.mkdir()
+    sensitive = replace(
+        inventory.machine_inventory.surfaces[1],
+        kind="claude-instructions",
+        provider="claude",
+    )
+    child = Inventory(
+        schema_version=1,
+        apu_version=inventory.apu_version,
+        generated_at=inventory.generated_at,
+        scope={"roots": [str(repository)]},
+        surfaces=(sensitive,),
+        effective_stacks=(
+            {"provider": "claude", "surface_ids": [sensitive.id]},
+        ),
+        findings=(),
+    )
+    inventory = replace(
+        inventory,
+        repositories=(
+            RepositoryInventory(
+                repository=str(repository.resolve()),
+                inventory=child,
+            ),
+        ),
+    )
+    state = tmp_path / "state"
+
+    with pytest.raises(ValueError, match="sensitive surface"):
+        propose_campaign(
+            state,
+            inventory,
+            profile,
+            created_at="2026-08-06T22:01:00Z",
+            consolidate_instructions=repository,
+        )
+
+    assert not (state / "campaigns").exists()
+    assert secret not in repr(inventory.repositories[0].inventory.to_dict())
 
 
 def test_campaign_apply_snapshots_then_stamps_receipt(

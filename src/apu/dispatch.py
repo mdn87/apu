@@ -156,6 +156,7 @@ def dispatch_work_order(
             state_root,
             campaign_id,
             order,
+            system_plan=contract["system_plan"],
             index=index,
             requested_snapshot_id=snapshot_id,
             created_at=timestamp,
@@ -408,6 +409,7 @@ def _bind_snapshot(
     campaign_id: str,
     order: SystemWorkOrder,
     *,
+    system_plan: SystemPlan,
     index: Mapping[str, Any],
     requested_snapshot_id: str | None,
     created_at: str,
@@ -416,10 +418,14 @@ def _bind_snapshot(
     if current is not None and requested_snapshot_id not in {None, current}:
         raise DispatchRejectedError("campaign is already bound to another snapshot")
     selected = current or requested_snapshot_id
+    campaign_targets = _campaign_targets(system_plan)
     if selected is None:
         snapshot = create_snapshot(
             state_home,
-            {f"dispatch-{order.id}": Path(order.target)},
+            {
+                f"campaign-target-{position:03d}": target
+                for position, target in enumerate(campaign_targets, 1)
+            },
             label=f"before dispatch {order.id}",
             campaign_id=campaign_id,
             created_at=created_at,
@@ -428,6 +434,24 @@ def _bind_snapshot(
     snapshot = load_snapshot(state_home, selected)
     if snapshot.get("campaign_id") != campaign_id:
         raise DispatchRejectedError("snapshot is not bound to this campaign")
+    covered = {
+        os.path.normcase(
+            os.path.normpath(
+                str(Path(entry["target_path"]).expanduser().resolve(strict=False))
+            )
+        )
+        for entry in snapshot["entries"]
+    }
+    missing = tuple(
+        str(target)
+        for target in campaign_targets
+        if os.path.normcase(os.path.normpath(str(target))) not in covered
+    )
+    if missing:
+        raise DispatchRejectedError(
+            "campaign snapshot does not cover every planned target: "
+            + ", ".join(missing)
+        )
     if current is None:
         register_leaf_artifact(
             state_home,
@@ -446,6 +470,19 @@ def _bind_snapshot(
             expected_revision=index["revision"],
         )
     return selected
+
+
+def _campaign_targets(system_plan: SystemPlan) -> tuple[Path, ...]:
+    targets = (
+        *(operation.target for operation in system_plan.auto_operations),
+        *(order.target for order in system_plan.work_orders),
+    )
+    unique: dict[str, Path] = {}
+    for target in targets:
+        resolved = Path(target).expanduser().resolve(strict=False)
+        identity = os.path.normcase(os.path.normpath(str(resolved)))
+        unique.setdefault(identity, resolved)
+    return tuple(unique[key] for key in sorted(unique))
 
 
 def _validate_probe(
