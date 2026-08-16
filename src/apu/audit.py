@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from apu import __version__
+from apu.adapters.base import PathFilter
 from apu.classify import DetectorPolicy, classify_surface
 from apu.discovery import discover
 from apu.models import Finding, Inventory, SurfaceRelationship
@@ -98,6 +99,7 @@ def build_inventory(
     git_repository: Path | None = None,
     generated_at: str | None = None,
     detector_policy: DetectorPolicy | None = None,
+    path_filter: PathFilter | None = None,
 ) -> Inventory:
     roots = tuple(Path(root).expanduser().resolve() for root in roots)
     working_directories = tuple(
@@ -111,6 +113,7 @@ def build_inventory(
         roots,
         home=home,
         working_directories=working_directories or roots,
+        path_filter=path_filter,
     )
     findings: list[Finding] = []
     for surface in discovery.surfaces:

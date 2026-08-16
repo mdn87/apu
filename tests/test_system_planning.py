@@ -174,6 +174,95 @@ def test_partitions_and_batches_deterministic_findings_per_target(
     assert plan.ignored_findings == ()
 
 
+def test_explicit_instruction_consolidation_creates_work_orders_without_findings(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    global_agents = replace(
+        surface(
+            tmp_path / "home" / ".codex" / "AGENTS.md",
+            identifier="a",
+            authority="user",
+        ),
+        kind="codex-instructions",
+    )
+    project_agents = replace(
+        surface(repository / "AGENTS.md", identifier="b"),
+        kind="codex-instructions",
+    )
+    project_claude = replace(
+        surface(repository / "CLAUDE.md", identifier="c"),
+        kind="claude-instructions",
+        provider="claude",
+    )
+    inactive_nested = replace(
+        surface(repository / "inactive" / "AGENTS.md", identifier="d"),
+        kind="codex-instructions",
+    )
+    child = replace(
+        child_inventory(
+            project_agents,
+            project_claude,
+            inactive_nested,
+            findings=(),
+        ),
+        effective_stacks=(
+            {
+                "provider": "codex",
+                "surface_ids": [project_agents.id],
+            },
+            {
+                "provider": "claude",
+                "surface_ids": [project_claude.id, project_agents.id],
+            },
+        ),
+    )
+    audit = system_inventory(
+        child_inventory(global_agents, findings=()),
+        repositories=(
+            RepositoryInventory(
+                repository=str(repository.resolve()),
+                inventory=child,
+            ),
+        ),
+    )
+
+    plan = propose_system(
+        audit,
+        {},
+        created_at="2026-08-06T20:05:00Z",
+        consolidate_instructions=repository,
+    )
+
+    assert plan.auto_operations == ()
+    assert len(plan.work_orders) == 3
+    assert {
+        finding.category
+        for order in plan.work_orders
+        for finding in order.findings
+    } == {"instruction-consolidation-request"}
+    assert {order.target for order in plan.work_orders} == {
+        global_agents.path,
+        project_agents.path,
+        project_claude.path,
+    }
+    assert inactive_nested.path not in {order.target for order in plan.work_orders}
+
+
+def test_instruction_consolidation_requires_an_audited_repository(
+    tmp_path: Path,
+) -> None:
+    audit = system_inventory(child_inventory(findings=()))
+
+    with pytest.raises(SystemPlanningError, match="audited repository"):
+        propose_system(
+            audit,
+            {},
+            created_at="2026-08-06T20:05:00Z",
+            consolidate_instructions=tmp_path / "missing",
+        )
+
+
 def test_ignore_policy_is_an_explicit_exclusive_partition(
     tmp_path: Path,
 ) -> None:

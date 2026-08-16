@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import apu.adapters.base as adapter_base
 from apu.model_registry import (
     ModelObservation,
     PublishedModelSource,
@@ -64,6 +65,64 @@ def test_repository_discovery_is_deterministic_and_honors_excludes(
     assert discover_repositories(
         (ProfileRoot(str(root.resolve()), ("ignored",)),)
     ) == result
+
+
+def test_system_audit_applies_profile_scope_before_reading_surfaces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    repository = tmp_path / "projects" / "repo"
+    (repository / ".git").mkdir(parents=True)
+    global_instruction = write(home / ".claude" / "CLAUDE.md", "global\n")
+    excluded_global = write(home / ".claude" / "settings.json", "{}\n")
+    included_repository = write(repository / "AGENTS.md", "repository\n")
+    excluded_repository = write(
+        repository / "fixtures" / "AGENTS.md",
+        "fixture\n",
+    )
+    profile = SystemProfile.from_dict(
+        {
+            "roots": [
+                {
+                    "path": str(repository),
+                    "excludes": ["fixtures"],
+                }
+            ],
+            "global_surfaces": [str(global_instruction)],
+        },
+        home=home,
+    )
+    reads: list[Path] = []
+    walked: list[Path] = []
+    real_read_bytes = adapter_base.read_bytes
+    real_walk = adapter_base.os.walk
+
+    def traced_read_bytes(path: Path) -> bytes | None:
+        reads.append(path)
+        return real_read_bytes(path)
+
+    def traced_walk(*args, **kwargs):
+        for item in real_walk(*args, **kwargs):
+            walked.append(Path(item[0]))
+            yield item
+
+    monkeypatch.setattr(adapter_base, "read_bytes", traced_read_bytes)
+    monkeypatch.setattr(adapter_base.os, "walk", traced_walk)
+
+    result = audit_system(profile, home=home)
+
+    child_paths = {
+        Path(surface.path)
+        for surface in result.repositories[0].inventory.surfaces
+    }
+    assert global_instruction in child_paths
+    assert included_repository in child_paths
+    assert excluded_global not in reads
+    assert excluded_repository not in reads
+    assert excluded_global not in child_paths
+    assert excluded_repository not in child_paths
+    assert excluded_repository.parent not in walked
 
 
 def test_repository_discovery_does_not_follow_links_outside_root(

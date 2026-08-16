@@ -10,6 +10,7 @@ from apu.models import InstructionSurface, SurfaceRelationship
 
 from .base import (
     DiscoveryResult,
+    PathFilter,
     absolute_logical_path,
     ancestor_directories,
     deduplicate_surfaces,
@@ -47,7 +48,13 @@ class ClaudeAdapter:
             claude_marketplace_rendered=marketplace_rendered,
         )
 
-    def discover(self, roots: Iterable[Path], *, home: Path) -> DiscoveryResult:
+    def discover(
+        self,
+        roots: Iterable[Path],
+        *,
+        home: Path,
+        path_filter: PathFilter | None = None,
+    ) -> DiscoveryResult:
         normalized_roots = tuple(absolute_logical_path(root) for root in roots)
         normalized_home = absolute_logical_path(home)
         surfaces: list[InstructionSurface] = []
@@ -63,6 +70,7 @@ class ClaudeAdapter:
                 authority="user",
                 scope="global",
                 precedence=precedence,
+                path_filter=path_filter,
             )
             if surface is not None:
                 surfaces.append(surface)
@@ -73,6 +81,7 @@ class ClaudeAdapter:
             scope="global",
             surfaces=surfaces,
             relationships=relationships,
+            path_filter=path_filter,
         )
         self._discover_skills(
             (
@@ -82,6 +91,7 @@ class ClaudeAdapter:
             authority="user",
             scope="global",
             surfaces=surfaces,
+            path_filter=path_filter,
         )
         self._discover_settings(
             normalized_home / ".claude" / "settings.json",
@@ -89,6 +99,7 @@ class ClaudeAdapter:
             scope="global",
             surfaces=surfaces,
             relationships=relationships,
+            path_filter=path_filter,
         )
         self._discover_marketplace_file(
             normalized_home / ".claude" / "plugins" / "known_marketplaces.json",
@@ -96,11 +107,13 @@ class ClaudeAdapter:
             scope="global",
             surfaces=surfaces,
             relationships=relationships,
+            path_filter=path_filter,
         )
         self._discover_plugins(
             normalized_home,
             surfaces=surfaces,
             relationships=relationships,
+            path_filter=path_filter,
         )
 
         project_bases: set[Path] = set()
@@ -108,23 +121,39 @@ class ClaudeAdapter:
         for root in normalized_roots:
             if root.is_file():
                 if root.name in {"CLAUDE.md", "CLAUDE.local.md"}:
-                    surface = self._repository_instruction(root)
+                    surface = self._repository_instruction(
+                        root, path_filter=path_filter
+                    )
                     if surface is not None:
                         surfaces.append(surface)
             else:
                 for filename in ("CLAUDE.md", "CLAUDE.local.md"):
-                    for path in safe_rglob(root, filename):
-                        surface = self._repository_instruction(path)
+                    for path in safe_rglob(
+                        root,
+                        filename,
+                        path_filter=path_filter,
+                    ):
+                        surface = self._repository_instruction(
+                            path, path_filter=path_filter
+                        )
                         if surface is not None:
                             surfaces.append(surface)
                 project_bases.add(root)
-                for claude_dir in safe_rglob(root, ".claude"):
+                for claude_dir in safe_rglob(
+                    root,
+                    ".claude",
+                    path_filter=path_filter,
+                ):
                     if claude_dir.is_dir():
                         project_bases.add(claude_dir.parent)
             project_bases.update(ancestor_directories(root))
 
             if root.is_dir():
-                for path in safe_rglob(root, "*.md"):
+                for path in safe_rglob(
+                    root,
+                    "*.md",
+                    path_filter=path_filter,
+                ):
                     if self._is_apu_sidecar(path):
                         sidecar = self._surface(
                             path,
@@ -132,6 +161,7 @@ class ClaudeAdapter:
                             authority="repository",
                             scope="repository",
                             precedence=25 + directory_depth(path.parent),
+                            path_filter=path_filter,
                         )
                         if sidecar is not None:
                             surfaces.append(sidecar)
@@ -141,7 +171,9 @@ class ClaudeAdapter:
             sorted(project_bases, key=str), home=normalized_home
         ):
             for filename in ("CLAUDE.md", "CLAUDE.local.md"):
-                surface = self._repository_instruction(base / filename)
+                surface = self._repository_instruction(
+                    base / filename, path_filter=path_filter
+                )
                 if surface is not None:
                     surfaces.append(surface)
             self._discover_rules(
@@ -150,12 +182,14 @@ class ClaudeAdapter:
                 scope="repository",
                 surfaces=surfaces,
                 relationships=relationships,
+                path_filter=path_filter,
             )
             self._discover_skills(
                 (base / ".claude" / "skills", base / ".agents" / "skills"),
                 authority="repository",
                 scope="repository",
                 surfaces=surfaces,
+                path_filter=path_filter,
             )
             for filename in ("settings.json", "settings.local.json"):
                 self._discover_settings(
@@ -164,6 +198,7 @@ class ClaudeAdapter:
                     scope="repository",
                     surfaces=surfaces,
                     relationships=relationships,
+                    path_filter=path_filter,
                 )
             self._discover_marketplace_file(
                 base / ".claude-plugin" / "marketplace.json",
@@ -171,6 +206,7 @@ class ClaudeAdapter:
                 scope="repository",
                 surfaces=surfaces,
                 relationships=relationships,
+                path_filter=path_filter,
             )
 
         discovered = deduplicate_surfaces(surfaces)
@@ -196,6 +232,7 @@ class ClaudeAdapter:
                 surfaces=surfaces,
                 surface_by_path=surface_by_path,
                 relationships=relationships,
+                path_filter=path_filter,
             )
 
         active_targets = {
@@ -222,7 +259,10 @@ class ClaudeAdapter:
         )
 
     def _repository_instruction(
-        self, path: Path
+        self,
+        path: Path,
+        *,
+        path_filter: PathFilter | None,
     ) -> InstructionSurface | None:
         local = path.name == "CLAUDE.local.md"
         return self._surface(
@@ -235,6 +275,7 @@ class ClaudeAdapter:
             authority="repository",
             scope="hierarchical",
             precedence=20 + (directory_depth(path.parent) * 2) + int(local),
+            path_filter=path_filter,
         )
 
     def _discover_rules(
@@ -245,14 +286,20 @@ class ClaudeAdapter:
         scope: str,
         surfaces: list[InstructionSurface],
         relationships: list[SurfaceRelationship],
+        path_filter: PathFilter | None,
     ) -> None:
-        for path in safe_rglob(rule_root, "*.md"):
+        for path in safe_rglob(
+            rule_root,
+            "*.md",
+            path_filter=path_filter,
+        ):
             surface = self._surface(
                 path,
                 kind="claude-rule",
                 authority=authority,
                 scope=scope,
                 precedence=15 if authority == "user" else 60,
+                path_filter=path_filter,
             )
             if surface is None:
                 continue
@@ -276,15 +323,20 @@ class ClaudeAdapter:
         authority: str,
         scope: str,
         surfaces: list[InstructionSurface],
+        path_filter: PathFilter | None,
     ) -> None:
         for skill_root in skill_roots:
-            for path in skill_files(skill_root):
+            for path in skill_files(
+                skill_root,
+                path_filter=path_filter,
+            ):
                 surface = self._surface(
                     path,
                     kind="skill",
                     authority=authority,
                     scope=scope,
                     precedence=80,
+                    path_filter=path_filter,
                 )
                 if surface is not None:
                     surfaces.append(surface)
@@ -297,6 +349,7 @@ class ClaudeAdapter:
         scope: str,
         surfaces: list[InstructionSurface],
         relationships: list[SurfaceRelationship],
+        path_filter: PathFilter | None,
     ) -> None:
         surface = self._surface(
             path,
@@ -304,6 +357,7 @@ class ClaudeAdapter:
             authority=authority,
             scope=scope,
             precedence=70,
+            path_filter=path_filter,
         )
         if surface is None:
             return
@@ -354,6 +408,7 @@ class ClaudeAdapter:
         *,
         surfaces: list[InstructionSurface],
         relationships: list[SurfaceRelationship],
+        path_filter: PathFilter | None,
     ) -> None:
         """Record instructions contributed by enabled plugins.
 
@@ -367,7 +422,10 @@ class ClaudeAdapter:
         plugins_root = home / ".claude" / "plugins"
         if not plugins_root.is_dir():
             return
-        settings = _read_json(home / ".claude" / "settings.json")
+        settings_path = home / ".claude" / "settings.json"
+        if path_filter is not None and not path_filter(settings_path):
+            return
+        settings = _read_json(settings_path)
         enabled = (
             settings.get("enabledPlugins")
             if isinstance(settings, dict)
@@ -390,14 +448,19 @@ class ClaudeAdapter:
                 identifier=identifier,
                 surfaces=surfaces,
                 relationships=relationships,
+                path_filter=path_filter,
             )
-            for path in skill_files(root / "skills"):
+            for path in skill_files(
+                root / "skills",
+                path_filter=path_filter,
+            ):
                 surface = self._surface(
                     path,
                     kind="skill",
                     authority="package",
                     scope="global",
                     precedence=80,
+                    path_filter=path_filter,
                 )
                 if surface is not None:
                     surfaces.append(surface)
@@ -427,6 +490,7 @@ class ClaudeAdapter:
         identifier: str,
         surfaces: list[InstructionSurface],
         relationships: list[SurfaceRelationship],
+        path_filter: PathFilter | None,
     ) -> None:
         surface = self._surface(
             path,
@@ -434,6 +498,7 @@ class ClaudeAdapter:
             authority="package",
             scope="global",
             precedence=5,
+            path_filter=path_filter,
         )
         if surface is None:
             return
@@ -480,6 +545,7 @@ class ClaudeAdapter:
         scope: str,
         surfaces: list[InstructionSurface],
         relationships: list[SurfaceRelationship],
+        path_filter: PathFilter | None,
     ) -> None:
         surface = self._surface(
             path,
@@ -487,6 +553,7 @@ class ClaudeAdapter:
             authority=authority,
             scope=scope,
             precedence=90,
+            path_filter=path_filter,
         )
         if surface is None:
             return
@@ -522,6 +589,7 @@ class ClaudeAdapter:
         surfaces: list[InstructionSurface],
         surface_by_path: dict[str, InstructionSurface],
         relationships: list[SurfaceRelationship],
+        path_filter: PathFilter | None,
     ) -> None:
         logical = absolute_logical_path(path)
         source = surface_by_path.get(str(logical))
@@ -532,6 +600,7 @@ class ClaudeAdapter:
                 authority=authority,
                 scope=scope,
                 precedence=25 + directory_depth(logical.parent),
+                path_filter=path_filter,
             )
             if source is None:
                 return
@@ -543,6 +612,8 @@ class ClaudeAdapter:
             target_path = _resolve_import(token, logical.parent)
             target_key = str(target_path)
             location = {"line": line_number}
+            if path_filter is not None and not path_filter(target_path):
+                continue
             if target_key in current_ancestry:
                 relationships.append(
                     SurfaceRelationship(
@@ -584,6 +655,7 @@ class ClaudeAdapter:
                     authority=authority,
                     scope=scope,
                     precedence=source.precedence,
+                    path_filter=path_filter,
                 )
                 if target is None:
                     relationships.append(
@@ -616,6 +688,7 @@ class ClaudeAdapter:
                 surfaces=surfaces,
                 surface_by_path=surface_by_path,
                 relationships=relationships,
+                path_filter=path_filter,
             )
 
     def _surface(
@@ -626,6 +699,7 @@ class ClaudeAdapter:
         authority: str,
         scope: str,
         precedence: int,
+        path_filter: PathFilter | None,
     ) -> InstructionSurface | None:
         return make_surface(
             path,
@@ -634,6 +708,7 @@ class ClaudeAdapter:
             authority=authority,
             scope=scope,
             precedence=precedence,
+            path_filter=path_filter,
         )
 
     @staticmethod

@@ -12,6 +12,11 @@ from types import MappingProxyType
 from typing import Any
 
 from apu import __version__
+from apu.adapters.base import (
+    PathFilter,
+    ancestor_directories,
+    repository_bases,
+)
 from apu.audit import build_inventory
 from apu.classify import DetectorPolicy
 from apu.models import (
@@ -705,6 +710,61 @@ def _path_is_under(path: str, roots: tuple[Path, ...]) -> bool:
     return any(_inside(candidate, root) for root in roots)
 
 
+def _machine_path_filter(global_roots: tuple[Path, ...]) -> PathFilter:
+    return lambda path: _path_is_under(str(path), global_roots)
+
+
+def _repository_path_filter(
+    profile: SystemProfile,
+    repository: Path,
+    *,
+    home: Path,
+    global_roots: tuple[Path, ...],
+) -> PathFilter:
+    repository = repository.resolve(strict=False)
+    ancestor_bases = tuple(
+        base
+        for base in repository_bases(
+            ancestor_directories(repository),
+            home=home,
+        )
+        if base != repository
+    )
+    applicable_roots = tuple(
+        root_spec
+        for root_spec in profile.roots
+        if _inside(repository, Path(root_spec.path).resolve(strict=False))
+    )
+
+    def included(path: Path) -> bool:
+        candidate = path.resolve(strict=False)
+        if _path_is_under(str(candidate), global_roots):
+            return True
+        if _inside(candidate, repository):
+            for root_spec in applicable_roots:
+                root = Path(root_spec.path).resolve(strict=False)
+                if not _inside(candidate, root):
+                    continue
+                relative = candidate.relative_to(root).as_posix()
+                if relative != "." and _matches_exclude(
+                    relative,
+                    root_spec.excludes,
+                ):
+                    return False
+            return True
+        for base in ancestor_bases:
+            if candidate.parent == base:
+                return True
+            if any(
+                _inside(candidate, base / directory)
+                for directory in (".agents", ".claude", ".claude-plugin")
+            ):
+                return True
+        return False
+
+    return included
+
+
 def _filter_stack(
     stack: Mapping[str, Any], allowed_surface_ids: set[str]
 ) -> dict[str, Any]:
@@ -819,6 +879,7 @@ def audit_system(
             working_directories=global_roots,
             generated_at=timestamp,
             detector_policy=detector_policy,
+            path_filter=_machine_path_filter(global_roots),
         ),
         global_roots=global_roots,
         machine_only=True,
@@ -827,6 +888,12 @@ def audit_system(
     children: list[RepositoryInventory] = []
     for repository in discovery.repositories:
         repository_path = Path(repository)
+        path_filter = _repository_path_filter(
+            profile,
+            repository_path,
+            home=selected_home,
+            global_roots=global_roots,
+        )
         child = _scope_inventory(
             build_inventory(
                 (*global_roots, repository_path),
@@ -835,6 +902,7 @@ def audit_system(
                 git_repository=repository_path,
                 generated_at=timestamp,
                 detector_policy=detector_policy,
+                path_filter=path_filter,
             ),
             global_roots=global_roots,
             machine_only=False,
