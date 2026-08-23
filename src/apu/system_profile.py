@@ -119,10 +119,72 @@ class ProfileRoot:
 
 
 @dataclass(frozen=True)
+class ProfileSurface:
+    """One machine-global instruction surface, with optional exclusions.
+
+    Roots have carried ``excludes`` since the beginning; global surfaces did
+    not, so a directory like ``~/.codex`` was scanned wholesale. That swept in
+    agent runtime scratch -- ``~/.codex/tmp/arg0`` holds symlinked dispatch
+    shims that all resolve to the same binary, which reads downstream as
+    ambiguous target coverage.
+    """
+
+    path: str
+    excludes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.path or not Path(self.path).is_absolute():
+            raise ProfileError("global_surfaces must contain absolute paths")
+        if any(not item for item in self.excludes):
+            raise ProfileError("surface excludes must be non-empty patterns")
+
+    def to_dict(self) -> dict[str, Any] | str:
+        # Emit a bare string when there is nothing to exclude so existing
+        # profiles round-trip byte-identically and artifact_sha256 is stable.
+        if not self.excludes:
+            return self.path
+        return {"path": self.path, "excludes": list(self.excludes)}
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: Mapping[str, Any] | str,
+        *,
+        base_directory: Path | None = None,
+        home: Path | None = None,
+        field: str = "global_surfaces[]",
+    ) -> ProfileSurface:
+        base = (base_directory or Path.cwd()).resolve(strict=False)
+        selected_home = (home or Path.home()).resolve(strict=False)
+        if isinstance(value, str):
+            raw_path: object = value
+            raw_excludes: object = ()
+        elif isinstance(value, Mapping):
+            unknown = set(value) - {"path", "excludes"}
+            if unknown:
+                raise ProfileError(
+                    f"{field} has unsupported fields: {', '.join(sorted(unknown))}"
+                )
+            raw_path = value.get("path")
+            raw_excludes = value.get("excludes", ())
+        else:
+            raise ProfileError(f"{field} must be a string or table")
+        return cls(
+            path=_path_from_config(
+                raw_path,
+                field=f"{field}.path",
+                base_directory=base,
+                home=selected_home,
+            ),
+            excludes=_validate_excludes(raw_excludes, f"{field}.excludes"),
+        )
+
+
+@dataclass(frozen=True)
 class SystemProfile:
     schema_version: int
     roots: tuple[ProfileRoot, ...]
-    global_surfaces: tuple[str, ...]
+    global_surfaces: tuple[ProfileSurface, ...]
     packages: tuple[str, ...]
     guidance_sources: tuple[str, ...]
     remediation_policy: Mapping[str, str]
@@ -137,13 +199,21 @@ class SystemProfile:
         root_paths = [os.path.normcase(root.path) for root in self.roots]
         if len(set(root_paths)) != len(root_paths):
             raise ProfileError("profile roots must not contain duplicates")
+        # Callers may still pass plain strings; coerce so the excludes-aware
+        # type is an addition rather than a breaking change.
+        object.__setattr__(
+            self,
+            "global_surfaces",
+            tuple(
+                item if isinstance(item, ProfileSurface) else ProfileSurface(path=item)
+                for item in self.global_surfaces
+            ),
+        )
         globals_normalized = [
-            os.path.normcase(path) for path in self.global_surfaces
+            os.path.normcase(surface.path) for surface in self.global_surfaces
         ]
         if len(set(globals_normalized)) != len(globals_normalized):
             raise ProfileError("global_surfaces must not contain duplicates")
-        if any(not Path(path).is_absolute() for path in self.global_surfaces):
-            raise ProfileError("global_surfaces must contain absolute paths")
         policy = dict(self.remediation_policy)
         for category, action in policy.items():
             _nonempty_string(category, "remediation_policy category")
@@ -161,7 +231,7 @@ class SystemProfile:
         return {
             "schema_version": self.schema_version,
             "roots": [root.to_dict() for root in self.roots],
-            "global_surfaces": list(self.global_surfaces),
+            "global_surfaces": [s.to_dict() for s in self.global_surfaces],
             "packages": list(self.packages),
             "guidance_sources": list(self.guidance_sources),
             "remediation_policy": dict(self.remediation_policy),
@@ -232,18 +302,23 @@ class SystemProfile:
         if raw_globals is None:
             raw_globals = (
                 "~/.claude",
-                "~/.codex",
+                # The Codex CLI writes arg0 dispatch shims under ~/.codex/tmp.
+                # They are runtime scratch, not instruction surfaces, and every
+                # shim in one directory symlinks to the same binary -- so
+                # snapshotting them reports ambiguous target coverage on any
+                # machine where Codex is installed.
+                {"path": "~/.codex", "excludes": ["tmp/**"]},
                 "~/.agents",
                 "~/.claude/plugins/cache",
             )
         if not isinstance(raw_globals, (list, tuple)):
             raise ProfileError("global_surfaces must be an array")
         globals_ = tuple(
-            _path_from_config(
+            ProfileSurface.from_dict(
                 item,
-                field=f"global_surfaces[{index}]",
                 base_directory=base,
                 home=selected_home,
+                field=f"global_surfaces[{index}]",
             )
             for index, item in enumerate(raw_globals)
         )

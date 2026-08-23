@@ -672,7 +672,7 @@ def _profile_boundaries(profile: SystemProfile) -> list[str]:
     values = [Path(root.path) for root in profile.roots]
     values.extend(
         path
-        for path in (Path(value) for value in profile.global_surfaces)
+        for path in (Path(surface.path) for surface in profile.global_surfaces)
         if path.is_dir()
     )
     return [
@@ -686,8 +686,8 @@ def _target_is_in_profile(target: Path, profile: SystemProfile) -> bool:
     for root in profile.roots:
         if _path_is_within(resolved, Path(root.path).resolve(strict=False)):
             return True
-    for raw in profile.global_surfaces:
-        surface = Path(raw).resolve(strict=False)
+    for spec in profile.global_surfaces:
+        surface = Path(spec.path).resolve(strict=False)
         if _path_identity(resolved) == _path_identity(surface):
             return True
         if surface.is_dir() and _path_is_within(resolved, surface):

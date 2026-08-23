@@ -27,7 +27,8 @@ from apu.models import (
     canonical_json,
     sha256_json,
 )
-from apu.system_profile import ProfileRoot, SystemProfile
+from apu.filesystem import matches_exclude as _matches_exclude
+from apu.system_profile import ProfileRoot, ProfileSurface, SystemProfile
 
 SYSTEM_INVENTORY_SCHEMA_VERSION = 2
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -210,24 +211,6 @@ class RepositoryDiscovery:
                 for item in value.get("issues", ())
             ),
         )
-
-
-def _matches_exclude(relative: str, patterns: Iterable[str]) -> bool:
-    relative = relative.replace("\\", "/").strip("/")
-    path = PurePosixPath(relative)
-    for raw_pattern in patterns:
-        pattern = raw_pattern.replace("\\", "/").strip("/")
-        if not pattern:
-            continue
-        if "/" not in pattern and pattern in path.parts:
-            return True
-        if fnmatch.fnmatchcase(relative, pattern) or path.match(pattern):
-            return True
-        if pattern.endswith("/**"):
-            prefix = pattern[:-3].rstrip("/")
-            if relative == prefix or relative.startswith(prefix + "/"):
-                return True
-    return False
 
 
 def _inside(candidate: Path, root: Path) -> bool:
@@ -710,8 +693,33 @@ def _path_is_under(path: str, roots: tuple[Path, ...]) -> bool:
     return any(_inside(candidate, root) for root in roots)
 
 
-def _machine_path_filter(global_roots: tuple[Path, ...]) -> PathFilter:
-    return lambda path: _path_is_under(str(path), global_roots)
+def _machine_path_filter(
+    global_roots: tuple[Path, ...],
+    surfaces: tuple[ProfileSurface, ...] = (),
+) -> PathFilter:
+    # Surfaces carry the same relative exclude patterns roots do. Without this
+    # a directory listed in global_surfaces is scanned wholesale, sweeping in
+    # agent runtime scratch such as ~/.codex/tmp/arg0.
+    resolved = tuple(
+        (Path(surface.path).resolve(strict=False), surface.excludes)
+        for surface in surfaces
+        if surface.excludes
+    )
+
+    def _accept(path: Path) -> bool:
+        if not _path_is_under(str(path), global_roots):
+            return False
+        candidate = Path(path).resolve(strict=False)
+        for base, patterns in resolved:
+            try:
+                relative = candidate.relative_to(base)
+            except ValueError:
+                continue
+            if _matches_exclude(str(relative), patterns):
+                return False
+        return True
+
+    return _accept
 
 
 def _repository_path_filter(
@@ -870,7 +878,8 @@ def audit_system(
     timestamp = generated_at or _now()
     discovery = discover_repositories(profile.roots)
     global_roots = tuple(
-        Path(path).resolve(strict=False) for path in profile.global_surfaces
+        Path(surface.path).resolve(strict=False)
+        for surface in profile.global_surfaces
     )
     machine = _scope_inventory(
         build_inventory(
@@ -879,7 +888,9 @@ def audit_system(
             working_directories=global_roots,
             generated_at=timestamp,
             detector_policy=detector_policy,
-            path_filter=_machine_path_filter(global_roots),
+            path_filter=_machine_path_filter(
+                global_roots, profile.global_surfaces
+            ),
         ),
         global_roots=global_roots,
         machine_only=True,

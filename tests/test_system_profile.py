@@ -42,10 +42,12 @@ guidance-conflict = "work-order"
     assert profile.roots[0].path == str(
         (config.parent / "../projects").resolve()
     )
-    assert profile.global_surfaces == (
+    assert tuple(surface.path for surface in profile.global_surfaces) == (
         str(home / ".codex"),
         str((config.parent / "global").resolve()),
     )
+    # A surface declared as a bare string carries no exclusions.
+    assert all(not surface.excludes for surface in profile.global_surfaces)
     assert profile.remediation_policy["duplicate-instruction"] == "auto"
     with pytest.raises(TypeError):
         profile.remediation_policy["new"] = "ignore"  # type: ignore[index]
@@ -61,12 +63,20 @@ def test_profile_uses_global_defaults_and_validates_policy(
         {"roots": [str(tmp_path / "projects")]},
         home=tmp_path / "home",
     )
-    assert profile.global_surfaces == (
+    assert tuple(surface.path for surface in profile.global_surfaces) == (
         str(tmp_path / "home" / ".claude"),
         str(tmp_path / "home" / ".codex"),
         str(tmp_path / "home" / ".agents"),
         str(tmp_path / "home" / ".claude" / "plugins" / "cache"),
     )
+    # ~/.codex ships with the Codex runtime scratch excluded by default: the CLI
+    # writes symlinked arg0 dispatch shims under tmp/arg0 that all resolve to the
+    # same binary, which reads downstream as ambiguous target coverage.
+    excludes = {
+        surface.path: surface.excludes for surface in profile.global_surfaces
+    }
+    assert excludes[str(tmp_path / "home" / ".codex")] == ("tmp/**",)
+    assert excludes[str(tmp_path / "home" / ".claude")] == ()
 
     with pytest.raises(ProfileError, match="unsupported remediation"):
         SystemProfile.from_dict(

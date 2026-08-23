@@ -50,7 +50,13 @@ def test_cli_campaign_propose_apply_and_status(
     profile_path = tmp_path / "profile.toml"
     profile_path.write_text(
         f'roots = ["{projects.as_posix()}"]\n'
-        f'global_surfaces = ["{global_root.as_posix()}"]\n'
+        # Exclude the Codex runtime scratch. Without this the outcome depends
+        # on whether a real Codex CLI is installed on the machine running the
+        # tests: it writes symlinked arg0 dispatch shims under .codex/tmp/arg0
+        # that all resolve to the same binary, which reads as ambiguous target
+        # coverage.
+        f'global_surfaces = [{{ path = "{global_root.as_posix()}", '
+        'excludes = ["tmp/**"] }]\n'
         "[remediation_policy]\n"
         'duplicate-instruction = "auto"\n'
         'sensitive-material-exposure = "ignore"\n',
