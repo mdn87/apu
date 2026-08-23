@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import fnmatch
 from hashlib import sha256
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import Iterable
 
 from .models import sha256_bytes
+
+
+def matches_exclude(relative: str, patterns: Iterable[str]) -> bool:
+    """True when a surface-relative path matches any exclude pattern.
+
+    Shared by the audit walk and the snapshot walk so a profile's excludes mean
+    the same thing in both. They are separate traversals, and an exclude honoured
+    by only one of them silently reappears in the other's output.
+    """
+    relative = relative.replace("\\", "/").strip("/")
+    path = PurePosixPath(relative)
+    for raw_pattern in patterns:
+        pattern = raw_pattern.replace("\\", "/").strip("/")
+        if not pattern:
+            continue
+        if "/" not in pattern and pattern in path.parts:
+            return True
+        if fnmatch.fnmatchcase(relative, pattern) or path.match(pattern):
+            return True
+        if pattern.endswith("/**"):
+            prefix = pattern[:-3].rstrip("/")
+            if relative == prefix or relative.startswith(prefix + "/"):
+                return True
+    return False
 
 
 def hash_object(path: Path) -> str:

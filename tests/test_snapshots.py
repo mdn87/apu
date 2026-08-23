@@ -34,6 +34,49 @@ def is_junction(path: Path) -> bool:
     )
 
 
+def test_create_honours_surface_excludes(tmp_path: Path) -> None:
+    """Excluded subtrees never reach the manifest.
+
+    Regression: excludes were dropped twice on the way in -- once when
+    _normalize_surfaces rebuilt SnapshotSurface without them, and once because
+    the snapshot walk did not consult them at all. The visible symptom was a
+    campaign snapshot reporting ambiguous target coverage, because agent runtime
+    scratch such as ~/.codex/tmp/arg0 holds several symlinked dispatch shims that
+    all resolve to the same binary.
+    """
+    state_home = tmp_path / "state"
+    live = tmp_path / "live"
+    live.mkdir()
+    (live / "AGENTS.md").write_text("keep me\n", encoding="utf-8")
+    scratch = live / "tmp" / "arg0"
+    scratch.mkdir(parents=True)
+    (scratch / "apply_patch").write_text("shim\n", encoding="utf-8")
+    (scratch / "applypatch").write_text("shim\n", encoding="utf-8")
+
+    manifest = create_snapshot(
+        state_home,
+        (
+            SnapshotSurface(
+                logical_path="surface-0001",
+                root=live,
+                excludes=("tmp/**",),
+            ),
+        ),
+    )
+    captured = {entry["relative_path"] for entry in manifest["entries"]}
+    assert "AGENTS.md" in captured
+    assert not any(item.startswith("tmp") for item in captured), captured
+
+    # Without the exclude the same tree captures the scratch, so the test is
+    # asserting the exclude rather than an incidental traversal limit.
+    unfiltered = create_snapshot(
+        tmp_path / "state-unfiltered",
+        (SnapshotSurface(logical_path="surface-0001", root=live),),
+    )
+    unfiltered_paths = {entry["relative_path"] for entry in unfiltered["entries"]}
+    assert "tmp/arg0/apply_patch" in unfiltered_paths
+
+
 def test_create_captures_files_empty_directories_missing_and_links(
     tmp_path: Path,
 ) -> None:

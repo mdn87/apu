@@ -18,7 +18,15 @@ def snapshot_surfaces_for_profile(
     """Resolve the effective policy objects covered by a system profile."""
 
     inventory = audit_system(profile, home=home, generated_at=generated_at)
-    candidates = [Path(path) for path in profile.global_surfaces]
+    candidates = [Path(surface.path) for surface in profile.global_surfaces]
+    # Carry each surface's excludes through to the snapshot walk. Selection below
+    # collapses candidates to a minimal covering set, so key by logical identity
+    # rather than by position.
+    excludes_by_identity = {
+        _logical_identity(_absolute_logical(Path(surface.path))): surface.excludes
+        for surface in profile.global_surfaces
+        if surface.excludes
+    }
     for repository in inventory.repositories:
         for surface in repository.inventory.surfaces:
             if surface.scope == "global":
@@ -40,7 +48,11 @@ def snapshot_surfaces_for_profile(
         selected.append(candidate)
 
     surfaces = tuple(
-        SnapshotSurface(logical_path=f"surface-{index:04d}", root=path)
+        SnapshotSurface(
+            logical_path=f"surface-{index:04d}",
+            root=path,
+            excludes=excludes_by_identity.get(_logical_identity(path), ()),
+        )
         for index, path in enumerate(
             sorted(
                 selected,

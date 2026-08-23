@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any
+from .filesystem import matches_exclude
 
 from .models import sha256_bytes, sha256_json
 from .state import ensure_private_directory, write_json_atomic
@@ -27,6 +28,8 @@ class SnapshotSurface:
 
     logical_path: str
     root: Path
+    # Surface-relative patterns to skip, mirroring ProfileRoot/ProfileSurface.
+    excludes: tuple[str, ...] = ()
 
 
 def create_snapshot(
@@ -587,6 +590,9 @@ def _capture_surface(
     visited_directories: set[tuple[int, int]] = set()
 
     def visit(path: Path, relative_path: str) -> None:
+        # The surface root itself is never excluded; only what lies under it.
+        if relative_path and matches_exclude(relative_path, surface.excludes):
+            return
         object_type, object_stat = _inspect_object(path)
         entry: dict[str, Any] = {
             "surface": surface.logical_path,
@@ -718,7 +724,9 @@ def _normalize_surfaces(
             raise ValueError(f"duplicate surface root: {root}")
         logical_paths.add(logical_path)
         roots.add(root_identity)
-        normalized.append(SnapshotSurface(logical_path, root))
+        normalized.append(
+            SnapshotSurface(logical_path, root, tuple(value.excludes))
+        )
     return tuple(sorted(normalized, key=lambda item: item.logical_path))
 
 
