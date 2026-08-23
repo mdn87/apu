@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add strict, content-addressed contracts for importing redacted Autowork
+  behavior evaluation receipts and proposing review-only Lugos Orca behavior
+  registry patches.
+- Require exact registry revisions, canonical hashes, privacy rejection,
+  `requires_review: true`, and `apply_authorized: false`; APU neither launches
+  providers nor applies these proposals.
+
 ## 0.8.0 — 2026-08-14
 
 - Add bounded behavioral audits over recent or operator-marked Codex and

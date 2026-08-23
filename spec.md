@@ -1019,6 +1019,35 @@ and may not claim the behavioral fixtures passed.
 - Windows fallback fixtures omit POSIX mode assertions and exercise a
   non-symlink installation strategy.
 
+### 13.5 Lugos Orca behavior evidence
+
+The Orca behavior boundary is import-only. APU validates an Autowork
+`lugos.autowork.behavior-delegation-receipt`, verifies its canonical receipt
+hash, and projects it into
+`lugos.apu.behavior-evaluation-evidence`. The version-1 projection accepts only
+adaptation tiers 0–2 and stores no prompt, response, reasoning, command, tool
+body, environment, credential, or free-text rejection reason.
+
+Behavior evidence is content-addressed by the canonical JSON body excluding
+`evidence_id`. A registry candidate patch is likewise content-addressed by its
+body excluding `proposal_id`. Candidate operations carry canonical value hashes
+and, for replacements or removals, the prior value hash. Operations may target
+only `/behavior/...`, must have unique non-overlapping paths, and cannot contain
+private fields or credential-shaped strings.
+
+Every `lugos.apu.lugos-orca.behavior-registry-candidate-patch` must:
+
+- name the exact full Lugos Orca commit and behavior-tree SHA-256 it targets;
+- cite at least one validated supporting evidence record from that exact
+  revision;
+- set `requires_review` to `true` and `apply_authorized` to `false`; and
+- remain a proposal only. APU does not launch a provider for this contract and
+  does not expose an operation that applies the proposal.
+
+The checked-in JSON schemas use JSON Schema draft 2020-12 and disallow unknown
+properties at every defined object boundary. These contracts extend but do not
+replace or alter APU execution evidence version 1.
+
 ## 14. Acceptance criteria
 
 The v0.1 MVP is complete when:

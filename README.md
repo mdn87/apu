@@ -304,6 +304,27 @@ raw provider records. APU does not delete or archive provider logs. Detailed APU
 events are marked as candidates for expiry after thirty days or when their linked
 monitoring window closes; automated pruning remains a separate future operation.
 
+## Orca behavior evidence boundary
+
+APU can consume a version-1 `lugos.autowork.behavior-delegation-receipt` as
+redacted evaluation evidence. The importer verifies the receipt's canonical
+hash, accepts only the implemented adaptation tiers 0–2, and retains identity,
+registry revision, applied-artifact hashes, safe telemetry, and structured
+evaluation results. It rejects raw prompts, responses, reasoning, environment
+content, credentials, unknown fields, and credential-shaped strings.
+
+APU can then construct a content-addressed
+`lugos.apu.lugos-orca.behavior-registry-candidate-patch`. Every proposal names
+an exact Lugos Orca commit and behavior-tree hash, cites validated evidence from
+that same revision, and has `requires_review: true` and
+`apply_authorized: false`. This module has no provider launcher and no patch
+application function: Autowork owns execution, and a human-reviewed Orca change
+owns registry mutation.
+
+The strict version-1 JSON schemas are installed under `share/apu/schemas` and
+are also checked in at `schemas/behavior-evaluation-evidence.schema.json` and
+`schemas/behavior-registry-candidate-patch.schema.json`.
+
 ## Development
 
 ```console

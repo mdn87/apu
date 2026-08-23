@@ -16,6 +16,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
   "build>=1.2",
+  "jsonschema>=4.23",
   "pytest>=8",
 ]
 
@@ -30,6 +31,10 @@ apu-watch = "apu.behavior_cli:watch_main"
 where = ["src"]
 
 [tool.setuptools.data-files]
+"share/apu/schemas" = [
+  "schemas/behavior-evaluation-evidence.schema.json",
+  "schemas/behavior-registry-candidate-patch.schema.json",
+]
 "share/apu/skills/optimizing-agent-instructions" = [
   "skills/optimizing-agent-instructions/SKILL.md",
 ]
