@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (Unreleased)
 
 - Add strict, content-addressed contracts for importing redacted Autowork
   behavior evaluation receipts and proposing review-only Lugos Orca behavior
@@ -8,6 +8,17 @@
 - Require exact registry revisions, canonical hashes, privacy rejection,
   `requires_review: true`, and `apply_authorized: false`; APU neither launches
   providers nor applies these proposals.
+- Add explicit instruction-consolidation campaigns that build review-required
+  work orders from the effective Codex and Claude instruction stacks without
+  mutating live files during proposal or dispatch.
+- Apply profile exclusions consistently during repository discovery, global
+  surface auditing, and snapshot capture; exclude Codex runtime scratch under
+  `~/.codex/tmp` by default so symlinked dispatch shims cannot make campaign
+  coverage ambiguous.
+- Prompt repository instruction templates to record test-environment
+  preconditions.
+- Consolidate deterministic CI into one cross-platform matrix and test the
+  supported-version endpoints on Python 3.11 and 3.14.
 
 ## 0.8.0 — 2026-08-14
 

@@ -23,7 +23,7 @@ repository suite before installing a development commit.
 For a reproducible installation, pin the release tag:
 
 ```console
-pipx install "git+https://github.com/mdn87/apu.git@v0.6.0"
+pipx install "git+https://github.com/mdn87/apu.git@v0.8.0"
 apu --version
 apu --help
 ```
@@ -31,7 +31,7 @@ apu --help
 With `uv`, use:
 
 ```console
-uv tool install "git+https://github.com/mdn87/apu.git@v0.6.0"
+uv tool install "git+https://github.com/mdn87/apu.git@v0.8.0"
 ```
 
 The quoted Git URL works in POSIX shells and PowerShell. To test a checkout
@@ -218,7 +218,7 @@ event metadata rather than transcript or tool content.
 Update deliberately to a reviewed release tag:
 
 ```console
-pipx install --force "git+https://github.com/mdn87/apu.git@v0.6.0"
+pipx install --force "git+https://github.com/mdn87/apu.git@v0.8.0"
 ```
 
 Re-run `apu --version`, `apu validate`, and `apu status` after updating. Do not

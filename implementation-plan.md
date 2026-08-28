@@ -13,7 +13,7 @@ optimizer skill.
 
 The implementation is complete when:
 
-- all 14 acceptance criteria in the specification have executable coverage;
+- all 16 acceptance criteria in the specification have executable coverage;
 - audit and proposal work without an OpenAI or Anthropic API key;
 - live files change only through an approved plan and recoverable transaction;
 - Codex and Claude effective stacks include every supported instruction surface;
@@ -367,6 +367,8 @@ skill and templates are present in both release artifacts.
 | 11–12: platforms and dependency boundary | 1–4 release matrix |
 | 13: outcomes and monitoring | 4 |
 | 14: registry-wide validation | 3 |
+| 15: provider execution evidence | post-v0.1 (M11) |
+| 16: bounded behavioral session audit | post-v0.1 (M12) |
 
 ## 10. Final verification and release gate
 
