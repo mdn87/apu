@@ -562,7 +562,7 @@ def _mutate_hooks(
         selected_state_home = (
             _absolute_logical_path(state_home)
             if state_home is not None
-            else resolve_state_home(env={}, home=_absolute_logical_path(home))
+            else resolve_state_home(home=_absolute_logical_path(home))
         )
         lock_name = sha256(str(target).encode("utf-8")).hexdigest()
         with ProcessLock(

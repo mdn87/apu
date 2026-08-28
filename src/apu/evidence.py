@@ -359,37 +359,50 @@ def _safe_provider(provider: str) -> str:
 
 def _evidence_root(state_home: Path) -> Path:
     state_root = Path(state_home)
-    resolved_state = state_root.resolve(strict=False)
     behavior_root = state_root / "behavior"
     evidence_root = behavior_root / "evidence"
-    for candidate, expected, label in (
-        (behavior_root, resolved_state / "behavior", "behavior root"),
-        (
-            evidence_root,
-            resolved_state / "behavior" / "evidence",
-            "evidence root",
-        ),
+    for candidate, label in (
+        (behavior_root, "behavior root"),
+        (evidence_root, "evidence root"),
     ):
-        if candidate.is_symlink():
-            raise ValueError(f"{label} cannot be a filesystem redirect")
-        if candidate.exists() and not candidate.is_dir():
-            raise ValueError(f"{label} must be a directory")
-        if candidate.resolve(strict=False) != expected:
-            raise ValueError(f"{label} cannot escape APU state")
+        _validate_evidence_directory(candidate, label)
     return evidence_root
 
 
 def _evidence_provider_directory(state_home: Path, provider: str) -> Path:
     evidence_root = _evidence_root(state_home)
     provider_directory = evidence_root / provider
-    if provider_directory.is_symlink():
-        raise ValueError("evidence provider directory cannot be a symlink")
-    if provider_directory.exists() and not provider_directory.is_dir():
-        raise ValueError("evidence provider path must be a directory")
-    expected = evidence_root.resolve(strict=False) / provider
-    if provider_directory.resolve(strict=False) != expected:
-        raise ValueError("evidence provider directory escapes the evidence root")
+    _validate_evidence_directory(provider_directory, "evidence provider directory")
     return provider_directory
+
+
+def _validate_evidence_directory(path: Path, label: str) -> None:
+    """Validate one controlled path component without racing path resolution."""
+
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(metadata.st_mode) or _is_junction(path, metadata):
+        raise ValueError(f"{label} cannot be a filesystem redirect")
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError(f"{label} must be a directory")
+
+
+def _is_junction(path: Path, metadata: os.stat_result) -> bool:
+    is_junction = getattr(os.path, "isjunction", None)
+    if is_junction is not None:
+        try:
+            return bool(is_junction(path))
+        except OSError:
+            pass
+    if os.name != "nt":
+        return False
+    mount_point_tag = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None)
+    return (
+        mount_point_tag is not None
+        and getattr(metadata, "st_reparse_tag", None) == mount_point_tag
+    )
 
 
 def _ensure_evidence_provider_directory(state_home: Path, provider: str) -> Path:

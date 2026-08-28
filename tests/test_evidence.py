@@ -318,6 +318,46 @@ def test_existing_evidence_root_symlink_cannot_redirect_sidecars(
     assert not list(outside.iterdir())
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction assertion")
+def test_existing_windows_junction_cannot_redirect_evidence_directories(
+    tmp_path: Path,
+) -> None:
+    try:
+        import _winapi
+    except ImportError:
+        pytest.skip("the Python runtime cannot create junctions")
+    create_junction = getattr(_winapi, "CreateJunction", None)
+    if create_junction is None:
+        pytest.skip("the Python runtime cannot create junctions")
+
+    for component in ("behavior", "evidence", "provider"):
+        state = tmp_path / component / "state"
+        outside = tmp_path / component / "outside"
+        outside.mkdir(parents=True)
+        if component == "behavior":
+            state.mkdir(parents=True)
+            redirected = state / "behavior"
+        elif component == "evidence":
+            redirected = state / "behavior" / "evidence"
+            redirected.parent.mkdir(parents=True)
+        else:
+            redirected = state / "behavior" / "evidence" / "codex"
+            redirected.parent.mkdir(parents=True)
+        try:
+            create_junction(str(outside), str(redirected))
+        except OSError as error:
+            pytest.skip(f"junction creation is unavailable: {error}")
+
+        with pytest.raises(ValueError, match="redirect"):
+            ingest_hook_event(
+                state,
+                "codex",
+                "Stop",
+                {"session_id": f"junction-{component}", "cwd": str(tmp_path)},
+            )
+        assert not list(outside.iterdir())
+
+
 @pytest.mark.parametrize("artifact", ("jsonl", "index.sqlite3"))
 def test_existing_evidence_artifact_symlink_cannot_redirect_writes(
     tmp_path: Path,
@@ -409,11 +449,7 @@ def test_repository_observation_hashes_changed_paths(tmp_path: Path) -> None:
     assert "private-name.txt" not in (path.read_text(encoding="utf-8") if path else "")
 
 
-def test_concurrent_hook_ingestion_is_locked_and_deduplicated(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from apu import evidence as evidence_module
-
+def test_concurrent_hook_ingestion_is_locked_and_deduplicated(tmp_path: Path) -> None:
     state = tmp_path / "state"
     payload = {
         "session_id": "concurrent-session",
@@ -422,15 +458,6 @@ def test_concurrent_hook_ingestion_is_locked_and_deduplicated(
         "sequence": 9,
     }
     workers = 8
-    barrier = __import__("threading").Barrier(workers)
-    original_read = evidence_module.read_evidence
-
-    def synchronized_read(*args, **kwargs):
-        result = original_read(*args, **kwargs)
-        barrier.wait(timeout=5)
-        return result
-
-    monkeypatch.setattr(evidence_module, "read_evidence", synchronized_read)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         results = list(
             executor.map(
@@ -440,7 +467,7 @@ def test_concurrent_hook_ingestion_is_locked_and_deduplicated(
         )
 
     assert sum(int(appended) for _, _, appended in results) == 1
-    assert len(original_read(state, "claude-code", "concurrent-session")) == 1
+    assert len(read_evidence(state, "claude-code", "concurrent-session")) == 1
 
 
 def test_evidence_cli_ingests_hook_json(tmp_path: Path, monkeypatch, capsys) -> None:

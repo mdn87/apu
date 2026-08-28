@@ -242,8 +242,12 @@ def test_doctor_is_read_only_and_reports_invalid_configuration(tmp_path: Path) -
     assert target.read_text(encoding="utf-8").endswith('"DOCTOR_SECRET"}')
 
 
-def test_remove_does_not_claim_a_lookalike_shell_command(tmp_path: Path) -> None:
+def test_remove_does_not_claim_a_lookalike_shell_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = tmp_path / "home"
+    state_home = tmp_path / "state"
+    monkeypatch.setenv("APU_HOME", str(state_home))
     target = home / ".codex" / "hooks.json"
     target.parent.mkdir(parents=True)
     original = {
@@ -268,6 +272,8 @@ def test_remove_does_not_claim_a_lookalike_shell_command(tmp_path: Path) -> None
 
     assert result["changed"] is False
     assert json.loads(target.read_text(encoding="utf-8")) == original
+    assert list((state_home / "locks").glob("hooks-*.lock"))
+    assert not (home / ".local" / "state" / "apu").exists()
 
     target.write_text('{ "hooks": {} }\n', encoding="utf-8")
     empty = remove_hooks("codex", scope="user", home=home, apply=True)
