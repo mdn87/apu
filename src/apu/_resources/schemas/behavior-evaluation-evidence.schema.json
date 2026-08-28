@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lugos.dev/schemas/apu/behavior-evaluation-evidence-v1.json",
+  "title": "APU redacted behavior evaluation evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "evidence_id", "created_at", "source", "run", "identity", "registry_revision", "applied_artifacts", "narrowing_count", "rejected_technique_ids", "telemetry", "evaluation", "privacy"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "lugos.apu.behavior-evaluation-evidence"},
+    "evidence_id": {"$ref": "#/$defs/hash"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "receipt_sha256", "behavior_advice_sha256", "compiled_envelope_sha256"],
+      "properties": {
+        "contract": {"const": "lugos.autowork.behavior-delegation-receipt"},
+        "receipt_sha256": {"$ref": "#/$defs/hash"},
+        "behavior_advice_sha256": {"$ref": "#/$defs/hash"},
+        "compiled_envelope_sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "assignment_id", "suite_id", "task_id", "comparison_group_id"],
+      "properties": {
+        "run_id": {"$ref": "#/$defs/sourceName"},
+        "assignment_id": {"$ref": "#/$defs/sourceName"},
+        "suite_id": {"$ref": "#/$defs/id"},
+        "task_id": {"$ref": "#/$defs/id"},
+        "comparison_group_id": {"$ref": "#/$defs/id"}
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model_requested", "model_resolved", "thinking_level_requested", "route", "seat", "adaptation_tier"],
+      "properties": {
+        "provider": {"$ref": "#/$defs/sourceName"},
+        "model_requested": {"$ref": "#/$defs/nullableName"},
+        "model_resolved": {"$ref": "#/$defs/nullableName"},
+        "thinking_level_requested": {"$ref": "#/$defs/nullableName"},
+        "route": {"$ref": "#/$defs/sourceName"},
+        "seat": {"$ref": "#/$defs/sourceName"},
+        "adaptation_tier": {"type": "integer", "enum": [0, 1, 2]}
+      }
+    },
+    "registry_revision": {"$ref": "#/$defs/revision"},
+    "applied_artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "narrowing_count": {"type": "integer", "minimum": 0},
+    "rejected_technique_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/sourceName"}
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["duration_ms", "input_tokens", "output_tokens", "exit_status"],
+      "properties": {
+        "duration_ms": {"type": ["integer", "null"], "minimum": 0},
+        "input_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "output_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "exit_status": {"$ref": "#/$defs/nullableSourceName"}
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checks", "metrics"],
+      "properties": {
+        "status": {"$ref": "#/$defs/status"},
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status"],
+            "properties": {
+              "id": {"$ref": "#/$defs/id"},
+              "status": {"$ref": "#/$defs/status"}
+            }
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "value", "unit"],
+            "properties": {
+              "id": {"$ref": "#/$defs/id"},
+              "value": {"type": "number"},
+              "unit": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/%+\\-]{0,63}$"}
+            }
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redacted", "contains_raw_prompt", "contains_raw_response", "contains_reasoning", "contains_environment", "contains_credentials"],
+      "properties": {
+        "redacted": {"const": true},
+        "contains_raw_prompt": {"const": false},
+        "contains_raw_response": {"const": false},
+        "contains_reasoning": {"const": false},
+        "contains_environment": {"const": false},
+        "contains_credentials": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+\\-]{0,255}$"},
+    "sourceName": {"type": "string", "minLength": 1},
+    "nullableSourceName": {"type": ["string", "null"], "minLength": 1},
+    "nullableName": {"$ref": "#/$defs/nullableSourceName"},
+    "status": {"type": "string", "enum": ["passed", "failed", "unavailable", "skipped"]},
+    "revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orca_commit", "behavior_tree_sha256"],
+      "properties": {
+        "orca_commit": {"type": "string", "pattern": "^[0-9a-f]{7,64}$"},
+        "behavior_tree_sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "content_sha256"],
+      "properties": {
+        "id": {"$ref": "#/$defs/sourceName"},
+        "kind": {"type": "string", "enum": ["instruction", "skill", "hook", "tool-policy", "output-contract"]},
+        "content_sha256": {"$ref": "#/$defs/hash"}
+      }
+    }
+  }
+}

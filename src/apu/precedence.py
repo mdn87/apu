@@ -8,7 +8,6 @@ from apu.adapters.base import DiscoveryResult, absolute_logical_path
 from apu.adapters.claude import _frontmatter_paths
 from apu.models import InstructionSurface, SurfaceRelationship
 
-
 _INSTRUCTION_KINDS = {
     "codex": frozenset({"codex-instructions"}),
     "claude": frozenset(
@@ -46,7 +45,7 @@ def effective_stack(
             relationship.from_surface_id
             for relationship in discovery.relationships
             if relationship.type == "session_start_hook"
-            and relationship.status == "active"
+            and relationship.status in {"active", "active-observed"}
         }
         candidates.extend(
             surface
@@ -109,14 +108,11 @@ def _active_imports(
                 relationship.to_surface_id
             )
     return {
-        source: tuple(dict.fromkeys(targets))
-        for source, targets in grouped.items()
+        source: tuple(dict.fromkeys(targets)) for source, targets in grouped.items()
     }
 
 
-def _surface_applies(
-    surface: InstructionSurface, working_directory: Path
-) -> bool:
+def _surface_applies(surface: InstructionSurface, working_directory: Path) -> bool:
     if surface.authority == "user":
         if surface.kind == "claude-rule":
             return _rule_matches(surface, working_directory, None)
@@ -169,9 +165,7 @@ def _match_path(candidate: str, pattern: str) -> bool:
     return False
 
 
-def _sort_key(
-    surface: InstructionSurface, provider: str
-) -> tuple[int, int, str]:
+def _sort_key(surface: InstructionSurface, provider: str) -> tuple[int, int, str]:
     path = Path(surface.path)
     depth = len(path.parent.parts)
     if provider == "claude":

@@ -62,8 +62,7 @@ def test_audit_builds_findings_and_sanitized_trace_summary(tmp_path: Path) -> No
 
     assert any(surface.path == str(agents) for surface in inventory.surfaces)
     assert any(
-        finding.category == "universal-skill-trigger"
-        for finding in inventory.findings
+        finding.category == "universal-skill-trigger" for finding in inventory.findings
     )
     assert inventory.evidence_summary["sessions"]["sessions"] == 1
     encoded = json.dumps(inventory.to_dict())
@@ -136,6 +135,4 @@ def test_audit_finding_delta_can_be_caused_by_guidance_detector_policy(
     )
 
     assert before.findings == ()
-    assert [finding.category for finding in after.findings] == [
-        "duplicate-instruction"
-    ]
+    assert [finding.category for finding in after.findings] == ["duplicate-instruction"]

@@ -127,9 +127,7 @@ def validate_candidate_tree(
             relative = path.relative_to(candidate)
             _validate_relative_path(relative, normalized_paths)
             if len(normalized_paths) > max_files:
-                raise PackageStateError(
-                    "candidate tree exceeds the entry-count limit"
-                )
+                raise PackageStateError("candidate tree exceeds the entry-count limit")
             if relative.parts[0] in {".git", ".hg", ".svn"}:
                 raise PackageStateError(
                     f"candidate tree contains version-control metadata: {relative}"
@@ -206,18 +204,15 @@ def write_package_leaf(
 ) -> tuple[str, Path]:
     """Write one immutable, canonical package artifact leaf."""
 
-    if (
-        not kind
-        or any(character not in "abcdefghijklmnopqrstuvwxyz-" for character in kind)
+    if not kind or any(
+        character not in "abcdefghijklmnopqrstuvwxyz-" for character in kind
     ):
         raise ValueError("package leaf kind must be lowercase letters and hyphens")
     artifact = dict(value)
     artifact_id = sha256_json(artifact)
     root = ensure_state_home(Path(state_home).expanduser().resolve())
     package_key = sha256_json(package_id)
-    leaf_root = ensure_private_directory(
-        root / "packages" / kind / package_key
-    )
+    leaf_root = ensure_private_directory(root / "packages" / kind / package_key)
     path = leaf_root / f"{artifact_id}.json"
     if path.exists():
         try:
@@ -227,9 +222,7 @@ def write_package_leaf(
         except (OSError, UnicodeError, json.JSONDecodeError) as error:
             raise PackageStateError(f"invalid existing package leaf: {path}") from error
         if existing != artifact:
-            raise PackageStateError(
-                f"package leaf identity collision at {path}"
-            )
+            raise PackageStateError(f"package leaf identity collision at {path}")
         return artifact_id, path
     write_json_atomic(path, artifact)
     return artifact_id, path

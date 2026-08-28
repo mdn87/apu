@@ -203,6 +203,37 @@ material information gap. It never changes global or repository policy. Its
 private artifacts live under `APU_HOME/behavior` and contain hashes and safe
 event metadata rather than transcript or tool content.
 
+## Operate passive provider hooks
+
+Preview the exact project-local fragment and target before applying it:
+
+```console
+apu hooks render --provider codex --scope project --repository . --passive-watch
+apu hooks install --provider codex --scope project --repository . --passive-watch
+```
+
+Apply only after reviewing the preview, then verify the structural registration:
+
+```console
+apu hooks install --provider codex --scope project --repository . --passive-watch --apply
+apu hooks status --provider codex --scope project --repository .
+apu hooks doctor --provider codex --scope project --repository .
+```
+
+For Codex, open `/hooks` and separately review/trust the resulting non-managed
+hook. APU records configuration but never grants trust. To remove only the APU
+handlers while retaining unrelated provider configuration, preview and then run:
+
+```console
+apu hooks remove --provider codex --scope project --repository .
+apu hooks remove --provider codex --scope project --repository . --apply
+```
+
+Replace `codex` with `claude` for Claude Code, or use `--scope user` without a
+repository for user-level configuration. The bridge remains silent and
+fail-open; malformed input or unavailable evidence storage does not block the
+provider event.
+
 ## Platform behavior
 
 - APU probes symlink capability in disposable private state.
@@ -223,6 +254,24 @@ pipx install --force "git+https://github.com/mdn87/apu.git@v0.8.0"
 
 Re-run `apu --version`, `apu validate`, and `apu status` after updating. Do not
 point production automation at an unpinned branch.
+
+## Publishing a tagged release
+
+Release metadata has one source in `src/apu/__init__.py`; package metadata reads
+that value during the build. Before tagging, replace the development version
+with `MAJOR.MINOR.PATCH`, date the matching `CHANGELOG.md` heading, and run the
+documented contributor checks from a clean checkout.
+
+Create and push an annotated `vMAJOR.MINOR.PATCH` tag only after the release
+commit is merged. The tag-triggered GitHub workflow verifies that the tag,
+runtime version, and dated changelog entry agree. It reruns the deterministic
+suite, builds and installs both distribution formats, checks every console entry
+point and packaged resource, creates SHA-256 checksums and artifact provenance,
+and publishes a GitHub Release. A mismatched or development-version tag fails
+before publication.
+
+Detailed maintainer commands are in `CONTRIBUTING.md`. The automated workflow
+publishes GitHub Release assets only; it does not publish to PyPI.
 
 ## Current release limitations
 

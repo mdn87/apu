@@ -11,6 +11,7 @@ from apu.efficacy_policy import (
     demotion_status_overlay,
     evaluate_category_promotion,
     load_demotion_overrides,
+    record_demotion_override,
 )
 from apu.outcomes import append_outcome, read_outcomes, validate_outcome
 
@@ -113,6 +114,39 @@ def test_v2_outcome_round_trips_and_v1_reader_remains_compatible(
     append_outcome(tmp_path / "state", record)
 
     assert read_outcomes(tmp_path / "state", "install-m9") == [record]
+
+
+def test_outcome_retry_after_projection_failure_is_logically_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import apu.efficacy_policy as policy_module
+
+    state_home = tmp_path / "state"
+    record = _outcome_v2(1, defect=True)
+    attempts = 0
+
+    def fail_first_projection(state: Path, outcome: dict) -> Path | None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("injected projection failure")
+        return record_demotion_override(state, outcome)
+
+    monkeypatch.setattr(
+        policy_module,
+        "record_demotion_override",
+        fail_first_projection,
+    )
+
+    with pytest.raises(OSError, match="projection failure"):
+        append_outcome(state_home, record)
+    append_outcome(state_home, record)
+
+    assert read_outcomes(state_home, "install-m9") == [record]
+    overrides = load_demotion_overrides(state_home)
+    assert len(overrides) == 1
+    assert len(overrides[0]["active_triggers"]) == 1
 
 
 @pytest.mark.parametrize(

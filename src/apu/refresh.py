@@ -31,11 +31,15 @@ def runtime_model_configs(
     selected_home = Path(home).expanduser().resolve(strict=False)
     env = os.environ if environment is None else environment
 
-    codex_config = _load_toml(selected_home / ".codex" / "config.toml")
+    codex_config, codex_config_error = _load_toml(
+        selected_home / ".codex" / "config.toml"
+    )
     codex_provider = _optional_text(codex_config.get("model_provider")) or "openai"
     codex_model = _optional_text(codex_config.get("model"))
 
-    claude_settings = _load_json(selected_home / ".claude" / "settings.json")
+    claude_settings, claude_config_error = _load_json(
+        selected_home / ".claude" / "settings.json"
+    )
     claude_env = claude_settings.get("env", {})
     if not isinstance(claude_env, Mapping):
         claude_env = {}
@@ -51,12 +55,14 @@ def runtime_model_configs(
             provider="anthropic",
             version_command=("claude", "--version"),
             configured_model=claude_model,
+            configuration_error=claude_config_error,
         ),
         RuntimeModelConfig(
             runtime_id="codex-cli",
             provider=codex_provider,
             version_command=("codex", "--version"),
             configured_model=codex_model,
+            configuration_error=codex_config_error,
         ),
     )
 
@@ -168,24 +174,28 @@ def _validate_guidance_url(value: str) -> None:
         )
 
 
-def _load_toml(path: Path) -> dict[str, Any]:
+def _load_toml(path: Path) -> tuple[dict[str, Any], str | None]:
     if not path.is_file():
-        return {}
+        return {}, None
     try:
         value = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, tomllib.TOMLDecodeError):
-        return {}
-    return value if isinstance(value, dict) else {}
+    except tomllib.TOMLDecodeError:
+        return {}, "invalid_toml"
+    except (OSError, UnicodeError):
+        return {}, "unreadable_toml"
+    return (value, None) if isinstance(value, dict) else ({}, "invalid_toml")
 
 
-def _load_json(path: Path) -> dict[str, Any]:
+def _load_json(path: Path) -> tuple[dict[str, Any], str | None]:
     if not path.is_file():
-        return {}
+        return {}, None
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return {}
-    return value if isinstance(value, dict) else {}
+    except json.JSONDecodeError:
+        return {}, "invalid_json"
+    except (OSError, UnicodeError):
+        return {}, "unreadable_json"
+    return (value, None) if isinstance(value, dict) else ({}, "invalid_json")
 
 
 def _optional_text(value: Any) -> str | None:

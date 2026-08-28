@@ -4,6 +4,7 @@ import json
 import os
 import stat
 from pathlib import Path
+from threading import Event, Thread
 
 import pytest
 
@@ -120,9 +121,7 @@ def test_create_captures_files_empty_directories_missing_and_links(
             "present": True,
         },
     ]
-    entries = {
-        entry["logical_path"]: entry for entry in manifest["entries"]
-    }
+    entries = {entry["logical_path"]: entry for entry in manifest["entries"]}
     assert entries["policy-stack"]["object_type"] == "directory"
     assert entries["policy-stack"]["empty"] is False
     assert entries["policy-stack/empty"]["object_type"] == "directory"
@@ -157,10 +156,16 @@ def test_create_captures_files_empty_directories_missing_and_links(
     assert list_snapshots(state_home) == [manifest]
     if os.name == "posix":
         assert (state_home / "snapshots").stat().st_mode & 0o777 == 0o700
-        assert resolve_blob_path(
-            state_home,
-            policy["blob_sha256"],
-        ).stat().st_mode & 0o777 == 0o600
+        assert (
+            resolve_blob_path(
+                state_home,
+                policy["blob_sha256"],
+            )
+            .stat()
+            .st_mode
+            & 0o777
+            == 0o600
+        )
 
 
 def test_diff_reports_added_removed_content_type_link_and_mode_drift(
@@ -239,10 +244,7 @@ def test_list_validates_manifest_content_and_blob_integrity(tmp_path: Path) -> N
         list_snapshots(state_home)
 
     manifest_path = (
-        state_home
-        / "snapshots"
-        / "manifests"
-        / f"{manifest['snapshot_id']}.json"
+        state_home / "snapshots" / "manifests" / f"{manifest['snapshot_id']}.json"
     )
     value = json.loads(manifest_path.read_text(encoding="utf-8"))
     value["label"] = "tampered"
@@ -267,9 +269,7 @@ def test_list_is_newest_first_and_retention_preserves_protected_and_open(
             )
         )
 
-    assert [
-        item["snapshot_id"] for item in list_snapshots(state_home)
-    ] == [
+    assert [item["snapshot_id"] for item in list_snapshots(state_home)] == [
         item["snapshot_id"] for item in reversed(snapshots)
     ]
     removed = enforce_retention(
@@ -280,9 +280,7 @@ def test_list_is_newest_first_and_retention_preserves_protected_and_open(
     )
 
     assert removed == [snapshots[2]["snapshot_id"]]
-    assert {
-        item["snapshot_id"] for item in list_snapshots(state_home)
-    } == {
+    assert {item["snapshot_id"] for item in list_snapshots(state_home)} == {
         snapshots[0]["snapshot_id"],
         snapshots[1]["snapshot_id"],
         snapshots[3]["snapshot_id"],
@@ -295,6 +293,122 @@ def test_list_is_newest_first_and_retention_preserves_protected_and_open(
             state_home,
             retained["entries"][0]["blob_sha256"],
         )
+
+
+def test_snapshot_creation_is_serialized_with_retention_gc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import apu.snapshots as snapshots_module
+
+    state_home = tmp_path / "state"
+    live = tmp_path / "live.txt"
+    live.write_bytes(b"payload")
+    manifest_write_ready = Event()
+    release_manifest_write = Event()
+    retention_done = Event()
+    real_write_json_atomic = snapshots_module.write_json_atomic
+    result: dict[str, object] = {}
+    errors: list[BaseException] = []
+
+    def paused_manifest_write(path: Path, value: object) -> Path:
+        if Path(path).parent.name == "manifests":
+            manifest_write_ready.set()
+            if not release_manifest_write.wait(timeout=5):
+                raise TimeoutError("test did not release manifest publication")
+        return real_write_json_atomic(path, value)
+
+    monkeypatch.setattr(
+        snapshots_module,
+        "write_json_atomic",
+        paused_manifest_write,
+    )
+
+    def create() -> None:
+        try:
+            result["manifest"] = create_snapshot(state_home, {"live": live})
+        except BaseException as error:  # noqa: BLE001 - thread assertion channel
+            errors.append(error)
+
+    def retain() -> None:
+        try:
+            enforce_retention(state_home, keep_last=1)
+        except BaseException as error:  # noqa: BLE001 - thread assertion channel
+            errors.append(error)
+        finally:
+            retention_done.set()
+
+    creator = Thread(target=create)
+    creator.start()
+    assert manifest_write_ready.wait(timeout=5)
+    retention = Thread(target=retain)
+    retention.start()
+    serialized = not retention_done.wait(timeout=0.2)
+    release_manifest_write.set()
+    creator.join(timeout=10)
+    retention.join(timeout=10)
+
+    assert serialized
+    assert not errors
+    manifest = result["manifest"]
+    assert isinstance(manifest, dict)
+    assert load_snapshot(state_home, manifest["snapshot_id"]) == manifest
+
+
+def test_snapshot_capture_enforces_entry_limit_before_publication(
+    tmp_path: Path,
+) -> None:
+    live = tmp_path / "live"
+    live.mkdir()
+    (live / "one").write_bytes(b"1")
+    (live / "two").write_bytes(b"2")
+    state_home = tmp_path / "state"
+
+    with pytest.raises(ValueError, match="entry limit"):
+        create_snapshot(
+            state_home,
+            {"live": live},
+            max_entries=2,
+        )
+
+    assert not list((state_home / "snapshots" / "manifests").glob("*.json"))
+
+
+def test_snapshot_capture_enforces_byte_limit_before_publication(
+    tmp_path: Path,
+) -> None:
+    live = tmp_path / "live"
+    live.mkdir()
+    (live / "payload").write_bytes(b"12345")
+    state_home = tmp_path / "state"
+
+    with pytest.raises(ValueError, match="byte limit"):
+        create_snapshot(
+            state_home,
+            {"live": live},
+            max_bytes=4,
+        )
+
+    assert not list((state_home / "snapshots" / "manifests").glob("*.json"))
+
+
+def test_snapshot_capture_enforces_depth_limit_before_publication(
+    tmp_path: Path,
+) -> None:
+    live = tmp_path / "live"
+    nested = live / "one" / "two"
+    nested.mkdir(parents=True)
+    (nested / "payload").write_bytes(b"content")
+    state_home = tmp_path / "state"
+
+    with pytest.raises(ValueError, match="depth limit"):
+        create_snapshot(
+            state_home,
+            {"live": live},
+            max_depth=1,
+        )
+
+    assert not list((state_home / "snapshots" / "manifests").glob("*.json"))
 
 
 def test_snapshot_rejects_duplicate_roots_and_unsafe_logical_paths(
@@ -356,9 +470,7 @@ def test_materialize_reconstructs_directory_file_empty_dir_and_nested_link(
         assert os.readlink(restored_link) == "../outside-target"
     if os.name == "posix":
         assert (destination / "nested").stat().st_mode & 0o777 == 0o750
-        assert (
-            destination / "nested" / "value.bin"
-        ).stat().st_mode & 0o777 == 0o640
+        assert (destination / "nested" / "value.bin").stat().st_mode & 0o777 == 0o640
 
     file_destination = (tmp_path / "prepared-file").absolute()
     materialize_snapshot_object(

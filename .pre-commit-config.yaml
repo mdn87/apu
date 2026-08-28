@@ -1,0 +1,47 @@
+minimum_pre_commit_version: "4.3.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+        files: >-
+          (?x)^(\.github/workflows/|\.pre-commit-config\.yaml$|CHANGELOG\.md$|
+          CONTRIBUTING\.md$|README\.md$|RUNBOOK\.md$|pyproject\.toml$|
+          scripts/|src/apu/resources\.py$|tests/test_resources\.py$|
+          tests/test_release_contract\.py$)
+      - id: trailing-whitespace
+        files: >-
+          (?x)^(\.github/workflows/|\.pre-commit-config\.yaml$|CHANGELOG\.md$|
+          CONTRIBUTING\.md$|README\.md$|RUNBOOK\.md$|pyproject\.toml$|
+          scripts/|src/apu/resources\.py$|tests/test_resources\.py$|
+          tests/test_release_contract\.py$)
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 65dbdb59d2f2d9c3bdc343c566821ad3319ddaa3  # v0.16.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^(src/apu|tests|scripts)/.*\.py$
+      - id: ruff-format
+        files: ^(src/apu|tests|scripts)/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: resource-parity
+        name: package resource parity
+        entry: python scripts/sync_resources.py
+        language: system
+        pass_filenames: false
+      - id: pytest
+        name: pytest (pre-push)
+        entry: python -m pytest -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

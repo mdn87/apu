@@ -18,9 +18,7 @@ from apu.package_coordinates import (
 
 
 def test_profile_selector_becomes_provider_prefixed_coordinate() -> None:
-    coordinate = parse_profile_package(
-        "superpowers@claude-plugins-official"
-    )
+    coordinate = parse_profile_package("superpowers@claude-plugins-official")
 
     assert coordinate == PackageCoordinate(
         provider="claude",
@@ -28,9 +26,7 @@ def test_profile_selector_becomes_provider_prefixed_coordinate() -> None:
         source="claude-plugins-official",
     )
     assert coordinate.profile_selector == "superpowers@claude-plugins-official"
-    assert coordinate.package_id == (
-        "claude:superpowers@claude-plugins-official"
-    )
+    assert coordinate.package_id == ("claude:superpowers@claude-plugins-official")
     assert str(coordinate) == coordinate.package_id
     assert parse_package_coordinate(coordinate.package_id) == coordinate
 
@@ -162,9 +158,7 @@ def test_build_metadata_does_not_affect_semver_precedence() -> None:
 
 
 def test_latest_stable_ignores_prereleases_and_deduplicates_exact_values() -> None:
-    latest = select_latest_stable(
-        ["2.0.0-rc.1", "1.9.0", "1.10.0", "1.10.0"]
-    )
+    latest = select_latest_stable(["2.0.0-rc.1", "1.9.0", "1.10.0", "1.10.0"])
 
     assert str(latest) == "1.10.0"
 

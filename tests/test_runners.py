@@ -16,7 +16,6 @@ from apu.runners import (
     unsupported_result,
 )
 
-
 FIXTURES = Path(__file__).parent / "fixtures" / "runners"
 
 

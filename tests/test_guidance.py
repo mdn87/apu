@@ -148,9 +148,7 @@ def test_guidance_evaluation_stamp_detects_changed_but_not_identical_refetch(
     refresh_guidance(
         tmp_path,
         [URL],
-        fetcher=lambda _url: FetchResponse(
-            b"Prefer scoped guidance.\n", "text/plain"
-        ),
+        fetcher=lambda _url: FetchResponse(b"Prefer scoped guidance.\n", "text/plain"),
         retrieved_at=LATER,
     )
     assert guidance_evaluation_stamp(tmp_path)["status"] == "adopted"
@@ -200,17 +198,12 @@ def test_refresh_uses_injected_fetcher_and_stores_dated_raw_snapshot(
     assert all(item["status"] == "fresh" for item in refresh["sources"])
     for source in refresh["sources"]:
         object_path = (
-            tmp_path
-            / "guidance"
-            / "objects"
-            / f"{source['content_sha256']}.bin"
+            tmp_path / "guidance" / "objects" / f"{source['content_sha256']}.bin"
         )
         assert object_path.read_bytes() == contents[source["source_url"]]
         assert source["retrieved_at"] == NOW
 
-    stored = (
-        tmp_path / "guidance" / "refreshes" / f"{refresh['refresh_id']}.json"
-    )
+    stored = tmp_path / "guidance" / "refreshes" / f"{refresh['refresh_id']}.json"
     assert stored.read_text(encoding="utf-8") == canonical_json(refresh)
     assert not list(stored.parent.glob(f".{stored.name}.*"))
 
@@ -287,10 +280,7 @@ def test_partial_refresh_records_healthy_and_failed_sources_independently(
     assert by_url[dead]["status"] == "unavailable"
     assert by_url[dead]["error_code"] == "ConnectionError"
     assert (
-        tmp_path
-        / "guidance"
-        / "objects"
-        / f"{by_url[healthy]['content_sha256']}.bin"
+        tmp_path / "guidance" / "objects" / f"{by_url[healthy]['content_sha256']}.bin"
     ).read_bytes() == b"healthy guidance"
 
 
@@ -311,9 +301,7 @@ def test_work_order_excludes_source_prose_and_reviewed_candidate_is_adopted(
     assert work_order["acceptance_criteria"]
     access = work_order["private_snapshot_access"]
     assert access["mode"] == "read-only"
-    assert access["resolver"] == (
-        "apu.guidance.read_guidance_work_order_snapshot"
-    )
+    assert access["resolver"] == ("apu.guidance.read_guidance_work_order_snapshot")
     snapshot_ref = work_order["sources"][0]["snapshot"]["ref"]
     assert access["allowed_refs"] == [snapshot_ref]
     assert (
@@ -344,21 +332,15 @@ def test_work_order_excludes_source_prose_and_reviewed_candidate_is_adopted(
     assert policy["setting"] == "minimum_words"
     assert policy["value"] == 4
     assert policy["justification"].startswith("The cited guidance")
-    assert detector_policy_from_baseline(
-        baseline
-    ).duplicate_instruction_minimum_words == 4
     assert (
-        load_guidance_detector_policy(
-            tmp_path
-        ).duplicate_instruction_minimum_words
-        == 4
+        detector_policy_from_baseline(baseline).duplicate_instruction_minimum_words == 4
+    )
+    assert (
+        load_guidance_detector_policy(tmp_path).duplicate_instruction_minimum_words == 4
     )
     assert load_current_guidance_baseline(tmp_path) == baseline
     stored = (
-        tmp_path
-        / "guidance"
-        / "baselines"
-        / f"{baseline['baseline_version']}.json"
+        tmp_path / "guidance" / "baselines" / f"{baseline['baseline_version']}.json"
     )
     assert json.loads(stored.read_text(encoding="utf-8")) == baseline
     assert stored.read_text(encoding="utf-8") == canonical_json(baseline)
@@ -380,9 +362,7 @@ def test_adoption_requires_approval_and_provenance_bearing_snapshot(
         )
 
     candidate["principles"][0]["sources"][0]["content_sha256"] = "f" * 64
-    candidate["principles"][0]["detector_policies"][0]["source_sha256s"] = [
-        "f" * 64
-    ]
+    candidate["principles"][0]["detector_policies"][0]["source_sha256s"] = ["f" * 64]
     with pytest.raises(GuidanceError, match="outside its work order"):
         adopt_guidance_baseline(
             tmp_path,
@@ -393,9 +373,9 @@ def test_adoption_requires_approval_and_provenance_bearing_snapshot(
 
     candidate = _candidate(work_order, refresh)
     content_sha256 = refresh["sources"][0]["content_sha256"]
-    (
-        tmp_path / "guidance" / "objects" / f"{content_sha256}.bin"
-    ).write_bytes(b"corrupted")
+    (tmp_path / "guidance" / "objects" / f"{content_sha256}.bin").write_bytes(
+        b"corrupted"
+    )
     with pytest.raises(GuidanceError, match="not present in APU state"):
         adopt_guidance_baseline(
             tmp_path,
@@ -449,13 +429,9 @@ def test_baseline_diff_is_deterministic_and_reports_semantic_changes(
 
     delta = diff_guidance_baselines(before, changed)
 
-    assert [item["principle_id"] for item in delta["added"]] == [
-        "added-principle"
-    ]
+    assert [item["principle_id"] for item in delta["added"]] == ["added-principle"]
     assert delta["removed"] == []
-    assert [item["principle_id"] for item in delta["changed"]] == [
-        "scoped-guidance"
-    ]
+    assert [item["principle_id"] for item in delta["changed"]] == ["scoped-guidance"]
     assert delta == diff_guidance_baselines(before, changed)
 
 
@@ -466,9 +442,7 @@ def test_baseline_version_ignores_unchanged_later_retrieval(
     later_refresh = refresh_guidance(
         tmp_path,
         [URL],
-        fetcher=lambda _url: FetchResponse(
-            b"Prefer scoped guidance.\n", "text/plain"
-        ),
+        fetcher=lambda _url: FetchResponse(b"Prefer scoped guidance.\n", "text/plain"),
         retrieved_at="2026-08-09T00:15:00-04:00",
     )
     later_work_order = write_guidance_distillation_work_order(
@@ -485,8 +459,9 @@ def test_baseline_version_ignores_unchanged_later_retrieval(
         adopted_at="2026-08-09T00:30:00-04:00",
     )
 
-    assert later_refresh["sources"][0]["retrieved_at"] != (
-        first_refresh["sources"][0]["retrieved_at"]
+    assert (
+        later_refresh["sources"][0]["retrieved_at"]
+        != (first_refresh["sources"][0]["retrieved_at"])
     )
     assert later_work_order["work_order_id"] != first_work_order["work_order_id"]
     assert later["baseline_version"] == first["baseline_version"]

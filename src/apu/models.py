@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, is_dataclass
-from hashlib import sha256
 import json
 import os
+from dataclasses import asdict, dataclass, field, is_dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -156,9 +156,7 @@ class Inventory:
 
 APPROVAL_STATUSES = frozenset({"pending", "approved", "rejected", "deferred"})
 PLAN_STATUSES = frozenset({"draft", "approved", "applied", "rolled_back"})
-MUTATING_ACTIONS = frozenset(
-    {"merge", "create", "remove", "symlink", "configure"}
-)
+MUTATING_ACTIONS = frozenset({"merge", "create", "remove", "symlink", "configure"})
 
 
 @dataclass(frozen=True)
@@ -320,7 +318,10 @@ class Plan:
                 mutation_targets[identity] = operation.id
         _validate_relocations(self.operations)
         derived = derive_plan_status(self.operations)
-        if self.status in {"approved", "applied", "rolled_back"} and derived != "approved":
+        if (
+            self.status in {"approved", "applied", "rolled_back"}
+            and derived != "approved"
+        ):
             raise ValidationError(
                 f"plan status {self.status} conflicts with operation decisions"
             )

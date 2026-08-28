@@ -198,9 +198,7 @@ def _select_tag(
     if requested_version is None:
         if not tags:
             raise PackageFetchError("upstream has no stable semantic-version tags")
-        version = max(
-            parse_semantic_version(item["version"]) for item in tags
-        )
+        version = max(parse_semantic_version(item["version"]) for item in tags)
     else:
         try:
             version = parse_semantic_version(requested_version)
@@ -213,19 +211,13 @@ def _select_tag(
                 "requested package version must be a stable release"
             )
     matches = [
-        item
-        for item in tags
-        if parse_semantic_version(item["version"]) == version
+        item for item in tags if parse_semantic_version(item["version"]) == version
     ]
     if not matches:
-        raise PackageFetchError(
-            f"upstream does not expose package version {version}"
-        )
+        raise PackageFetchError(f"upstream does not expose package version {version}")
     commits = {item["commit_oid"] for item in matches}
     if len(matches) != 1 or len(commits) != 1:
-        raise PackageFetchError(
-            f"upstream version {version} resolves ambiguously"
-        )
+        raise PackageFetchError(f"upstream version {version} resolves ambiguously")
     return dict(matches[0])
 
 
@@ -306,11 +298,7 @@ def _isolated_git_environment(config_home: Path) -> dict[str, str]:
         "TMP",
         "WINDIR",
     )
-    environment = {
-        key: os.environ[key]
-        for key in allowed
-        if key in os.environ
-    }
+    environment = {key: os.environ[key] for key in allowed if key in os.environ}
     environment.update(
         {
             "GIT_CONFIG_GLOBAL": os.devnull,
@@ -371,11 +359,7 @@ def _fetch_archive(url: str, max_bytes: int) -> bytes:
 def github_archive_url(source_url: str, commit_oid: str) -> str:
     parsed = urlsplit(source_url)
     parts = [part for part in parsed.path.split("/") if part]
-    if (
-        len(parts) != 2
-        or "%" in parsed.path
-        or not _is_git_oid(commit_oid)
-    ):
+    if len(parts) != 2 or "%" in parsed.path or not _is_git_oid(commit_oid):
         raise PackageFetchError("GitHub package source path is unsupported")
     owner, repository = parts
     repository = repository.removesuffix(".git")
@@ -428,9 +412,7 @@ def _extract_archive(
             if not relative.parts:
                 continue
             if len(relative.parts) > _MAX_ARCHIVE_DEPTH:
-                raise PackageFetchError(
-                    "candidate archive exceeds the depth limit"
-                )
+                raise PackageFetchError("candidate archive exceeds the depth limit")
             entry_type = _validate_archive_entry(entry, relative)
             normalized = "/".join(part.casefold() for part in relative.parts)
             if normalized in normalized_paths:
@@ -509,7 +491,8 @@ def _validate_archive_entry(
             not trimmed
             or trimmed != part
             or ":" in part
-            or stem in {
+            or stem
+            in {
                 "aux",
                 "clock$",
                 "con",
@@ -519,17 +502,13 @@ def _validate_archive_entry(
                 *(f"lpt{index}" for index in range(1, 10)),
             }
         ):
-            raise PackageFetchError(
-                "candidate archive contains a non-portable path"
-            )
+            raise PackageFetchError("candidate archive contains a non-portable path")
     mode = entry.external_attr >> 16
     file_type = stat.S_IFMT(mode)
     if file_type == stat.S_IFLNK:
         return "symlink"
     if file_type not in {0, stat.S_IFDIR, stat.S_IFREG}:
-        raise PackageFetchError(
-            "candidate archive contains an unsupported object"
-        )
+        raise PackageFetchError("candidate archive contains an unsupported object")
     if entry.is_dir() or file_type == stat.S_IFDIR:
         return "directory"
     return "file"
@@ -571,9 +550,7 @@ def _validate_archive_links(
             or ":" in target_text
             or any(part in {"", ".", ".."} for part in target.parts)
         ):
-            raise PackageFetchError(
-                "candidate archive symbolic-link target is unsafe"
-            )
+            raise PackageFetchError("candidate archive symbolic-link target is unsafe")
         resolved_target = link_path.parent / target
         resolved = members.get(resolved_target)
         if resolved is None or resolved[1] != "file":
@@ -615,7 +592,6 @@ def _timestamp() -> str:
 
 
 def _is_git_oid(value: str) -> bool:
-    return (
-        len(value) in {40, 64}
-        and all(character in "0123456789abcdefABCDEF" for character in value)
+    return len(value) in {40, 64} and all(
+        character in "0123456789abcdefABCDEF" for character in value
     )

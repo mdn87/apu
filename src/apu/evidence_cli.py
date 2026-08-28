@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import json
+import io
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,6 +14,7 @@ from .evidence import (
     reconcile_evidence,
     verify_evidence_source,
 )
+from .hooks import MAX_HOOK_INPUT_BYTES, read_hook_payload
 from .models import canonical_json
 from .state import resolve_state_home
 
@@ -66,12 +67,13 @@ def add_evidence_parser(commands: argparse._SubParsersAction) -> None:
 
 def _read_hook_payload(path: Path | None) -> dict[str, Any]:
     if path is None:
-        value = json.load(sys.stdin)
-    else:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise TypeError("hook input must be one JSON object")
-    return value
+        binary = getattr(sys.stdin, "buffer", None)
+        if binary is not None:
+            return read_hook_payload(binary)
+        text = sys.stdin.read(MAX_HOOK_INPUT_BYTES + 1)
+        return read_hook_payload(io.BytesIO(text.encode("utf-8")))
+    with path.open("rb") as stream:
+        return read_hook_payload(stream)
 
 
 def _print(value: Any, *, as_json: bool, summary: str) -> None:

@@ -82,9 +82,9 @@ def _select_entries(
             "logical_path"
         ]
     for entry in manifest["entries"]:
-        available[
-            _absolute_path(Path(entry["target_path"]), "snapshot entry")
-        ] = entry["logical_path"]
+        available[_absolute_path(Path(entry["target_path"]), "snapshot entry")] = entry[
+            "logical_path"
+        ]
 
     if requested:
         selected: list[tuple[Path, str]] = []

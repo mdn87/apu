@@ -240,10 +240,7 @@ def _require_same_observation(
     expected: PackageObservation,
 ) -> None:
     current = adapter.observe(coordinate.profile_selector)
-    if (
-        current.status != "verified"
-        or current.to_dict() != expected.to_dict()
-    ):
+    if current.status != "verified" or current.to_dict() != expected.to_dict():
         raise PackageResearchError(
             "installed package authority changed while research was running"
         )
@@ -313,8 +310,7 @@ def _resolve_claude_source(
         not isinstance(declared_revision, str)
         or len(declared_revision) not in {40, 64}
         or any(
-            character not in "0123456789abcdefABCDEF"
-            for character in declared_revision
+            character not in "0123456789abcdefABCDEF" for character in declared_revision
         )
     ):
         raise PackageResearchError("marketplace package revision is invalid")
@@ -322,9 +318,7 @@ def _resolve_claude_source(
         "source_kind": "claude-marketplace-url",
         "source_url": source["url"],
         "declared_revision": (
-            declared_revision.lower()
-            if isinstance(declared_revision, str)
-            else None
+            declared_revision.lower() if isinstance(declared_revision, str) else None
         ),
         "manifest_path": str(manifest_path),
         "manifest_sha256": sha256_bytes(manifest_content),
@@ -527,17 +521,13 @@ def _verify_candidate_artifacts(
     if not isinstance(candidate_version, str) or not candidate_version:
         raise PackageResearchError("candidate artifact version is invalid")
     immutable = candidate.get("immutable_ref")
-    if (
-        not isinstance(immutable, Mapping)
-        or set(immutable)
-        != {
-            "tag",
-            "commit_oid",
-            "archive_sha256",
-            "content_tree_sha256",
-            "tree_sha256",
-        }
-    ):
+    if not isinstance(immutable, Mapping) or set(immutable) != {
+        "tag",
+        "commit_oid",
+        "archive_sha256",
+        "content_tree_sha256",
+        "tree_sha256",
+    }:
         raise PackageResearchError("candidate immutable reference is missing")
     commit_oid = immutable.get("commit_oid")
     if (
@@ -547,13 +537,12 @@ def _verify_candidate_artifacts(
         or len(commit_oid) not in (40, 64)
         or any(character not in "0123456789abcdef" for character in commit_oid)
         or any(
-        not isinstance(immutable.get(field), str)
-        or len(immutable[field]) != 64
-        or any(
-            character not in "0123456789abcdef"
-            for character in immutable[field]
-        )
-        for field in ("archive_sha256", "content_tree_sha256", "tree_sha256")
+            not isinstance(immutable.get(field), str)
+            or len(immutable[field]) != 64
+            or any(
+                character not in "0123456789abcdef" for character in immutable[field]
+            )
+            for field in ("archive_sha256", "content_tree_sha256", "tree_sha256")
         )
     ):
         raise PackageResearchError("candidate immutable reference is invalid")
@@ -670,18 +659,14 @@ def _verify_candidate_links(
             or ":" in target
             or relative_path.parent / target_path != resolved_path
             or len(target_hash) != 64
-            or any(
-                character not in "0123456789abcdef"
-                for character in target_hash
-            )
+            or any(character not in "0123456789abcdef" for character in target_hash)
         ):
             raise PackageResearchError(
                 "candidate normalization link relation is invalid"
             )
         identity = relative.casefold()
-        if (
-            identity in identities
-            or (previous_path is not None and relative <= previous_path)
+        if identity in identities or (
+            previous_path is not None and relative <= previous_path
         ):
             raise PackageResearchError(
                 "candidate normalization links are not unique and sorted"

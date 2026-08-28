@@ -75,9 +75,7 @@ _CANDIDATE_SCHEMA = {
                 "setting": setting,
                 "value_type": value_type,
             }
-            for (detector_id, setting), value_type in sorted(
-                _POLICY_ALLOWLIST.items()
-            )
+            for (detector_id, setting), value_type in sorted(_POLICY_ALLOWLIST.items())
         ],
         "justification": "non-empty explanation grounded in cited snapshots",
         "source_sha256s": "non-empty subset of the principle source hashes",
@@ -180,9 +178,7 @@ def guidance_evaluation_stamp(state_home: Path) -> GuidanceEvaluationStamp:
     )
     status: Literal["adopted", "stale"] = "adopted"
     for citation in citations:
-        source_status_path = (
-            _source_root(root, citation["source_url"]) / "status.json"
-        )
+        source_status_path = _source_root(root, citation["source_url"]) / "status.json"
         if not source_status_path.exists():
             status = "stale"
             break
@@ -192,9 +188,7 @@ def guidance_evaluation_stamp(state_home: Path) -> GuidanceEvaluationStamp:
         )
         _validate_observation(source_status)
         if source_status["source_url"] != citation["source_url"]:
-            raise GuidanceError(
-                "guidance source status URL does not match its path"
-            )
+            raise GuidanceError("guidance source status URL does not match its path")
         if (
             source_status["status"] != "fresh"
             or source_status["content_sha256"] != citation["content_sha256"]
@@ -234,11 +228,7 @@ def refresh_guidance(
         previous = _last_success(root, source_url)
         try:
             fetched = fetcher(source_url)
-            response = (
-                FetchResponse(fetched)
-                if isinstance(fetched, bytes)
-                else fetched
-            )
+            response = FetchResponse(fetched) if isinstance(fetched, bytes) else fetched
             if not isinstance(response, FetchResponse):
                 raise TypeError("fetcher must return bytes or FetchResponse")
         # Fetcher failures are data for stale-state reporting, regardless of
@@ -281,9 +271,7 @@ def refresh_guidance(
             **result,
         }
         _write_json_once(
-            _source_root(root, source_url)
-            / "observations"
-            / f"{observation_id}.json",
+            _source_root(root, source_url) / "observations" / f"{observation_id}.json",
             observation,
         )
         write_json_atomic(
@@ -360,9 +348,7 @@ def write_guidance_distillation_work_order(
     artifact = {**body, "work_order_id": work_order_id}
     _validate_work_order(artifact)
     _write_json_once(
-        _guidance_root(state_home)
-        / "work-orders"
-        / f"{work_order_id}.json",
+        _guidance_root(state_home) / "work-orders" / f"{work_order_id}.json",
         artifact,
     )
     return artifact
@@ -437,9 +423,7 @@ def adopt_guidance_baseline(
     adopted_timestamp = _timestamp(adopted_at, "adopted_at")
 
     work_order_path = (
-        root
-        / "work-orders"
-        / f"{normalized_candidate['work_order_id']}.json"
+        root / "work-orders" / f"{normalized_candidate['work_order_id']}.json"
     )
     work_order = _load_json(work_order_path, "guidance distillation work order")
     _validate_work_order(work_order)
@@ -542,12 +526,10 @@ def diff_guidance_baselines(
     _validate_baseline(old)
     _validate_baseline(new)
     old_by_id = {
-        item["principle_id"]: item
-        for item in _semantic_principles(old["principles"])
+        item["principle_id"]: item for item in _semantic_principles(old["principles"])
     }
     new_by_id = {
-        item["principle_id"]: item
-        for item in _semantic_principles(new["principles"])
+        item["principle_id"]: item for item in _semantic_principles(new["principles"])
     }
     old_ids = set(old_by_id)
     new_ids = set(new_by_id)
@@ -584,9 +566,7 @@ def _source_root(root: Path, source_url: str) -> Path:
 
 
 def _source_urls(source_urls: Sequence[str]) -> tuple[str, ...]:
-    if isinstance(source_urls, (str, bytes)) or not isinstance(
-        source_urls, Sequence
-    ):
+    if isinstance(source_urls, (str, bytes)) or not isinstance(source_urls, Sequence):
         raise TypeError("source_urls must be a sequence")
     urls = tuple(_source_url(item) for item in source_urls)
     if not urls:
@@ -769,10 +749,7 @@ def _validate_work_order(value: Any) -> None:
     _schema_and_type(value, "guidance-distillation-work-order")
     _hash(value["work_order_id"], "work_order_id")
     _hash(value["refresh_id"], "refresh_id")
-    if (
-        not isinstance(value["privacy_contract"], str)
-        or not value["privacy_contract"]
-    ):
+    if not isinstance(value["privacy_contract"], str) or not value["privacy_contract"]:
         raise GuidanceError("privacy_contract must be non-empty text")
     if not isinstance(value["sources"], list) or not value["sources"]:
         raise GuidanceError("work order sources must be a non-empty list")
@@ -843,15 +820,14 @@ def _normalize_principles(value: Any) -> list[dict[str, Any]]:
             {"principle_id", "statement", "sources", "detector_policies"},
             "guidance principle",
         )
-        principle_id = _safe_identifier(
-            principle["principle_id"], "principle_id"
-        )
+        principle_id = _safe_identifier(principle["principle_id"], "principle_id")
         if principle_id in seen:
             raise GuidanceError("principle_id values must be unique")
         seen.add(principle_id)
-        if not isinstance(principle["statement"], str) or not principle[
-            "statement"
-        ].strip():
+        if (
+            not isinstance(principle["statement"], str)
+            or not principle["statement"].strip()
+        ):
             raise GuidanceError("principle statement must be non-empty text")
         sources = _normalize_citations(principle["sources"])
         policies = _normalize_policies(
@@ -883,12 +859,8 @@ def _normalize_citations(value: Any) -> list[dict[str, Any]]:
         )
         normalized = {
             "source_url": _source_url(citation["source_url"]),
-            "retrieved_at": _timestamp(
-                citation["retrieved_at"], "retrieved_at"
-            ),
-            "content_sha256": _hash(
-                citation["content_sha256"], "content_sha256"
-            ),
+            "retrieved_at": _timestamp(citation["retrieved_at"], "retrieved_at"),
+            "content_sha256": _hash(citation["content_sha256"], "content_sha256"),
         }
         identity = (
             normalized["source_url"],
@@ -934,9 +906,7 @@ def _normalize_policies(
         setting = _safe_identifier(policy["setting"], "setting")
         key = (detector_id, setting)
         if key in seen:
-            raise GuidanceError(
-                "detector policy keys must be unique per principle"
-            )
+            raise GuidanceError("detector policy keys must be unique per principle")
         seen.add(key)
         typed_value = _normalize_policy_value(
             detector_id,
@@ -1118,9 +1088,7 @@ def _has_successful_observation(
     root: Path,
     citation: Mapping[str, Any],
 ) -> bool:
-    observations = _source_root(
-        root, citation["source_url"]
-    ) / "observations"
+    observations = _source_root(root, citation["source_url"]) / "observations"
     if not observations.exists():
         return False
     for path in observations.glob("*.json"):

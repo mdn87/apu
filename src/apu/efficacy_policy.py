@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import sha256_json
+from .outcome_validation import validate_outcome_record
 from .state import ensure_private_directory, write_json_atomic
 
 PROMOTION_REQUIRED_ACTIVATIONS = 10
@@ -31,8 +32,6 @@ def evaluate_category_promotion(
     readable, but cannot supply M9 activation or campaign provenance.
     """
 
-    from .outcomes import validate_outcome
-
     _required_string(category, "category")
     _required_string(baseline_version, "baseline_version")
     _required_string(model_generation, "model_generation")
@@ -51,7 +50,7 @@ def evaluate_category_promotion(
     relevant: list[dict[str, Any]] = []
     for supplied in records:
         record = dict(supplied)
-        validate_outcome(record)
+        validate_outcome_record(record)
         if (
             record["schema_version"] == 2
             and category in record["categories_installed"]
@@ -169,10 +168,8 @@ def record_demotion_override(
 ) -> Path | None:
     """Persist an idempotent fail-safe trigger for one implicating defect."""
 
-    from .outcomes import validate_outcome
-
     stored = dict(outcome)
-    validate_outcome(stored)
+    validate_outcome_record(stored)
     if stored["schema_version"] != 2:
         return None
     defect = stored["escaped_defect"]

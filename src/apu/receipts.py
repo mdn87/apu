@@ -93,17 +93,13 @@ def _validate_receipt(receipt: Any) -> None:
     campaign_id = receipt.get("campaign_id")
     snapshot_id = receipt.get("snapshot_id")
     if (campaign_id is None) != (snapshot_id is None):
-        raise ValueError(
-            "receipt campaign_id and snapshot_id must appear together"
-        )
+        raise ValueError("receipt campaign_id and snapshot_id must appear together")
     if campaign_id is not None:
         validate_installation_id(campaign_id)
         validate_installation_id(snapshot_id)
         idempotency_keys = receipt.get("idempotency_keys")
         if not isinstance(idempotency_keys, dict):
-            raise ValueError(
-                "campaign receipt idempotency_keys must be an object"
-            )
+            raise ValueError("campaign receipt idempotency_keys must be an object")
 
     operations = receipt.get("operations")
     if not isinstance(operations, list):
@@ -126,9 +122,7 @@ def _validate_receipt(receipt: Any) -> None:
             if name not in operation:
                 raise ValueError(f"receipt operations[{index}].{name} is required")
         if "backup_path" not in operation:
-            raise ValueError(
-                f"receipt operations[{index}].backup_path is required"
-            )
+            raise ValueError(f"receipt operations[{index}].backup_path is required")
         if operation["backup_path"] is not None and not isinstance(
             operation["backup_path"], str
         ):
@@ -153,11 +147,7 @@ def _validate_receipt(receipt: Any) -> None:
                     "operation_id does not match"
                 )
             attempt = key["attempt"]
-            if (
-                not isinstance(attempt, int)
-                or isinstance(attempt, bool)
-                or attempt < 1
-            ):
+            if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
                 raise ValueError(
                     f"receipt operation {operation['id']} idempotency attempt "
                     "must be a positive integer"
@@ -204,6 +194,5 @@ def _validate_backup_references(
             candidate = Path(state_home) / candidate
         if not candidate.resolve().is_relative_to(expected_root):
             raise ValueError(
-                f"receipt operations[{index}].backup_path must be under "
-                f"{expected_root}"
+                f"receipt operations[{index}].backup_path must be under {expected_root}"
             )

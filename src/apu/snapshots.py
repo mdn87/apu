@@ -11,13 +11,17 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any
-from .filesystem import matches_exclude
 
+from .filesystem import matches_exclude
+from .locking import ProcessLock
 from .models import sha256_bytes, sha256_json
 from .state import ensure_private_directory, write_json_atomic
 
 SNAPSHOT_SCHEMA_VERSION = 1
 DEFAULT_RETENTION_COUNT = 10
+MAX_SNAPSHOT_ENTRIES = 100_000
+MAX_SNAPSHOT_BYTES = 1024 * 1024 * 1024
+MAX_SNAPSHOT_DEPTH = 128
 _OBJECT_TYPES = frozenset({"file", "directory", "symlink", "junction"})
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
@@ -32,6 +36,31 @@ class SnapshotSurface:
     excludes: tuple[str, ...] = ()
 
 
+@dataclass
+class _CaptureBudget:
+    max_entries: int
+    max_bytes: int
+    max_depth: int
+    entry_count: int = 0
+    byte_count: int = 0
+
+    def claim(
+        self,
+        relative_path: str,
+        object_type: str,
+        metadata: os.stat_result,
+    ) -> None:
+        if _entry_depth(relative_path) > self.max_depth:
+            raise ValueError("snapshot exceeds the depth limit")
+        self.entry_count += 1
+        if self.entry_count > self.max_entries:
+            raise ValueError("snapshot exceeds the entry limit")
+        if object_type == "file":
+            self.byte_count += metadata.st_size
+            if self.byte_count > self.max_bytes:
+                raise ValueError("snapshot exceeds the byte limit")
+
+
 def create_snapshot(
     state_home: Path,
     surfaces: Mapping[str, Path] | Iterable[SnapshotSurface],
@@ -39,10 +68,14 @@ def create_snapshot(
     label: str | None = None,
     campaign_id: str | None = None,
     created_at: str | None = None,
+    max_entries: int = MAX_SNAPSHOT_ENTRIES,
+    max_bytes: int = MAX_SNAPSHOT_BYTES,
+    max_depth: int = MAX_SNAPSHOT_DEPTH,
 ) -> dict[str, Any]:
     """Capture declared surfaces in private, content-addressed storage."""
 
     normalized = _normalize_surfaces(surfaces)
+    _validate_capture_limits(max_entries, max_bytes, max_depth)
     if label is not None and (not isinstance(label, str) or not label.strip()):
         raise ValueError("snapshot label must be a non-empty string")
     if campaign_id is not None:
@@ -52,51 +85,54 @@ def create_snapshot(
 
     snapshot_root = _snapshot_root(state_home)
     ensure_private_directory(snapshot_root)
-    ensure_private_directory(snapshot_root / "blobs")
-    ensure_private_directory(snapshot_root / "blobs" / ".tmp")
-    ensure_private_directory(snapshot_root / "manifests")
+    with ProcessLock(snapshot_root / "store.lock"):
+        ensure_private_directory(snapshot_root / "blobs")
+        ensure_private_directory(snapshot_root / "blobs" / ".tmp")
+        ensure_private_directory(snapshot_root / "manifests")
 
-    entries: list[dict[str, Any]] = []
-    declared: list[dict[str, Any]] = []
-    for surface in normalized:
-        captured = _capture_surface(
-            surface,
-            blob_root=snapshot_root / "blobs",
-        )
-        declared.append(
-            {
-                "logical_path": surface.logical_path,
-                "root": str(surface.root),
-                "present": bool(captured),
-            }
-        )
-        entries.extend(captured)
+        budget = _CaptureBudget(max_entries, max_bytes, max_depth)
+        entries: list[dict[str, Any]] = []
+        declared: list[dict[str, Any]] = []
+        for surface in normalized:
+            captured = _capture_surface(
+                surface,
+                blob_root=snapshot_root / "blobs",
+                budget=budget,
+            )
+            declared.append(
+                {
+                    "logical_path": surface.logical_path,
+                    "root": str(surface.root),
+                    "present": bool(captured),
+                }
+            )
+            entries.extend(captured)
 
-    body: dict[str, Any] = {
-        "schema_version": SNAPSHOT_SCHEMA_VERSION,
-        "created_at": captured_at,
-        "campaign_id": campaign_id,
-        "label": label,
-        "acl_restoration": "out_of_scope",
-        "surfaces": declared,
-        "entries": sorted(entries, key=_entry_sort_key),
-    }
-    snapshot_id = sha256_json(body)
-    manifest = {"snapshot_id": snapshot_id, **body}
-    _validate_manifest(
-        manifest,
-        state_home=state_home,
-        expected_snapshot_id=snapshot_id,
-        verify_blobs=True,
-    )
-    destination = snapshot_root / "manifests" / f"{snapshot_id}.json"
-    if destination.exists():
-        existing = load_snapshot(state_home, snapshot_id)
-        if existing != manifest:
-            raise ValueError(f"snapshot id collision at {destination}")
-        return existing
-    write_json_atomic(destination, manifest)
-    return manifest
+        body: dict[str, Any] = {
+            "schema_version": SNAPSHOT_SCHEMA_VERSION,
+            "created_at": captured_at,
+            "campaign_id": campaign_id,
+            "label": label,
+            "acl_restoration": "out_of_scope",
+            "surfaces": declared,
+            "entries": sorted(entries, key=_entry_sort_key),
+        }
+        snapshot_id = sha256_json(body)
+        manifest = {"snapshot_id": snapshot_id, **body}
+        _validate_manifest(
+            manifest,
+            state_home=state_home,
+            expected_snapshot_id=snapshot_id,
+            verify_blobs=True,
+        )
+        destination = snapshot_root / "manifests" / f"{snapshot_id}.json"
+        if destination.exists():
+            existing = load_snapshot(state_home, snapshot_id)
+            if existing != manifest:
+                raise ValueError(f"snapshot id collision at {destination}")
+            return existing
+        write_json_atomic(destination, manifest)
+        return manifest
 
 
 def load_snapshot(
@@ -178,14 +214,17 @@ def diff_snapshot(
             for surface in manifest["surfaces"]
         )
     )
+    budget = _CaptureBudget(
+        MAX_SNAPSHOT_ENTRIES,
+        MAX_SNAPSHOT_BYTES,
+        MAX_SNAPSHOT_DEPTH,
+    )
     current_entries = [
         entry
         for surface in current_surfaces
-        for entry in _capture_surface(surface, blob_root=None)
+        for entry in _capture_surface(surface, blob_root=None, budget=budget)
     ]
-    expected = {
-        entry["logical_path"]: entry for entry in manifest["entries"]
-    }
+    expected = {entry["logical_path"]: entry for entry in manifest["entries"]}
     current = {entry["logical_path"]: entry for entry in current_entries}
 
     changes: list[dict[str, Any]] = []
@@ -263,21 +302,22 @@ def enforce_retention(
     for snapshot_id in protected | open_ids:
         _validate_sha256(snapshot_id, "protected snapshot id")
 
-    manifests = list_snapshots(state_home)
-    recent = {
-        manifest["snapshot_id"] for manifest in manifests[:keep_last]
-    }
-    retained = recent | protected | open_ids
-    removed: list[str] = []
-    manifest_root = _snapshot_root(state_home) / "manifests"
-    for manifest in manifests:
-        snapshot_id = manifest["snapshot_id"]
-        if snapshot_id in retained:
-            continue
-        (manifest_root / f"{snapshot_id}.json").unlink()
-        removed.append(snapshot_id)
-    _garbage_collect_blobs(state_home)
-    return removed
+    snapshot_root = _snapshot_root(state_home)
+    ensure_private_directory(snapshot_root)
+    with ProcessLock(snapshot_root / "store.lock"):
+        manifests = list_snapshots(state_home)
+        recent = {manifest["snapshot_id"] for manifest in manifests[:keep_last]}
+        retained = recent | protected | open_ids
+        removed: list[str] = []
+        manifest_root = snapshot_root / "manifests"
+        for manifest in manifests:
+            snapshot_id = manifest["snapshot_id"]
+            if snapshot_id in retained:
+                continue
+            (manifest_root / f"{snapshot_id}.json").unlink()
+            removed.append(snapshot_id)
+        _garbage_collect_blobs(state_home)
+        return removed
 
 
 def resolve_blob_path(
@@ -326,8 +366,7 @@ def materialize_snapshot_object(
             (
                 surface
                 for surface in value["surfaces"]
-                if surface["logical_path"] == requested
-                and not surface["present"]
+                if surface["logical_path"] == requested and not surface["present"]
             ),
             None,
         )
@@ -358,10 +397,7 @@ def _materialization_entries(
         if entry["surface"] == selected["surface"]
         and (
             entry["relative_path"] == relative_path
-            or (
-                prefix
-                and entry["relative_path"].startswith(prefix)
-            )
+            or (prefix and entry["relative_path"].startswith(prefix))
             or relative_path == "."
         )
     ]
@@ -402,9 +438,7 @@ def _materialize_entries(
                 entry["relative_path"],
             ).mkdir(mode=0o700)
 
-        leaves = [
-            entry for entry in entries if entry["object_type"] != "directory"
-        ]
+        leaves = [entry for entry in entries if entry["object_type"] != "directory"]
         for entry in sorted(leaves, key=_entry_sort_key):
             target = _materialized_path(
                 destination,
@@ -530,9 +564,7 @@ def _create_junction(raw_target: str, destination: Path) -> None:
     try:
         import _winapi
     except ImportError as error:
-        raise OSError(
-            "this Python runtime cannot create Windows junctions"
-        ) from error
+        raise OSError("this Python runtime cannot create Windows junctions") from error
     create_junction = getattr(_winapi, "CreateJunction", None)
     if create_junction is None:
         raise OSError("this Python runtime cannot create Windows junctions")
@@ -582,6 +614,7 @@ def _capture_surface(
     surface: SnapshotSurface,
     *,
     blob_root: Path | None,
+    budget: _CaptureBudget,
 ) -> list[dict[str, Any]]:
     if not _lexists(surface.root):
         return []
@@ -594,6 +627,7 @@ def _capture_surface(
         if relative_path and matches_exclude(relative_path, surface.excludes):
             return
         object_type, object_stat = _inspect_object(path)
+        budget.claim(relative_path, object_type, object_stat)
         entry: dict[str, Any] = {
             "surface": surface.logical_path,
             "relative_path": relative_path,
@@ -658,13 +692,9 @@ def _capture_surface(
 
 
 def _populate_directory_hashes(entries: list[dict[str, Any]]) -> None:
-    by_path = {entry["relative_path"]: entry for entry in entries}
+    children = _children_by_parent(entries)
     directories = sorted(
-        (
-            entry
-            for entry in entries
-            if entry["object_type"] == "directory"
-        ),
+        (entry for entry in entries if entry["object_type"] == "directory"),
         key=lambda item: (
             0
             if item["relative_path"] == "."
@@ -673,20 +703,12 @@ def _populate_directory_hashes(entries: list[dict[str, Any]]) -> None:
         reverse=True,
     )
     for directory in directories:
-        prefix = (
-            ""
-            if directory["relative_path"] == "."
-            else f"{directory['relative_path']}/"
-        )
         digest = sha256()
-        for relative_path, child in sorted(by_path.items()):
-            if relative_path == directory["relative_path"]:
-                continue
-            if prefix and not relative_path.startswith(prefix):
-                continue
-            remainder = relative_path[len(prefix) :] if prefix else relative_path
-            if "/" in remainder:
-                continue
+        for child in sorted(
+            children.get(directory["relative_path"], ()),
+            key=lambda item: item["relative_path"],
+        ):
+            remainder = PurePosixPath(child["relative_path"]).name
             digest.update(child["object_type"].encode("ascii"))
             digest.update(b"\0")
             digest.update(os.fsencode(remainder))
@@ -694,6 +716,19 @@ def _populate_directory_hashes(entries: list[dict[str, Any]]) -> None:
             digest.update(child["hash"].encode("ascii"))
             digest.update(b"\0")
         directory["hash"] = digest.hexdigest()
+
+
+def _children_by_parent(
+    entries: Iterable[Mapping[str, Any]],
+) -> dict[str, list[Mapping[str, Any]]]:
+    children: dict[str, list[Mapping[str, Any]]] = {}
+    for entry in entries:
+        relative_path = entry["relative_path"]
+        if relative_path == ".":
+            continue
+        parent = str(PurePosixPath(relative_path).parent)
+        children.setdefault(parent, []).append(entry)
+    return children
 
 
 def _normalize_surfaces(
@@ -714,9 +749,7 @@ def _normalize_surfaces(
         if not isinstance(value, SnapshotSurface):
             raise TypeError("surfaces must contain SnapshotSurface values")
         logical_path = _validate_logical_path(value.logical_path)
-        root = Path(
-            os.path.abspath(os.fspath(Path(value.root).expanduser()))
-        )
+        root = Path(os.path.abspath(os.fspath(Path(value.root).expanduser())))
         root_identity = os.path.normcase(os.path.normpath(str(root)))
         if logical_path in logical_paths:
             raise ValueError(f"duplicate logical surface: {logical_path}")
@@ -724,10 +757,22 @@ def _normalize_surfaces(
             raise ValueError(f"duplicate surface root: {root}")
         logical_paths.add(logical_path)
         roots.add(root_identity)
-        normalized.append(
-            SnapshotSurface(logical_path, root, tuple(value.excludes))
-        )
+        normalized.append(SnapshotSurface(logical_path, root, tuple(value.excludes)))
     return tuple(sorted(normalized, key=lambda item: item.logical_path))
+
+
+def _validate_capture_limits(
+    max_entries: int,
+    max_bytes: int,
+    max_depth: int,
+) -> None:
+    for value, label in (
+        (max_entries, "entry"),
+        (max_bytes, "byte"),
+        (max_depth, "depth"),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"snapshot {label} limit must be a positive integer")
 
 
 def _inspect_object(path: Path) -> tuple[str, os.stat_result]:
@@ -803,9 +848,7 @@ def _store_blob(source: Path, blob_root: Path) -> str:
                     f"existing snapshot blob is not a regular file: {content_hash}"
                 )
             if _hash_file(destination) != content_hash:
-                raise ValueError(
-                    f"existing snapshot blob is corrupt: {content_hash}"
-                )
+                raise ValueError(f"existing snapshot blob is corrupt: {content_hash}")
             temporary.unlink()
         else:
             os.replace(temporary, destination)
@@ -960,8 +1003,7 @@ def _validate_manifest(
         entry_surface = logical_entries.get(logical_path)
         if entry_surface is not None and entry_surface != logical_path:
             raise ValueError(
-                f"declared surface collides with logical snapshot path: "
-                f"{logical_path}"
+                f"declared surface collides with logical snapshot path: {logical_path}"
             )
     _validate_directory_entries(entry_map)
 
@@ -1054,18 +1096,13 @@ def _validate_directory_entries(
     for entry in entries.values():
         by_surface.setdefault(entry["surface"], []).append(dict(entry))
     for surface_entries in by_surface.values():
+        by_path = {entry["relative_path"]: entry for entry in surface_entries}
+        children = _children_by_parent(surface_entries)
         for entry in surface_entries:
             if entry["relative_path"] == ".":
                 continue
             parent = str(PurePosixPath(entry["relative_path"]).parent)
-            parent_entry = next(
-                (
-                    candidate
-                    for candidate in surface_entries
-                    if candidate["relative_path"] == parent
-                ),
-                None,
-            )
+            parent_entry = by_path.get(parent)
             if parent_entry is None or parent_entry["object_type"] != "directory":
                 raise ValueError(
                     f"entry parent is not a directory: {entry['logical_path']}"
@@ -1082,17 +1119,9 @@ def _validate_directory_entries(
                 entry["object_type"] == "directory"
                 and entry["hash"] != expected_hashes[entry["relative_path"]]
             ):
-                raise ValueError(
-                    f"directory hash mismatch: {entry['logical_path']}"
-                )
+                raise ValueError(f"directory hash mismatch: {entry['logical_path']}")
             if entry["object_type"] == "directory":
-                has_child = any(
-                    _is_immediate_child(
-                        entry["relative_path"],
-                        candidate["relative_path"],
-                    )
-                    for candidate in surface_entries
-                )
+                has_child = bool(children.get(entry["relative_path"]))
                 if entry["empty"] == has_child:
                     raise ValueError(
                         f"directory empty flag mismatch: {entry['logical_path']}"
@@ -1221,21 +1250,7 @@ def _entry_sort_key(entry: Mapping[str, Any]) -> tuple[str, str]:
 
 
 def _entry_depth(relative_path: str) -> int:
-    return (
-        0
-        if relative_path == "."
-        else len(PurePosixPath(relative_path).parts)
-    )
-
-
-def _is_immediate_child(parent: str, candidate: str) -> bool:
-    if candidate == parent:
-        return False
-    prefix = "" if parent == "." else f"{parent}/"
-    if prefix and not candidate.startswith(prefix):
-        return False
-    remainder = candidate[len(prefix) :] if prefix else candidate
-    return "/" not in remainder
+    return 0 if relative_path == "." else len(PurePosixPath(relative_path).parts)
 
 
 def _parse_timestamp(value: Any) -> datetime:

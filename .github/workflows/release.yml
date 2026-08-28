@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install release tools
+        run: python -m pip install --upgrade pip ".[dev]"
+      - name: Run quality checks
+        run: pre-commit run --all-files --show-diff-on-failure
+      - name: Validate tag, version, and changelog
+        run: python scripts/check_release.py --tag "$GITHUB_REF_NAME"
+      - name: Run deterministic suite
+        run: python -m pytest
+      - name: Build and check distributions
+        run: |
+          python -m build --outdir dist
+          python -m twine check dist/*
+      - name: Verify wheel and sdist installs
+        shell: bash
+        run: |
+          set -euo pipefail
+          apu_root="$PWD"
+          apu_tmp="$(mktemp -d)"
+          apu_wheel="$(find dist -maxdepth 1 -type f -name '*.whl' -print)"
+          apu_sdist="$(find dist -maxdepth 1 -type f -name '*.tar.gz' -print)"
+
+          python -m venv "$apu_tmp/wheel-env"
+          "$apu_tmp/wheel-env/bin/python" -m pip install --no-deps "$apu_root/$apu_wheel"
+          "$apu_tmp/wheel-env/bin/python" scripts/verify_distribution.py \
+            --source-root "$apu_root"
+
+          python -m venv "$apu_tmp/sdist-env"
+          "$apu_tmp/sdist-env/bin/python" -m pip install --no-deps "$apu_root/$apu_sdist"
+          "$apu_tmp/sdist-env/bin/python" scripts/verify_distribution.py \
+            --source-root "$apu_root"
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum ./*.whl ./*.tar.gz > SHA256SUMS
+      - name: Attest release artifacts
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: dist/*
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apu_version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --generate-notes \
+            --title "APU $apu_version" \
+            --verify-tag

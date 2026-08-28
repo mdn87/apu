@@ -61,7 +61,8 @@ def finding(
         confidence="high",
         analysis_method=(
             "structural"
-            if category in {
+            if category
+            in {
                 "duplicate-instruction",
                 "sensitive-material-exposure",
             }
@@ -237,9 +238,7 @@ def test_explicit_instruction_consolidation_creates_work_orders_without_findings
     assert plan.auto_operations == ()
     assert len(plan.work_orders) == 3
     assert {
-        finding.category
-        for order in plan.work_orders
-        for finding in order.findings
+        finding.category for order in plan.work_orders for finding in order.findings
     } == {"instruction-consolidation-request"}
     assert {order.target for order in plan.work_orders} == {
         global_agents.path,
@@ -448,10 +447,7 @@ def test_other_finding_on_sensitive_surface_requires_sanitized_staging(
     assert work_order.findings[0].evidence == ()
     assert '"content": "private"' not in json.dumps(plan.to_dict())
     if configured_policy == "auto":
-        assert (
-            work_order.findings[0].routing_reason
-            == "sensitive-surface-sanitized"
-        )
+        assert work_order.findings[0].routing_reason == "sensitive-surface-sanitized"
 
 
 def test_deduplicates_provider_views_and_has_stable_order_and_ids(
@@ -563,9 +559,7 @@ def test_rejects_unsupported_policy_and_unknown_surface(
 
     broken = replace(
         valid,
-        findings=(
-            replace(valid.findings[0], surface_id="missing-surface"),
-        ),
+        findings=(replace(valid.findings[0], surface_id="missing-surface"),),
     )
     with pytest.raises(SystemPlanningError, match="unknown surface"):
         propose(system_inventory(broken), {})

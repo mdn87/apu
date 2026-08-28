@@ -47,8 +47,7 @@ def _string_tuple(value: object, field: str) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         raise ProfileError(f"{field} must be an array")
     result = tuple(
-        _nonempty_string(item, f"{field}[{index}]")
-        for index, item in enumerate(value)
+        _nonempty_string(item, f"{field}[{index}]") for index, item in enumerate(value)
     )
     if len(set(result)) != len(result):
         raise ProfileError(f"{field} must not contain duplicates")
@@ -323,9 +322,7 @@ class SystemProfile:
             for index, item in enumerate(raw_globals)
         )
 
-        packages = _string_tuple(
-            normalized.get("packages", ()), "packages"
-        )
+        packages = _string_tuple(normalized.get("packages", ()), "packages")
         guidance = _string_tuple(
             normalized.get("guidance_sources", ()), "guidance_sources"
         )
@@ -334,12 +331,8 @@ class SystemProfile:
             raise ProfileError("remediation_policy must be a table")
         policy: dict[str, str] = {}
         for raw_category, raw_action in raw_policy.items():
-            category = _nonempty_string(
-                raw_category, "remediation_policy category"
-            )
-            action = _nonempty_string(
-                raw_action, f"remediation_policy.{category}"
-            )
+            category = _nonempty_string(raw_category, "remediation_policy category")
+            action = _nonempty_string(raw_action, f"remediation_policy.{category}")
             policy[category] = action
 
         raw_version = normalized.get("schema_version", 1)
@@ -375,11 +368,7 @@ def default_profile_path(
         )
     else:
         xdg = selected_environment.get("XDG_CONFIG_HOME")
-        base = (
-            Path(xdg).resolve(strict=False)
-            if xdg
-            else selected_home / ".config"
-        )
+        base = Path(xdg).resolve(strict=False) if xdg else selected_home / ".config"
     return base / "apu" / "profile.toml"
 
 
@@ -391,9 +380,7 @@ def resolve_profile_path(
     platform: str | None = None,
 ) -> Path:
     if path is None:
-        return default_profile_path(
-            home=home, environ=environ, platform=platform
-        )
+        return default_profile_path(home=home, environ=environ, platform=platform)
     raw = Path(path).expanduser()
     return raw.resolve(strict=False)
 

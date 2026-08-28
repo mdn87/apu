@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "high-risk-auth-migration",
+  "supported_runners": ["codex", "claude"],
+  "expected_tier": "high-risk",
+  "events": {"required": ["review"], "forbidden": []},
+  "expected_outputs": [{"path": "migration-plan.md", "contains": "rollback"}],
+  "validation_commands": [["{python}", "../checks/check.py"]],
+  "timeout_seconds": 45,
+  "cleanup": "always"
+}

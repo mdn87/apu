@@ -120,9 +120,7 @@ def build_inventory(
         if surface.kind not in _CLASSIFIABLE_KINDS:
             continue
         try:
-            content = Path(surface.path).read_text(
-                encoding="utf-8", errors="replace"
-            )
+            content = Path(surface.path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         findings.extend(

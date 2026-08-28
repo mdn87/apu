@@ -53,18 +53,17 @@ def test_repository_discovery_is_deterministic_and_honors_excludes(
         (root / name / ".git").mkdir(parents=True)
     (root / "ordinary" / "nested").mkdir(parents=True)
 
-    result = discover_repositories(
-        (ProfileRoot(str(root.resolve()), ("ignored",)),)
-    )
+    result = discover_repositories((ProfileRoot(str(root.resolve()), ("ignored",)),))
 
     assert result.repositories == (
         str((root / "alpha").resolve()),
         str((root / "zeta").resolve()),
     )
     assert result.issues == ()
-    assert discover_repositories(
-        (ProfileRoot(str(root.resolve()), ("ignored",)),)
-    ) == result
+    assert (
+        discover_repositories((ProfileRoot(str(root.resolve()), ("ignored",)),))
+        == result
+    )
 
 
 def test_system_audit_applies_profile_scope_before_reading_surfaces(
@@ -113,8 +112,7 @@ def test_system_audit_applies_profile_scope_before_reading_surfaces(
     result = audit_system(profile, home=home)
 
     child_paths = {
-        Path(surface.path)
-        for surface in result.repositories[0].inventory.surfaces
+        Path(surface.path) for surface in result.repositories[0].inventory.surfaces
     }
     assert global_instruction in child_paths
     assert included_repository in child_paths
@@ -236,9 +234,7 @@ def test_system_inventory_round_trips_and_contains_one_child_per_repo(
         "b",
     ]
     assert SystemInventory.from_dict(encoded) == result
-    assert result.artifact_sha256 == SystemInventory.from_dict(
-        encoded
-    ).artifact_sha256
+    assert result.artifact_sha256 == SystemInventory.from_dict(encoded).artifact_sha256
     assert result.schema_version == SYSTEM_INVENTORY_SCHEMA_VERSION
     assert result.evaluation_context == EvaluationContext.unconfigured()
 

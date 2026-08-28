@@ -15,9 +15,7 @@ from .models import sha256_bytes
 from .state import ensure_private_directory, write_json_atomic
 
 JOURNAL_SCHEMA_VERSION = 1
-OBJECT_TYPES = frozenset(
-    {"absent", "file", "directory", "symlink", "junction"}
-)
+OBJECT_TYPES = frozenset({"absent", "file", "directory", "symlink", "junction"})
 JOURNAL_STATUSES = frozenset(
     {
         "prepared",
@@ -145,9 +143,7 @@ def restore_items(
     ensure_private_directory(transaction / "originals")
     ensure_private_directory(transaction / "desired")
 
-    journal = _build_journal(
-        identifier, transaction, prepared, force, snapshot
-    )
+    journal = _build_journal(identifier, transaction, prepared, force, snapshot)
     journal_path = transaction / "journal.json"
     try:
         _capture_artifacts(journal, transaction)
@@ -193,7 +189,8 @@ def restore_items(
         _persist(journal_path, journal)
         if reverse_failed:
             raise RestoreInterrupted(
-                identifier, f"restore failed and automatic unwind was incomplete: {failure}"
+                identifier,
+                f"restore failed and automatic unwind was incomplete: {failure}",
             ) from failure
         raise RestoreError(
             f"restore failed and all completed swaps were reversed; "
@@ -234,8 +231,10 @@ def resume_restore(
     journal["status"] = "resuming_unwind" if unwind else "resuming"
     _persist(journal_path, journal)
 
-    indexes = range(len(journal["items"]) - 1, -1, -1) if unwind else range(
-        len(journal["items"])
+    indexes = (
+        range(len(journal["items"]) - 1, -1, -1)
+        if unwind
+        else range(len(journal["items"]))
     )
     try:
         for index in indexes:
@@ -250,7 +249,9 @@ def resume_restore(
         journal["status"] = "needs_recovery"
         _record_observed_states(journal)
         _persist(journal_path, journal)
-        raise RestoreInterrupted(identifier, f"restore recovery failed: {error}") from error
+        raise RestoreInterrupted(
+            identifier, f"restore recovery failed: {error}"
+        ) from error
 
     status = "unwound" if unwind else "completed"
     journal["status"] = status
@@ -266,9 +267,7 @@ def list_restore_journals(journal_root: Path) -> list[dict[str, object]]:
     if not os.path.lexists(root):
         return []
     if root.is_symlink() or _is_junction(root) or not root.is_dir():
-        raise RestoreError(
-            f"restore journal root must be a real directory: {root}"
-        )
+        raise RestoreError(f"restore journal root must be a real directory: {root}")
 
     summaries: list[dict[str, object]] = []
     for transaction in sorted(root.iterdir(), key=lambda path: path.name):
@@ -282,9 +281,7 @@ def list_restore_journals(journal_root: Path) -> list[dict[str, object]]:
                 raise RestoreError(
                     f"unexpected entry in restore journal root: {transaction}"
                 )
-            journal = _load_journal(
-                transaction / "journal.json", identifier
-            )
+            journal = _load_journal(transaction / "journal.json", identifier)
             _validate_journal_paths(journal, transaction)
             status = journal.get("status")
             if status not in JOURNAL_STATUSES:
@@ -299,15 +296,9 @@ def list_restore_journals(journal_root: Path) -> list[dict[str, object]]:
                         "target": item["target"],
                         "state": _classify_target(item),
                         "observed": {
-                            "target": _describe_object(
-                                Path(item["target"])
-                            ),
-                            "prepared": _describe_object(
-                                Path(item["prepared_path"])
-                            ),
-                            "displaced": _describe_object(
-                                Path(item["displaced_path"])
-                            ),
+                            "target": _describe_object(Path(item["target"])),
+                            "prepared": _describe_object(Path(item["prepared_path"])),
+                            "displaced": _describe_object(Path(item["displaced_path"])),
                         },
                     }
                 )
@@ -349,9 +340,7 @@ def _preflight(
     if not items:
         raise RestorePreflightError("restore requires at least one item")
 
-    protected = [
-        _absolute(path, "protected root") for path in protected_roots
-    ]
+    protected = [_absolute(path, "protected root") for path in protected_roots]
     protected.extend(
         [
             Path(journal_root.anchor),
@@ -380,7 +369,9 @@ def _preflight(
             )
 
         replacement = (
-            None if item.replacement is None else _absolute(item.replacement, "replacement")
+            None
+            if item.replacement is None
+            else _absolute(item.replacement, "replacement")
         )
         if replacement is None:
             desired = _absent_description()
@@ -422,9 +413,7 @@ def _build_journal(
             else None
         )
         desired["artifact"] = (
-            str(transaction / "desired" / stem)
-            if desired["type"] != "absent"
-            else None
+            str(transaction / "desired" / stem) if desired["type"] != "absent" else None
         )
         records.append(
             {
@@ -437,7 +426,9 @@ def _build_journal(
                 "forced": _path_identity(item.target) in force_paths,
                 "original": original,
                 "desired": desired,
-                "prepared_path": str(item.target.parent / f".{item.target.name}{suffix}.new"),
+                "prepared_path": str(
+                    item.target.parent / f".{item.target.name}{suffix}.new"
+                ),
                 "displaced_path": str(
                     item.target.parent / f".{item.target.name}{suffix}.old"
                 ),
@@ -476,9 +467,7 @@ def _capture_artifacts(journal: dict[str, object], transaction: Path) -> None:
         item["phase"] = "captured"
 
 
-def _stage_desired_objects(
-    journal: dict[str, object], transaction: Path
-) -> None:
+def _stage_desired_objects(journal: dict[str, object], transaction: Path) -> None:
     del transaction
     made: list[Path] = []
     try:
@@ -650,9 +639,7 @@ def _cleanup_side_paths(journal: Mapping[str, object]) -> None:
             path = Path(item[key])
             if os.path.lexists(path):
                 if expected["type"] == "absent":
-                    raise RestoreError(
-                        f"unexpected temporary restore object: {path}"
-                    )
+                    raise RestoreError(f"unexpected temporary restore object: {path}")
                 _remove_if_matches(path, expected)
 
 
@@ -721,7 +708,9 @@ def _describe_object(path: Path) -> dict[str, object]:
             "mode": metadata.st_mode & 0o777 if os.name == "posix" else None,
         }
     except OSError as error:
-        raise RestorePreflightError(f"cannot inspect filesystem object {path}: {error}") from error
+        raise RestorePreflightError(
+            f"cannot inspect filesystem object {path}: {error}"
+        ) from error
 
 
 def _absent_description() -> dict[str, object]:
@@ -820,9 +809,7 @@ def _validate_target_path(
             raise RestorePreflightError(f"restore target is a protected root: {target}")
 
 
-def _validate_journal_paths(
-    journal: Mapping[str, object], transaction: Path
-) -> None:
+def _validate_journal_paths(journal: Mapping[str, object], transaction: Path) -> None:
     if journal.get("schema_version") != JOURNAL_SCHEMA_VERSION:
         raise RestoreError("unsupported restore journal schema_version")
     if journal.get("journal_id") != transaction.name:
@@ -857,7 +844,9 @@ def _load_journal(path: Path, journal_id: str) -> dict[str, object]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise RestoreError(f"cannot load restore journal {journal_id}: {error}") from error
+        raise RestoreError(
+            f"cannot load restore journal {journal_id}: {error}"
+        ) from error
     if not isinstance(value, dict):
         raise RestoreError("restore journal must be a JSON object")
     # Schema v1 predates snapshot binding. Treat a missing field as the
@@ -917,9 +906,7 @@ def _symlink_is_directory(metadata: os.stat_result) -> bool:
     return bool(attributes & directory_attribute)
 
 
-def _is_junction(
-    path: Path, metadata: os.stat_result | None = None
-) -> bool:
+def _is_junction(path: Path, metadata: os.stat_result | None = None) -> bool:
     is_junction = getattr(os.path, "isjunction", None)
     if is_junction is not None:
         try:
@@ -950,9 +937,7 @@ def _create_junction(raw_target: str, destination: Path) -> None:
         ) from error
     create_junction = getattr(_winapi, "CreateJunction", None)
     if create_junction is None:
-        raise RestoreError(
-            "this Python runtime cannot create Windows junctions"
-        )
+        raise RestoreError("this Python runtime cannot create Windows junctions")
     try:
         create_junction(_junction_creation_target(raw_target), str(destination))
     except OSError as error:
@@ -1046,14 +1031,10 @@ def _validate_snapshot_id(value: str | None) -> str | None:
         or len(value) != 64
         or any(character not in "0123456789abcdef" for character in value)
     ):
-        raise RestorePreflightError(
-            "snapshot_id must be a lowercase SHA-256 hash"
-        )
+        raise RestorePreflightError("snapshot_id must be a lowercase SHA-256 hash")
     return value
 
 
-def _call_hook(
-    hook: FailureHook | None, event: str, index: int, target: Path
-) -> None:
+def _call_hook(hook: FailureHook | None, event: str, index: int, target: Path) -> None:
     if hook is not None:
         hook(event, index, target)

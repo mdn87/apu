@@ -101,9 +101,7 @@ class DetectorPolicy:
                 "between 2 and 100"
             )
         if not isinstance(self.speculative_skill_threshold_enabled, bool):
-            raise TypeError(
-                "speculative_skill_threshold_enabled must be boolean"
-            )
+            raise TypeError("speculative_skill_threshold_enabled must be boolean")
 
 
 def _finding_id(surface_id: str, category: str, line: int) -> str:
@@ -169,8 +167,7 @@ def classify_surface(
 
         if (
             seen_lines[normalized]
-            and len(normalized.split())
-            >= policy.duplicate_instruction_minimum_words
+            and len(normalized.split()) >= policy.duplicate_instruction_minimum_words
         ):
             findings.append(
                 _finding(

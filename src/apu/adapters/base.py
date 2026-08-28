@@ -158,9 +158,7 @@ def safe_rglob(
 ) -> Iterable[Path]:
     """Glob beneath a controlled root while excluding generated/cache trees."""
 
-    if not root.is_dir() or (
-        path_filter is not None and not path_filter(root)
-    ):
+    if not root.is_dir() or (path_filter is not None and not path_filter(root)):
         return ()
     paths: list[Path] = []
     for current, directory_names, file_names in os.walk(
@@ -175,10 +173,7 @@ def safe_rglob(
             name
             for name in directory_names
             if name not in _IGNORED_DISCOVERY_DIRECTORIES
-            and (
-                path_filter is None
-                or path_filter(current_path / name)
-            )
+            and (path_filter is None or path_filter(current_path / name))
             and not (
                 name == "cache"
                 and ".claude" in relative.parts
@@ -188,9 +183,8 @@ def safe_rglob(
         for name in (*directory_names, *sorted(file_names)):
             candidate = current_path / name
             if (
-                (path_filter is None or path_filter(candidate))
-                and candidate.relative_to(root).match(pattern)
-            ):
+                path_filter is None or path_filter(candidate)
+            ) and candidate.relative_to(root).match(pattern):
                 paths.append(candidate)
     return tuple(paths)
 
@@ -202,9 +196,7 @@ def skill_files(
 ) -> tuple[Path, ...]:
     """Discover regular and canonical one-level symlinked skill directories."""
 
-    discovered = set(
-        safe_rglob(root, "SKILL.md", path_filter=path_filter)
-    )
+    discovered = set(safe_rglob(root, "SKILL.md", path_filter=path_filter))
     try:
         for child in root.iterdir():
             candidate = child / "SKILL.md"
@@ -231,9 +223,7 @@ def ancestor_directories(path: Path) -> tuple[Path, ...]:
     return tuple(reversed((directory, *directory.parents)))
 
 
-def repository_bases(
-    directories: Iterable[Path], *, home: Path
-) -> tuple[Path, ...]:
+def repository_bases(directories: Iterable[Path], *, home: Path) -> tuple[Path, ...]:
     """Drop directories at or above a user home directory.
 
     Nothing at or above home is a repository, so a home-level `.claude` or

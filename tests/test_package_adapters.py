@@ -356,6 +356,8 @@ def test_absent_package_has_no_selected_evidence(tmp_path: Path) -> None:
     assert observation.version is None
     assert observation.provenance == ()
     assert observation.issues == ("package-not-observed",)
+
+
 def test_scoped_package_identity_splits_on_the_final_at_sign() -> None:
     assert split_package_id("@openai/tools@official") == (
         "@openai/tools",

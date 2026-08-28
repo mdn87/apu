@@ -4,7 +4,6 @@ from typing import Any, Iterable, Mapping
 
 from .base import NormalizedEvent, RunnerCapabilities, parse_jsonl
 
-
 CODEX_CAPABILITIES = RunnerCapabilities(
     provider="codex",
     cli_name="codex",
@@ -22,9 +21,7 @@ _TOOL_ITEMS = frozenset(
         "web_search",
     }
 )
-_SAFE_STATUSES = frozenset(
-    {"in_progress", "completed", "failed", "declined"}
-)
+_SAFE_STATUSES = frozenset({"in_progress", "completed", "failed", "declined"})
 
 
 def _safe_metadata(

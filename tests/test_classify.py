@@ -6,9 +6,7 @@ from apu.classify import DetectorPolicy, classify_surface
 from apu.models import InstructionSurface
 
 
-def surface(
-    *, scope: str = "global", kind: str = "agents"
-) -> InstructionSurface:
+def surface(*, scope: str = "global", kind: str = "agents") -> InstructionSurface:
     return InstructionSurface(
         id="sha256:" + "a" * 64,
         path="/tmp/AGENTS.md",
@@ -42,9 +40,7 @@ def test_classifies_review_loop_without_inventing_semantic_certainty() -> None:
 
     findings = classify_surface(surface(), text)
 
-    assert [finding.category for finding in findings] == [
-        "per-task-review-loop"
-    ]
+    assert [finding.category for finding in findings] == ["per-task-review-loop"]
     assert findings[0].analysis_method == "heuristic"
 
 
@@ -66,10 +62,13 @@ def test_duplicate_rule_is_structural() -> None:
 def test_typed_detector_policy_changes_only_allowlisted_behavior() -> None:
     concise_duplicate = "Run focused tests now.\nRun focused tests now.\n"
 
-    assert classify_surface(
-        surface(scope="repository"),
-        concise_duplicate,
-    ) == ()
+    assert (
+        classify_surface(
+            surface(scope="repository"),
+            concise_duplicate,
+        )
+        == ()
+    )
     findings = classify_surface(
         surface(scope="repository"),
         concise_duplicate,
@@ -78,9 +77,7 @@ def test_typed_detector_policy_changes_only_allowlisted_behavior() -> None:
         ),
     )
 
-    assert [finding.category for finding in findings] == [
-        "duplicate-instruction"
-    ]
+    assert [finding.category for finding in findings] == ["duplicate-instruction"]
 
 
 def test_typed_policy_can_disable_speculative_threshold_branch() -> None:
@@ -89,13 +86,16 @@ def test_typed_policy_can_disable_speculative_threshold_branch() -> None:
         "you absolutely must invoke the skill."
     )
 
-    assert classify_surface(
-        surface(),
-        text,
-        detector_policy=DetectorPolicy(
-            speculative_skill_threshold_enabled=False,
-        ),
-    ) == ()
+    assert (
+        classify_surface(
+            surface(),
+            text,
+            detector_policy=DetectorPolicy(
+                speculative_skill_threshold_enabled=False,
+            ),
+        )
+        == ()
+    )
 
 
 def test_detector_policy_rejects_wrong_typed_values() -> None:
@@ -110,9 +110,7 @@ def test_global_build_command_is_a_residency_candidate() -> None:
 
     findings = classify_surface(surface(scope="global"), text)
 
-    assert any(
-        finding.category == "misplaced-repository-fact" for finding in findings
-    )
+    assert any(finding.category == "misplaced-repository-fact" for finding in findings)
 
 
 def test_secret_shaped_text_is_reported_without_secret_in_evidence() -> None:
@@ -142,8 +140,7 @@ def test_short_credential_assignments_are_sensitive_material(text: str) -> None:
     findings = classify_surface(surface(), text)
 
     assert any(
-        finding.category == "sensitive-material-exposure"
-        for finding in findings
+        finding.category == "sensitive-material-exposure" for finding in findings
     )
 
 
@@ -177,9 +174,7 @@ def test_detects_real_world_universal_trigger_phrasing() -> None:
 
     findings = classify_surface(surface(), text)
 
-    assert [finding.category for finding in findings] == [
-        "universal-skill-trigger"
-    ]
+    assert [finding.category for finding in findings] == ["universal-skill-trigger"]
 
 
 def test_detects_speculative_threshold_trigger() -> None:
@@ -191,9 +186,7 @@ def test_detects_speculative_threshold_trigger() -> None:
     findings = classify_surface(surface(), text)
 
     finding = next(
-        item
-        for item in findings
-        if item.category == "universal-skill-trigger"
+        item for item in findings if item.category == "universal-skill-trigger"
     )
     assert "speculative-threshold-trigger" in finding.evidence
 
@@ -203,9 +196,7 @@ def test_detects_unconditional_process_gate() -> None:
 
     findings = classify_surface(surface(), text)
 
-    assert [finding.category for finding in findings] == [
-        "unconditional-approval-gate"
-    ]
+    assert [finding.category for finding in findings] == ["unconditional-approval-gate"]
 
 
 def test_rule_that_forbids_a_multiplier_is_not_a_multiplier() -> None:

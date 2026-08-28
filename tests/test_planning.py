@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 from dataclasses import replace
+from pathlib import Path
 
+from apu.adapters.claude import ClaudeAdapter
+from apu.adapters.codex import CodexAdapter
 from apu.models import (
     Approval,
     Finding,
@@ -12,8 +14,6 @@ from apu.models import (
     PlanOperation,
     sha256_bytes,
 )
-from apu.adapters.claude import ClaudeAdapter
-from apu.adapters.codex import CodexAdapter
 from apu.planning import (
     approve_all_recommended,
     build_relocation_operations,
@@ -51,9 +51,7 @@ def inventory(
             severity="high",
             confidence="high",
             analysis_method=(
-                "structural"
-                if category == "duplicate-instruction"
-                else "heuristic"
+                "structural" if category == "duplicate-instruction" else "heuristic"
             ),
             evidence=("matched-rule",),
             summary=f"{category}.",
@@ -132,9 +130,7 @@ def test_relocation_expands_to_atomic_remove_create_pair(tmp_path: Path) -> None
     )
 
     assert [operation.action for operation in operations] == ["remove", "create"]
-    assert {operation.atomic_group_id for operation in operations} == {
-        "move-policy"
-    }
+    assert {operation.atomic_group_id for operation in operations} == {"move-policy"}
     assert {operation.group_content_sha256 for operation in operations} == {
         content_hash
     }
@@ -184,13 +180,7 @@ def test_existing_skill_target_is_preserved_for_review(tmp_path: Path) -> None:
     package_skill = tmp_path / "package" / "optimizing-agent-instructions"
     package_skill.mkdir(parents=True)
     (package_skill / "SKILL.md").write_text("---\nname: optimizer\n---\n")
-    target = (
-        tmp_path
-        / "home"
-        / ".agents"
-        / "skills"
-        / "optimizing-agent-instructions"
-    )
+    target = tmp_path / "home" / ".agents" / "skills" / "optimizing-agent-instructions"
     target.mkdir(parents=True)
     (target / "SKILL.md").write_text("user-owned")
 
@@ -388,9 +378,7 @@ def test_review_can_edit_candidate_or_expand_relocation(tmp_path: Path) -> None:
 
     edited = review_plan(
         draft,
-        decide=lambda _: ReviewDecision(
-            "approved", replacement_source=replacement
-        ),
+        decide=lambda _: ReviewDecision("approved", replacement_source=replacement),
     )
     assert edited.status == "approved"
     assert edited.operations[0].source == str(replacement.resolve())
@@ -399,9 +387,7 @@ def test_review_can_edit_candidate_or_expand_relocation(tmp_path: Path) -> None:
     destination = tmp_path / "moved.md"
     relocated = review_plan(
         draft,
-        decide=lambda _: ReviewDecision(
-            "approved", relocate_target=destination
-        ),
+        decide=lambda _: ReviewDecision("approved", relocate_target=destination),
     )
     assert relocated.status == "approved"
     assert [item.action for item in relocated.operations] == ["remove", "create"]
@@ -413,7 +399,8 @@ def test_review_can_edit_candidate_or_expand_relocation(tmp_path: Path) -> None:
 def test_one_file_yields_one_operation_across_providers(tmp_path: Path) -> None:
     target = tmp_path / "SKILL.md"
     target.write_text(
-        "Run focused tests.\nRun focused tests.\n", encoding="utf-8",
+        "Run focused tests.\nRun focused tests.\n",
+        encoding="utf-8",
     )
     audit = inventory(target, categories=(("duplicate-instruction", 2),))
     codex_surface = replace(
@@ -446,9 +433,7 @@ def test_one_file_yields_one_operation_across_providers(tmp_path: Path) -> None:
         candidate_dir=tmp_path / "candidates",
     )
 
-    assert [operation.target for operation in proposed.operations] == [
-        str(target)
-    ]
+    assert [operation.target for operation in proposed.operations] == [str(target)]
     # The duplicated per-provider finding is recorded once, not twice.
     assert proposed.operations[0].evidence == ("finding-1",)
 

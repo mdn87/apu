@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -32,9 +32,7 @@ def test_audit_and_propose_round_trip_without_creating_state(
     assert main(["audit", str(repo), "--json", str(inventory)]) == 0
     assert inventory.is_file()
     assert not state.exists()
-    assert main(
-        ["propose", "--inventory", str(inventory), "--output", str(plan)]
-    ) == 0
+    assert main(["propose", "--inventory", str(inventory), "--output", str(plan)]) == 0
     artifact = json.loads(plan.read_text())
     assert artifact["inventory_sha256"]
     assert artifact["operations"]
@@ -141,6 +139,36 @@ def test_status_reports_monitoring_progress_for_registered_installation(
     assert monitoring["required_material_tasks"] == 10
 
 
+def test_root_cli_exposes_reviewable_hook_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    assert (
+        main(
+            [
+                "hooks",
+                "render",
+                "--provider",
+                "codex",
+                "--scope",
+                "user",
+            ]
+        )
+        == 0
+    )
+
+    rendered = json.loads(capsys.readouterr().out)
+    assert rendered["target"] == str(home / ".codex" / "hooks.json")
+    assert rendered["policy_changes"] is False
+    assert rendered["trust_changes"] is False
+    assert not (home / ".codex" / "hooks.json").exists()
+
+
 def test_init_explicit_apply_uses_visible_copy_fallback_and_validates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
@@ -163,18 +191,10 @@ def test_init_explicit_apply_uses_visible_copy_fallback_and_validates(
     assert main(["init", str(repo), "--apply", "--yes"]) == 0
 
     assert (
-        home
-        / ".agents"
-        / "skills"
-        / "optimizing-agent-instructions"
-        / "SKILL.md"
+        home / ".agents" / "skills" / "optimizing-agent-instructions" / "SKILL.md"
     ).is_file()
     assert (
-        home
-        / ".claude"
-        / "skills"
-        / "optimizing-agent-instructions"
-        / "SKILL.md"
+        home / ".claude" / "skills" / "optimizing-agent-instructions" / "SKILL.md"
     ).is_file()
     registry = json.loads((state / "registry.json").read_text(encoding="utf-8"))
     entry = next(iter(registry["installations"].values()))

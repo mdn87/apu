@@ -1,22 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from .models import Plan, sha256_bytes
 from .filesystem import hash_object, symlink_points_to
+from .models import Plan
 from .receipts import load_receipt
 from .runners import (
-    BehavioralResult,
-    CheckResult,
     CLAUDE_CAPABILITIES,
     CODEX_CAPABILITIES,
+    BehavioralResult,
+    CheckResult,
     NormalizedEvent,
     RunnerCapabilities,
     RunnerParseError,
@@ -27,7 +27,6 @@ from .runners import (
     unsupported_result,
 )
 from .state import load_registry, resolve_state_home
-
 
 _VALID_STATUSES = frozenset({"passed", "failed", "skipped", "unavailable"})
 
@@ -193,9 +192,7 @@ def validate_receipt_path(path: Path) -> ValidationResult:
         target = operation.get("target")
         if not isinstance(target, str) or not target:
             continue
-        operation_id = str(
-            operation.get("operation_id", operation.get("id", index))
-        )
+        operation_id = str(operation.get("operation_id", operation.get("id", index)))
         checks.append(
             _validate_installed_target(
                 Path(target),
@@ -396,9 +393,7 @@ def run_behavioral_fixture(
 
     fixture = load_behavioral_fixture(path)
     adapter = adapters.get(runner)
-    static_metadata = (
-        adapter.capabilities.to_dict() if adapter is not None else None
-    )
+    static_metadata = adapter.capabilities.to_dict() if adapter is not None else None
     if runner not in fixture.supported_runners:
         return unsupported_result(runner, metadata=static_metadata)
     if not runtime_enabled:
@@ -473,9 +468,7 @@ def run_behavioral_fixture(
             if _looks_like_authentication_failure(process.stdout, process.stderr):
                 return unavailable_result(
                     f"supported runner is not authenticated: {runner}",
-                    runner=replace(
-                        capabilities, authenticated=False
-                    ).to_dict(),
+                    runner=replace(capabilities, authenticated=False).to_dict(),
                 )
             return BehavioralResult(
                 status="failed",
@@ -501,9 +494,7 @@ def run_behavioral_fixture(
                         reason=f"{runner} emitted invalid structured events",
                     ),
                 ),
-                runner=replace(
-                    capabilities, authenticated=True
-                ).to_dict(),
+                runner=replace(capabilities, authenticated=True).to_dict(),
             )
 
         event_result = evaluate_event_checks(
@@ -700,9 +691,7 @@ def _run_validation_commands(
             )
             continue
         if process.returncode == 0:
-            results.append(
-                CheckResult(name, "passed", "validation command passed")
-            )
+            results.append(CheckResult(name, "passed", "validation command passed"))
         else:
             results.append(
                 CheckResult(
@@ -758,11 +747,7 @@ def _failed_result(
 
 def _first_failure_reason(result: ValidationResult) -> str:
     return next(
-        (
-            check.reason
-            for check in result.checks
-            if check.status == "failed"
-        ),
+        (check.reason for check in result.checks if check.status == "failed"),
         result.reason or "validation failed",
     )
 

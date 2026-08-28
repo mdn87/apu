@@ -79,8 +79,7 @@ def test_collects_only_bounded_instruction_surfaces_and_dynamic_paths(
         "scripts/setup.py",
     }
     assert any(
-        item["category"] == "sensitive-material-exposure"
-        for item in result["findings"]
+        item["category"] == "sensitive-material-exposure" for item in result["findings"]
     )
     encoded = canonical_json(result)
     assert secret not in encoded

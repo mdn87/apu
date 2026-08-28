@@ -120,9 +120,7 @@ def analyze_package_version(
                 if isinstance(line, int) and 1 <= line <= len(lines)
                 else ""
             )
-            normalized_line_sha256 = sha256_bytes(
-                normalized_line.encode("utf-8")
-            )
+            normalized_line_sha256 = sha256_bytes(normalized_line.encode("utf-8"))
             base_key = sha256_json(
                 {
                     "relative_path": relative_path,
@@ -170,9 +168,7 @@ def analyze_package_version(
     surface_manifest.sort(
         key=lambda item: (item["relative_path"], item["surface_kind"])
     )
-    unclassified.sort(
-        key=lambda item: (item["relative_path"], item["reason"])
-    )
+    unclassified.sort(key=lambda item: (item["relative_path"], item["reason"]))
     counts = dict(sorted(Counter(item["category"] for item in findings).items()))
     return {
         "schema_version": 1,
@@ -284,10 +280,9 @@ def diff_package_analyses(
         for item in new["findings"]
         if item["source_object_type"] == "file"
     }
-    if (
-        len(old_findings) != len(old["findings"]) - len(old_noncomparable)
-        or len(new_findings) != len(new["findings"]) - len(new_noncomparable)
-    ):
+    if len(old_findings) != len(old["findings"]) - len(old_noncomparable) or len(
+        new_findings
+    ) != len(new["findings"]) - len(new_noncomparable):
         raise PackageAnalysisError("package analysis semantic keys must be unique")
 
     old_keys = set(old_findings)
@@ -504,16 +499,12 @@ def _virtual_links(
     validated: list[dict[str, Any]] = []
     paths: set[str] = set()
     for link in links:
-        if (
-            not isinstance(link, Mapping)
-            or set(link)
-            != {
-                "relative_path",
-                "target",
-                "resolved_target",
-                "target_content_sha256",
-            }
-        ):
+        if not isinstance(link, Mapping) or set(link) != {
+            "relative_path",
+            "target",
+            "resolved_target",
+            "target_content_sha256",
+        }:
             raise PackageAnalysisError("virtual link manifest is invalid")
         relative = _virtual_relative(link["relative_path"], "link path")
         resolved = _virtual_relative(
@@ -531,7 +522,10 @@ def _virtual_links(
         ):
             raise PackageAnalysisError("virtual link provenance is invalid")
         normalized = relative.casefold()
-        if normalized in paths or (root / Path(*PurePosixPath(relative).parts)).exists():
+        if (
+            normalized in paths
+            or (root / Path(*PurePosixPath(relative).parts)).exists()
+        ):
             raise PackageAnalysisError("virtual link path collides with package tree")
         paths.add(normalized)
         target_path = root / Path(*PurePosixPath(resolved).parts)
@@ -551,9 +545,7 @@ def _virtual_links(
                 "content": content,
             }
         )
-    return tuple(
-        sorted(validated, key=lambda item: item["relative_path"])
-    )
+    return tuple(sorted(validated, key=lambda item: item["relative_path"]))
 
 
 def _virtual_relative(value: object, label: str) -> str:
@@ -684,12 +676,8 @@ def _baseline_stamp(value: Mapping[str, Any]) -> BaselineStamp:
         raise PackageAnalysisError(
             "baseline retrieved_at must be null or non-empty text"
         )
-    if status in {"adopted", "stale"} and (
-        version is None or retrieved_at is None
-    ):
-        raise PackageAnalysisError(
-            f"baseline status {status} requires provenance"
-        )
+    if status in {"adopted", "stale"} and (version is None or retrieved_at is None):
+        raise PackageAnalysisError(f"baseline status {status} requires provenance")
     return {
         "version": version,
         "status": status,
@@ -743,9 +731,7 @@ def _analysis(value: Mapping[str, Any], name: str) -> dict[str, Any]:
         "detector_policy",
         "detector_policy_sha256",
     }:
-        raise PackageAnalysisError(
-            f"{name} classifier_context has unsupported fields"
-        )
+        raise PackageAnalysisError(f"{name} classifier_context has unsupported fields")
     _baseline_stamp(context["baseline"])
     _nonempty(context["detector_version"], f"{name} detector_version")
     policy_value = context["detector_policy"]
@@ -753,9 +739,7 @@ def _analysis(value: Mapping[str, Any], name: str) -> dict[str, Any]:
         "duplicate_instruction_minimum_words",
         "speculative_skill_threshold_enabled",
     }:
-        raise PackageAnalysisError(
-            f"{name} detector_policy has unsupported fields"
-        )
+        raise PackageAnalysisError(f"{name} detector_policy has unsupported fields")
     try:
         DetectorPolicy(
             duplicate_instruction_minimum_words=policy_value[
@@ -766,9 +750,7 @@ def _analysis(value: Mapping[str, Any], name: str) -> dict[str, Any]:
             ],
         )
     except (TypeError, ValueError) as error:
-        raise PackageAnalysisError(
-            f"{name} detector_policy is invalid"
-        ) from error
+        raise PackageAnalysisError(f"{name} detector_policy is invalid") from error
     policy_hash = _required_hash(
         context["detector_policy_sha256"],
         f"{name} detector_policy_sha256",
@@ -783,16 +765,11 @@ def _analysis(value: Mapping[str, Any], name: str) -> dict[str, Any]:
         sorted(Counter(item["category"] for item in value["findings"]).items())
     )
     if dict(value["finding_counts"]) != expected_counts:
-        raise PackageAnalysisError(
-            f"{name} finding_counts do not match its findings"
-        )
+        raise PackageAnalysisError(f"{name} finding_counts do not match its findings")
     if not isinstance(value["unclassified"], list):
         raise PackageAnalysisError(f"{name} unclassified must be a list")
     for item in value["unclassified"]:
-        if (
-            not isinstance(item, Mapping)
-            or set(item) != {"relative_path", "reason"}
-        ):
+        if not isinstance(item, Mapping) or set(item) != {"relative_path", "reason"}:
             raise PackageAnalysisError(
                 f"{name} unclassified entries have unsupported fields"
             )
@@ -818,9 +795,7 @@ def _validate_finding(value: Any, name: str) -> None:
         "summary",
     }
     if not isinstance(value, Mapping) or set(value) != fields:
-        raise PackageAnalysisError(
-            f"{name} finding has unsupported fields"
-        )
+        raise PackageAnalysisError(f"{name} finding has unsupported fields")
     _required_hash(value["semantic_key"], f"{name} semantic_key")
     _required_hash(
         value["normalized_line_sha256"],
@@ -846,9 +821,7 @@ def _validate_finding(value: Any, name: str) -> None:
     elif source_object_type == "symlink":
         _nonempty(link_target, f"{name} finding link_target")
     else:
-        raise PackageAnalysisError(
-            f"{name} finding source_object_type is unsupported"
-        )
+        raise PackageAnalysisError(f"{name} finding source_object_type is unsupported")
     _severity_rank(value["severity"])
     line = value["line"]
     if not isinstance(line, int) or isinstance(line, bool) or line < 1:
@@ -856,9 +829,7 @@ def _validate_finding(value: Any, name: str) -> None:
     if not isinstance(value["evidence"], list) or any(
         not isinstance(item, str) or not item for item in value["evidence"]
     ):
-        raise PackageAnalysisError(
-            f"{name} finding evidence must be a string list"
-        )
+        raise PackageAnalysisError(f"{name} finding evidence must be a string list")
 
 
 def _safe_relative(value: Any, field: str) -> str:
@@ -898,9 +869,7 @@ def _severity_rank(value: str) -> int:
     try:
         return _SEVERITY_RANK[value]
     except KeyError as error:
-        raise PackageAnalysisError(
-            f"unsupported finding severity: {value}"
-        ) from error
+        raise PackageAnalysisError(f"unsupported finding severity: {value}") from error
 
 
 def _nonempty(value: Any, field: str) -> str:

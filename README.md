@@ -268,6 +268,25 @@ the path names. Hooks remain lightweight; APU does not archive transcripts or ru
 a background worker. The autonomy-loss intervention adapter remains Codex-first,
 while the evidence contract is provider-neutral.
 
+APU can also render, inspect, diagnose, install, and remove its own passive
+`Stop` and `SessionEnd` lifecycle handlers for Codex or Claude Code. Every
+mutation is preview-only unless `--apply` is present, preserves unrelated
+handlers, writes a normal APU receipt, and does not grant provider trust:
+
+```console
+apu hooks render --provider codex --scope project --repository . --passive-watch
+apu hooks install --provider codex --scope project --repository . --passive-watch
+apu hooks install --provider codex --scope project --repository . --passive-watch --apply
+apu hooks status --provider codex --scope project --repository .
+apu hooks doctor --provider codex --scope project --repository .
+apu hooks remove --provider codex --scope project --repository . --apply
+```
+
+The bridge is bounded, silent, and fail-open so evidence collection cannot block
+the provider lifecycle. Codex still requires review of a new or changed
+non-managed hook in `/hooks` before it runs. Use `--scope user` without
+`--repository` for user-level configuration.
+
 ## Bounded behavior audits
 
 APU can audit recent session evidence for workflow failures without turning the
@@ -321,17 +340,33 @@ that same revision, and has `requires_review: true` and
 application function: Autowork owns execution, and a human-reviewed Orca change
 owns registry mutation.
 
-The strict version-1 JSON schemas are installed under `share/apu/schemas` and
-are also checked in at `schemas/behavior-evaluation-evidence.schema.json` and
+The strict version-1 JSON schemas ship inside the `apu` package and are also
+checked in at `schemas/behavior-evaluation-evidence.schema.json` and
 `schemas/behavior-registry-candidate-patch.schema.json`.
 
 ## Development
 
 ```console
+python -m venv .venv
+source .venv/bin/activate
 python -m pip install -e ".[dev]"
-pytest
+pre-commit run --all-files
+python -m pytest
 apu --help
 ```
+
+The optional local hooks provide fast configuration, resource-parity, and
+incremental Ruff checks before commits, plus the deterministic suite before a
+push:
+
+```console
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
+
+Packaged fixtures, schemas, skills, and templates live inside the `apu` package
+so virtual-environment, user-base, and `--target` installs resolve the same
+assets. See [CONTRIBUTING.md](CONTRIBUTING.md) for resource synchronization,
+distribution checks, the explicit incremental lint boundary, and release steps.
 
 The product rationale is in [concept.md](concept.md), the behavior contract is
 in [spec.md](spec.md), and implementation sequencing is in

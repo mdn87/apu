@@ -21,6 +21,7 @@ from .state import (
     ensure_state_home,
     update_registry,
     validate_installation_id,
+    write_json_atomic,
 )
 
 
@@ -64,9 +65,7 @@ def apply_plan(
     except ValueError as error:
         raise ApplyError(str(error)) from error
     if (campaign_id is None) != (snapshot_id is None):
-        raise ApplyError(
-            "campaign_id and snapshot_id must be supplied together"
-        )
+        raise ApplyError("campaign_id and snapshot_id must be supplied together")
     if campaign_id is not None:
         try:
             validate_installation_id(campaign_id)
@@ -103,8 +102,11 @@ def apply_plan(
         )
         for item in prepared:
             _ensure_parent(item.target.parent, created_directories)
-            _commit(item)
+            _revalidate_target(item)
+            # Track a commit before entering it so an asynchronous interruption
+            # after the filesystem mutation cannot strand an unrecorded change.
             applied.append(item)
+            _commit(item)
 
         receipt = _build_receipt(
             plan,
@@ -126,14 +128,35 @@ def apply_plan(
             },
         )
         return receipt_file
-    except ApplyError:
-        _restore_applied(applied, created_directories)
+    except BaseException as error:
+        try:
+            _restore_applied(applied, created_directories)
+        except BaseException as rollback_error:
+            try:
+                journal = _write_recovery_journal(
+                    installation_root,
+                    installation_id=installation_id,
+                    applied=applied,
+                    created_directories=created_directories,
+                    error=error,
+                    rollback_error=rollback_error,
+                )
+            except BaseException as journal_error:
+                raise ApplyError(
+                    "transaction rollback failed and its recovery journal "
+                    f"could not be written; backups remain under "
+                    f"{installation_root}: {rollback_error}; {journal_error}"
+                ) from rollback_error
+            raise ApplyError(
+                "transaction rollback failed; durable recovery state was "
+                f"written to {journal}: {rollback_error}"
+            ) from error
         shutil.rmtree(installation_root, ignore_errors=True)
+        if isinstance(error, ApplyError):
+            raise
+        if isinstance(error, (OSError, ValueError)):
+            raise ApplyError(f"transaction failed: {error}") from error
         raise
-    except (OSError, ValueError) as error:
-        _restore_applied(applied, created_directories)
-        shutil.rmtree(installation_root, ignore_errors=True)
-        raise ApplyError(f"transaction failed: {error}") from error
     finally:
         shutil.rmtree(transaction, ignore_errors=True)
 
@@ -165,8 +188,7 @@ def _preflight_all(
         )
 
         if operation.action in {"create", "symlink"} or (
-            operation.action == "configure"
-            and operation.precondition_sha256 is None
+            operation.action == "configure" and operation.precondition_sha256 is None
         ):
             if operation.precondition_sha256 is not None:
                 raise ApplyError(
@@ -215,9 +237,7 @@ def _preflight_all(
                 _copy_object(source, staged)
             else:
                 current = (
-                    target.read_bytes()
-                    if target_exists and target.is_file()
-                    else None
+                    target.read_bytes() if target_exists and target.is_file() else None
                 )
                 try:
                     rendered = render_bytes(
@@ -283,10 +303,7 @@ def _preflight_all(
         if target_exists:
             original_sha256 = _hash_object(target)
             original_mode = _mode(target)
-            backup = (
-                backup_dir(state_home, installation_id, create=True)
-                / storage_name
-            )
+            backup = backup_dir(state_home, installation_id, create=True) / storage_name
             _copy_object(target, backup)
 
         prepared.append(
@@ -333,6 +350,26 @@ def _verify_atomic_groups(prepared: list[_PreparedOperation]) -> None:
             )
 
 
+def _revalidate_target(item: _PreparedOperation) -> None:
+    """Reject target drift that occurred after the transaction preflight."""
+
+    exists = _lexists(item.target)
+    if item.original_sha256 is None:
+        if exists:
+            raise ApplyError(
+                f"operation {item.operation.id} target changed after preflight"
+            )
+        return
+    if (
+        not exists
+        or item.target.is_symlink()
+        or _hash_object(item.target) != item.original_sha256
+    ):
+        raise ApplyError(
+            f"operation {item.operation.id} target changed after preflight"
+        )
+
+
 def _commit(item: _PreparedOperation) -> None:
     action = item.operation.action
     changed = False
@@ -361,9 +398,8 @@ def _commit(item: _PreparedOperation) -> None:
             return
         if item.staged is None:
             raise ApplyError(f"operation {item.operation.id} has no rendered output")
-        if (
-            _lexists(item.target)
-            and not (item.target.is_file() and item.staged.is_file())
+        if _lexists(item.target) and not (
+            item.target.is_file() and item.staged.is_file()
         ):
             changed = True
             _remove_object(item.target)
@@ -388,7 +424,9 @@ def _commit(item: _PreparedOperation) -> None:
             raise ApplyError(
                 f"operation {item.operation.id} symlink is unsupported: {error}"
             ) from error
-        raise ApplyError(f"operation {item.operation.id} commit failed: {error}") from error
+        raise ApplyError(
+            f"operation {item.operation.id} commit failed: {error}"
+        ) from error
 
 
 def _restore_applied(
@@ -408,6 +446,40 @@ def _restore_applied(
             pass
     if failures:
         raise ApplyError("transaction rollback failed: " + "; ".join(failures))
+
+
+def _write_recovery_journal(
+    installation_root: Path,
+    *,
+    installation_id: str,
+    applied: Iterable[_PreparedOperation],
+    created_directories: Iterable[Path],
+    error: BaseException,
+    rollback_error: BaseException,
+) -> Path:
+    """Persist enough metadata to finish a rollback after this process exits."""
+
+    journal = {
+        "schema_version": 1,
+        "status": "recovery_required",
+        "installation_id": installation_id,
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "failure": f"{type(error).__name__}: {error}",
+        "rollback_failure": (f"{type(rollback_error).__name__}: {rollback_error}"),
+        "created_parent_directories": [str(path) for path in created_directories],
+        "operations": [
+            {
+                "operation_id": item.operation.id,
+                "target": str(item.target),
+                "backup_path": (str(item.backup) if item.backup is not None else None),
+                "original_sha256": item.original_sha256,
+                "original_mode": item.original_mode,
+            }
+            for item in applied
+        ],
+    }
+    ensure_private_directory(installation_root)
+    return write_json_atomic(installation_root / "recovery.json", journal)
 
 
 def _restore_item(item: _PreparedOperation) -> None:
@@ -453,9 +525,7 @@ def _build_receipt(
         "apu_version": plan.apu_version,
         "installation_id": installation_id,
         "created_at": created_at,
-        "host_identifier_sha256": sha256(
-            platform.node().encode("utf-8")
-        ).hexdigest(),
+        "host_identifier_sha256": sha256(platform.node().encode("utf-8")).hexdigest(),
         "plan_inventory_sha256": plan.inventory_sha256,
         "applied_operation_ids": [item.operation.id for item in prepared],
         "operations": operations,
@@ -560,9 +630,7 @@ def _validate_mutation_target(
         if path.is_absolute():
             protected.add(path.resolve(strict=False))
     if resolved in protected or resolved.is_relative_to(state_root):
-        raise ApplyError(
-            f"operation {operation.id} targets a protected root: {target}"
-        )
+        raise ApplyError(f"operation {operation.id} targets a protected root: {target}")
     if not target_exists or not target.is_dir():
         return
     if operation.action in {"merge", "configure"}:
@@ -577,9 +645,7 @@ def _validate_mutation_target(
 
 def _unused_link_path(target: Path) -> Path:
     for _ in range(8):
-        candidate = target.parent / (
-            f".{target.name}.apu-link-{secrets.token_hex(8)}"
-        )
+        candidate = target.parent / (f".{target.name}.apu-link-{secrets.token_hex(8)}")
         if not _lexists(candidate):
             return candidate
     raise ApplyError(f"could not allocate temporary link beside {target}")

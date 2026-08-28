@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable
 
-from apu.models import Approval, Plan, PlanOperation
 from apu.filesystem import hash_object
+from apu.models import Approval, Plan, PlanOperation
 from apu.planning import build_relocation_operations, update_plan_status
 
 
@@ -43,9 +43,7 @@ def review_plan(
                 decision = stored
         else:
             raw = decide(operation)
-            detailed = (
-                ReviewDecision(raw) if isinstance(raw, str) else raw
-            )
+            detailed = ReviewDecision(raw) if isinstance(raw, str) else raw
             decision = detailed.status
             if detailed.replacement_source is not None:
                 operation = _edited_operation(operation, detailed)

@@ -332,12 +332,10 @@ def render_work_order(
     )
 
     manual_only = any(
-        finding.category == MANUAL_ONLY_CATEGORY
-        for finding in ordered_findings
+        finding.category == MANUAL_ONLY_CATEGORY for finding in ordered_findings
     )
     requires_sanitized_stage = any(
-        finding.surface_sensitive
-        and finding.category != MANUAL_ONLY_CATEGORY
+        finding.surface_sensitive and finding.category != MANUAL_ONLY_CATEGORY
         for finding in ordered_findings
     )
     dispatchable = not manual_only
@@ -485,9 +483,7 @@ def verify_plan_candidate(
         if not isinstance(content, str):
             continue
         for match in PLACEHOLDER_PATTERN.finditer(content):
-            observed_tokens.setdefault(match.group(), []).append(
-                (file, match.start())
-            )
+            observed_tokens.setdefault(match.group(), []).append((file, match.start()))
 
     for token in sorted(set(observed_tokens) - set(expected)):
         _add_reason(reasons, f"unexpected placeholder {token}")

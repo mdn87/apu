@@ -88,12 +88,10 @@ def propose_campaign(
     )
     evaluation_context = inventory.evaluation_context.to_dict()
     baseline_version = (
-        inventory.evaluation_context.baseline["version"]
-        or "baseline-unconfigured"
+        inventory.evaluation_context.baseline["version"] or "baseline-unconfigured"
     )
     model_generation = (
-        inventory.evaluation_context.models["generation"]
-        or "model-unverified"
+        inventory.evaluation_context.models["generation"] or "model-unverified"
     )
     campaign_id = f"campaign-{uuid4().hex}"
     system_plan = propose_system(
@@ -141,14 +139,10 @@ def propose_campaign(
         "work_orders": [
             {
                 "work_order_id": artifact.work_order_id,
-                "path": str(
-                    root / "work-orders" / f"{artifact.work_order_id}.md"
-                ),
+                "path": str(root / "work-orders" / f"{artifact.work_order_id}.md"),
                 "manual_only": artifact.manual_only,
                 "dispatchable": artifact.dispatchable,
-                "requires_sanitized_stage": (
-                    artifact.requires_sanitized_stage
-                ),
+                "requires_sanitized_stage": (artifact.requires_sanitized_stage),
             }
             for artifact in rendered_orders
         ],
@@ -428,9 +422,7 @@ def list_campaign_status(state_home: Path) -> list[dict[str, Any]]:
                 }
             )
         except (OSError, ValueError, TypeError) as error:
-            result.append(
-                {"campaign_id": directory.name, "error": str(error)}
-            )
+            result.append({"campaign_id": directory.name, "error": str(error)})
     return result
 
 
@@ -526,8 +518,7 @@ def _load_bound_campaign_plans(
         if (
             _path_identity(Path(operation.target))
             != _path_identity(Path(system_operation.target))
-            or operation.precondition_sha256
-            != system_operation.precondition_sha256
+            or operation.precondition_sha256 != system_operation.precondition_sha256
         ):
             raise ValueError(
                 f"campaign operation {operation.id} differs from its system route"
@@ -539,9 +530,7 @@ def _load_bound_campaign_plans(
                 f"campaign candidate is unavailable for {operation.id}: {error}"
             ) from error
         if sha256_bytes(candidate) != operation.proposed_sha256:
-            raise ValueError(
-                f"campaign candidate hash changed for {operation.id}"
-            )
+            raise ValueError(f"campaign candidate hash changed for {operation.id}")
 
     _verify_work_order_bindings(manifest, system_plan, root)
     return manifest, system_plan, auto_plan
@@ -574,9 +563,7 @@ def _verify_work_order_bindings(
             binding["manual_only"] != planned.manual_only
             or binding["dispatchable"] != planned.dispatchable
         ):
-            raise ValueError(
-                f"campaign work-order flags changed for {work_order_id}"
-            )
+            raise ValueError(f"campaign work-order flags changed for {work_order_id}")
         path = root / "work-orders" / f"{work_order_id}.md"
         try:
             rendered = path.read_bytes()
@@ -585,9 +572,7 @@ def _verify_work_order_bindings(
                 f"campaign work order is unavailable for {work_order_id}: {error}"
             ) from error
         if sha256_bytes(rendered) != binding["sha256"]:
-            raise ValueError(
-                f"campaign work-order hash changed for {work_order_id}"
-            )
+            raise ValueError(f"campaign work-order hash changed for {work_order_id}")
     if observed != set(expected):
         raise ValueError("campaign work-order bindings do not match the plan")
 
@@ -599,8 +584,7 @@ def _validate_system_plan_scope(
     for operation in system_plan.auto_operations:
         if not _target_is_in_profile(Path(operation.target), profile):
             raise ValueError(
-                "planned target is outside the selected profile: "
-                f"{operation.target}"
+                f"planned target is outside the selected profile: {operation.target}"
             )
     for work_order in system_plan.work_orders:
         if _target_is_in_profile(Path(work_order.target), profile):
@@ -611,8 +595,7 @@ def _validate_system_plan_scope(
         ):
             continue
         raise ValueError(
-            "planned target is outside the selected profile: "
-            f"{work_order.target}"
+            f"planned target is outside the selected profile: {work_order.target}"
         )
 
 
@@ -625,16 +608,16 @@ def _verify_current_plan_inputs(system_plan: SystemPlan) -> None:
             identity,
             (Path(artifact.target), set()),
         )
-        hashes.update(
-            finding.surface_content_sha256 for finding in artifact.findings
-        )
+        hashes.update(finding.surface_content_sha256 for finding in artifact.findings)
     for path, hashes in hashes_by_target.values():
         if len(hashes) != 1:
             raise ValueError(f"planned surface has conflicting hashes: {path}")
         try:
             content = path.read_bytes()
         except OSError as error:
-            raise ValueError(f"planned surface is unavailable: {path}: {error}") from error
+            raise ValueError(
+                f"planned surface is unavailable: {path}: {error}"
+            ) from error
         if sha256_bytes(content) != next(iter(hashes)):
             raise ValueError(f"planned surface changed after audit: {path}")
 
@@ -985,32 +968,19 @@ def _guidance_citations(
                 locator=f"baseline:{stamp['status']}",
             ),
         )
-    path = (
-        Path(state_home)
-        / "guidance"
-        / "baselines"
-        / f"{version}.json"
-    )
+    path = Path(state_home) / "guidance" / "baselines" / f"{version}.json"
     try:
         baseline = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError(f"cannot load guidance baseline {version}") from error
     citations: list[GuidanceCitation] = []
     for principle in baseline["principles"]:
-        sources = sorted(
-            {
-                source["source_url"]
-                for source in principle["sources"]
-            }
-        )
+        sources = sorted({source["source_url"] for source in principle["sources"]})
         citations.append(
             GuidanceCitation(
                 guidance=principle["statement"],
                 source=", ".join(sources),
-                locator=(
-                    f"baseline:{version} "
-                    f"principle:{principle['principle_id']}"
-                ),
+                locator=(f"baseline:{version} principle:{principle['principle_id']}"),
             )
         )
     if not citations:
@@ -1047,10 +1017,9 @@ def _write_sanitized_stage(root: Path, work_order: Any) -> None:
         if any(entry.original_value in content for content in stage.files.values()):
             raise ValueError(f"sensitive value survived staging: {target}")
     verification = verify_plan_candidate(stage.files, stage.redactions)
-    if (
-        not verification.accepted
-        or verification.materialized_files != {str(target): text}
-    ):
+    if not verification.accepted or verification.materialized_files != {
+        str(target): text
+    }:
         raise ValueError(f"sensitive stage failed structural verification: {target}")
     write_redaction_map(root, work_order.id, stage.redactions)
     directory = ensure_private_directory(root / "staging")
@@ -1135,11 +1104,8 @@ def _validate_bundle(value: Any) -> None:
         if (
             item["manual_only"] != planned.manual_only
             or item["dispatchable"] != planned.dispatchable
-            or item["requires_sanitized_stage"]
-            != planned.requires_sanitized_staging
+            or item["requires_sanitized_stage"] != planned.requires_sanitized_staging
         ):
-            raise ValueError(
-                f"bundle work-order flags changed for {work_order_id}"
-            )
+            raise ValueError(f"bundle work-order flags changed for {work_order_id}")
     if observed != set(planned_orders):
         raise ValueError("bundle work orders do not match the system plan")

@@ -39,9 +39,7 @@ guidance-conflict = "work-order"
 
     profile = load_system_profile(config, home=home)
 
-    assert profile.roots[0].path == str(
-        (config.parent / "../projects").resolve()
-    )
+    assert profile.roots[0].path == str((config.parent / "../projects").resolve())
     assert tuple(surface.path for surface in profile.global_surfaces) == (
         str(home / ".codex"),
         str((config.parent / "global").resolve()),
@@ -51,9 +49,12 @@ guidance-conflict = "work-order"
     assert profile.remediation_policy["duplicate-instruction"] == "auto"
     with pytest.raises(TypeError):
         profile.remediation_policy["new"] = "ignore"  # type: ignore[index]
-    assert SystemProfile.from_dict(
-        profile.to_dict(), base_directory=config.parent, home=home
-    ) == profile
+    assert (
+        SystemProfile.from_dict(
+            profile.to_dict(), base_directory=config.parent, home=home
+        )
+        == profile
+    )
 
 
 def test_profile_uses_global_defaults_and_validates_policy(
@@ -72,9 +73,7 @@ def test_profile_uses_global_defaults_and_validates_policy(
     # ~/.codex ships with the Codex runtime scratch excluded by default: the CLI
     # writes symlinked arg0 dispatch shims under tmp/arg0 that all resolve to the
     # same binary, which reads downstream as ambiguous target coverage.
-    excludes = {
-        surface.path: surface.excludes for surface in profile.global_surfaces
-    }
+    excludes = {surface.path: surface.excludes for surface in profile.global_surfaces}
     assert excludes[str(tmp_path / "home" / ".codex")] == ("tmp/**",)
     assert excludes[str(tmp_path / "home" / ".claude")] == ()
 
@@ -87,11 +86,7 @@ def test_profile_uses_global_defaults_and_validates_policy(
         )
     with pytest.raises(ProfileError, match="do not escape"):
         SystemProfile.from_dict(
-            {
-                "roots": [
-                    {"path": str(tmp_path), "excludes": ["../outside"]}
-                ]
-            }
+            {"roots": [{"path": str(tmp_path), "excludes": ["../outside"]}]}
         )
 
 
@@ -99,22 +94,30 @@ def test_profile_default_and_explicit_paths_are_cross_platform(
     tmp_path: Path,
 ) -> None:
     home = tmp_path / "home"
-    assert default_profile_path(
-        home=home,
-        environ={"APPDATA": str(tmp_path / "roaming")},
-        platform="win32",
-    ) == tmp_path / "roaming" / "apu" / "profile.toml"
-    assert default_profile_path(
-        home=home,
-        environ={"XDG_CONFIG_HOME": str(tmp_path / "xdg")},
-        platform="linux",
-    ) == tmp_path / "xdg" / "apu" / "profile.toml"
-    assert default_profile_path(
-        home=home, environ={}, platform="linux"
-    ) == home / ".config" / "apu" / "profile.toml"
-    assert resolve_profile_path(tmp_path / "chosen.toml") == (
-        tmp_path / "chosen.toml"
-    ).resolve()
+    assert (
+        default_profile_path(
+            home=home,
+            environ={"APPDATA": str(tmp_path / "roaming")},
+            platform="win32",
+        )
+        == tmp_path / "roaming" / "apu" / "profile.toml"
+    )
+    assert (
+        default_profile_path(
+            home=home,
+            environ={"XDG_CONFIG_HOME": str(tmp_path / "xdg")},
+            platform="linux",
+        )
+        == tmp_path / "xdg" / "apu" / "profile.toml"
+    )
+    assert (
+        default_profile_path(home=home, environ={}, platform="linux")
+        == home / ".config" / "apu" / "profile.toml"
+    )
+    assert (
+        resolve_profile_path(tmp_path / "chosen.toml")
+        == (tmp_path / "chosen.toml").resolve()
+    )
 
 
 def test_invalid_toml_is_reported_as_profile_error(tmp_path: Path) -> None:

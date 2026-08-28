@@ -101,3 +101,47 @@ def test_inactive_import_and_non_instruction_metadata_are_not_effective(
     )
 
     assert effective_stack(cwd, discovery, "claude") == (main.id,)
+
+
+def test_only_observed_active_hooks_enter_the_effective_stack(
+    tmp_path: Path,
+) -> None:
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    main = surface(
+        cwd / "CLAUDE.md",
+        kind="claude-instructions",
+        authority="repository",
+        precedence=20,
+    )
+    observed = surface(
+        cwd / ".claude" / "settings.json",
+        kind="claude-settings",
+        authority="repository",
+        precedence=40,
+    )
+    merely_configured = surface(
+        tmp_path / ".claude" / "settings.json",
+        kind="claude-settings",
+        authority="user",
+        precedence=10,
+    )
+    discovery = DiscoveryResult(
+        surfaces=(main, observed, merely_configured),
+        relationships=(
+            SurfaceRelationship(
+                type="session_start_hook",
+                from_surface_id=observed.id,
+                to_surface_id=None,
+                status="active-observed",
+            ),
+            SurfaceRelationship(
+                type="session_start_hook",
+                from_surface_id=merely_configured.id,
+                to_surface_id=None,
+                status="configured",
+            ),
+        ),
+    )
+
+    assert effective_stack(cwd, discovery, "claude") == (main.id, observed.id)

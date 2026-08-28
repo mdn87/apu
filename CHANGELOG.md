@@ -19,6 +19,21 @@
   preconditions.
 - Consolidate deterministic CI into one cross-platform matrix and test the
   supported-version endpoints on Python 3.11 and 3.14.
+- Package fixtures, schemas, skills, and templates inside `apu` so editable,
+  wheel, source, user-base, and `--target` installs resolve the same resources.
+- Add pinned opt-in repository hooks, a repository-wide Ruff baseline, clean
+  distribution acceptance, and contributor guidance.
+- Add single-source runtime version metadata and a tag-validated GitHub release
+  workflow with checksums and artifact provenance.
+- Add reviewable, receipt-backed Codex and Claude Code lifecycle-hook management
+  with bounded fail-open evidence capture and optional passive repository-state
+  observation.
+- Serialize registry, outcome, evidence, and snapshot mutations; bound snapshot
+  capture; revalidate transactional targets; and preserve durable recovery state
+  when rollback itself fails.
+- Reject malformed runtime configuration explicitly, harden evidence paths
+  against filesystem redirects and aliases, and split large audit and dispatch
+  routines into testable phases.
 
 ## 0.8.0 — 2026-08-14
 

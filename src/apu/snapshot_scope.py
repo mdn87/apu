@@ -36,7 +36,9 @@ def snapshot_surfaces_for_profile(
 
     selected: list[Path] = []
     for candidate in sorted(
-        {_logical_identity(path): _absolute_logical(path) for path in candidates}.values(),
+        {
+            _logical_identity(path): _absolute_logical(path) for path in candidates
+        }.values(),
         key=lambda path: (
             len(path.parts),
             os.path.normcase(os.fspath(path)),

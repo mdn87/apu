@@ -31,6 +31,7 @@ class RuntimeModelConfig:
     provider: str
     version_command: tuple[str, ...]
     configured_model: str | None = None
+    configuration_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -80,7 +81,11 @@ def observe_local_models(
         runtime_ids.add(config.runtime_id)
 
         cli_version: str | None
-        error: str | None = None
+        error = (
+            f"configuration:{config.configuration_error}"
+            if config.configuration_error is not None
+            else None
+        )
         try:
             cli_version = _command_output(runner(config.version_command))
             if not cli_version:
@@ -88,7 +93,10 @@ def observe_local_models(
         # An injected runner is an isolation boundary: its failure is data.
         except Exception as exc:  # noqa: BLE001
             cli_version = None
-            error = _safe_error(exc)
+            command_error = _safe_error(exc)
+            error = (
+                f"{error};cli:{command_error}" if error is not None else command_error
+            )
 
         observations.append(
             ModelObservation(
@@ -135,6 +143,18 @@ def refresh_model_registry(
     for observation in observed:
         source = sources.get(observation.provider)
         previous = prior_models.get(observation.runtime_id)
+
+        if (
+            observation.observation_error is not None
+            and observation.observation_error.startswith("configuration:")
+        ):
+            models[observation.runtime_id] = _degraded_entry(
+                observation,
+                previous,
+                timestamp,
+                _RuntimeConfigurationError(),
+            )
+            continue
 
         if source is None:
             models[observation.runtime_id] = _degraded_entry(
@@ -321,12 +341,9 @@ def reconcile_model_registry_observations(
                 entry["generation"] = None
                 entry["resolution"] = None
                 entry["verification"]["status"] = "unverified"
-                entry["verification"]["unverified_since"] = (
-                    observation.observed_at[:10]
-                )
+                entry["verification"]["unverified_since"] = observation.observed_at[:10]
                 entry["verification"]["status_message"] = (
-                    "model identity unverified since "
-                    f"{observation.observed_at[:10]}"
+                    f"model identity unverified since {observation.observed_at[:10]}"
                 )
             models[observation.runtime_id] = entry
 
@@ -630,6 +647,10 @@ class _LocalObservationDrift(Exception):
     """Internal marker persisted only as its non-sensitive type name."""
 
 
+class _RuntimeConfigurationError(Exception):
+    """Internal marker for an unreadable or malformed runtime configuration."""
+
+
 def _degraded_entry(
     observation: ModelObservation,
     previous: Any,
@@ -719,6 +740,8 @@ def _validate_runtime_config(config: RuntimeModelConfig) -> None:
         raise ValueError("version_command must contain non-empty strings")
     if config.configured_model is not None:
         _nonempty_string(config.configured_model, "configured_model")
+    if config.configuration_error is not None:
+        _nonempty_string(config.configuration_error, "configuration_error")
 
 
 def _validate_observations(

@@ -6,9 +6,7 @@ from pathlib import Path
 from apu.cli import main
 
 
-def test_cli_system_audit_writes_rollup_inventory(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cli_system_audit_writes_rollup_inventory(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     repository = tmp_path / "projects" / "repo"
     (repository / ".git").mkdir(parents=True)
@@ -39,15 +37,11 @@ def test_cli_system_audit_writes_rollup_inventory(
 
     inventory = json.loads(output.read_text(encoding="utf-8"))
     assert inventory["schema_version"] == 2
-    assert inventory["repositories"][0]["repository"] == str(
-        repository.resolve()
-    )
+    assert inventory["repositories"][0]["repository"] == str(repository.resolve())
     assert inventory["profile_sha256"]
 
 
-def test_cli_snapshot_create_diff_and_list(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
+def test_cli_snapshot_create_diff_and_list(tmp_path: Path, monkeypatch, capsys) -> None:
     home = tmp_path / "home"
     state = tmp_path / "state"
     global_root = home / ".codex"
@@ -85,9 +79,7 @@ def test_cli_snapshot_create_diff_and_list(
 
     assert main(["snapshot", "diff", snapshot_id]) == 0
     diff = json.loads(capsys.readouterr().out)
-    assert any(
-        change["status"] == "changed" for change in diff["changes"]
-    )
+    assert any(change["status"] == "changed" for change in diff["changes"])
 
     assert main(["snapshot", "list"]) == 0
     listing = json.loads(capsys.readouterr().out)

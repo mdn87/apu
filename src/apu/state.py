@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 from typing import Any, Mapping
 
+from .locking import ProcessLock
 from .models import canonical_json
-
 
 REGISTRY_SCHEMA_VERSION = 1
 STATE_DIRECTORIES = (
@@ -101,25 +101,30 @@ def update_registry(
     """Set or remove an installation entry and atomically persist the registry."""
 
     installation_id = validate_installation_id(installation_id)
-    registry = load_registry(state_home)
-    installations = dict(registry["installations"])
+    root = ensure_state_home(Path(state_home))
+    lock_root = ensure_private_directory(root / "locks")
+    with ProcessLock(lock_root / "registry.lock"):
+        registry = load_registry(root)
+        installations = dict(registry["installations"])
 
-    if entry is None:
-        installations.pop(installation_id, None)
-    else:
-        stored_entry = dict(entry)
-        supplied_id = stored_entry.get("installation_id", installation_id)
-        if supplied_id != installation_id:
-            raise ValueError("registry entry installation_id does not match its key")
-        stored_entry["installation_id"] = installation_id
-        installations[installation_id] = stored_entry
+        if entry is None:
+            installations.pop(installation_id, None)
+        else:
+            stored_entry = dict(entry)
+            supplied_id = stored_entry.get("installation_id", installation_id)
+            if supplied_id != installation_id:
+                raise ValueError(
+                    "registry entry installation_id does not match its key"
+                )
+            stored_entry["installation_id"] = installation_id
+            installations[installation_id] = stored_entry
 
-    updated = {
-        "schema_version": REGISTRY_SCHEMA_VERSION,
-        "installations": installations,
-    }
-    write_json_atomic(Path(state_home) / "registry.json", updated)
-    return updated
+        updated = {
+            "schema_version": REGISTRY_SCHEMA_VERSION,
+            "installations": installations,
+        }
+        write_json_atomic(root / "registry.json", updated)
+        return updated
 
 
 def write_json_atomic(path: Path, value: Any) -> Path:
@@ -164,7 +169,9 @@ def ensure_private_directory(path: Path) -> Path:
             break
         cursor = parent
     for directory in reversed(missing):
-        directory.mkdir(mode=0o700)
+        directory.mkdir(mode=0o700, exist_ok=True)
+        if not directory.is_dir():
+            raise NotADirectoryError(directory)
     if os.name == "posix":
         current_mode = destination.stat().st_mode & 0o777
         destination.chmod(current_mode & 0o700)

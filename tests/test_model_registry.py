@@ -37,6 +37,7 @@ def _observation(
     cli_version: str | None = "codex-cli 1.2.3",
     configured_model: str | None = "stable",
     observed_at: str = "2026-08-07T01:00:00Z",
+    observation_error: str | None = None,
 ) -> ModelObservation:
     return ModelObservation(
         runtime_id=runtime_id,
@@ -45,6 +46,7 @@ def _observation(
         configured_model=configured_model,
         raw_alias=configured_model or DEFAULT_MODEL_ALIAS,
         observed_at=observed_at,
+        observation_error=observation_error,
     )
 
 
@@ -113,6 +115,50 @@ def test_observation_failure_is_visible_without_blocking_other_runtimes() -> Non
     assert observed[0].cli_version == "claude 9.0"
     assert observed[1].cli_version is None
     assert observed[1].observation_error == "FileNotFoundError"
+
+
+def test_configuration_parse_failure_is_preserved_in_model_observation() -> None:
+    observed = observe_local_models(
+        [
+            RuntimeModelConfig(
+                "codex",
+                "openai",
+                ("codex", "--version"),
+                None,
+                configuration_error="invalid_toml",
+            )
+        ],
+        command_runner=lambda _: "codex-cli 1.2.3",
+        observed_at=NOW,
+    )
+
+    assert observed[0].cli_version == "codex-cli 1.2.3"
+    assert observed[0].observation_error == "configuration:invalid_toml"
+
+
+def test_refresh_does_not_verify_an_alias_from_malformed_configuration(
+    tmp_path: Path,
+) -> None:
+    fetch_calls: list[PublishedModelSource] = []
+
+    registry = refresh_model_registry(
+        tmp_path / "state",
+        [
+            _observation(
+                configured_model=None,
+                observation_error="configuration:invalid_toml",
+            )
+        ],
+        {"openai": _source()},
+        fetcher=lambda source: fetch_calls.append(source) or {"models": []},
+        attempted_at=NOW,
+    )
+
+    entry = registry["models"]["codex"]
+    assert fetch_calls == []
+    assert entry["resolution"] is None
+    assert entry["verification"]["status"] == "unverified"
+    assert registry["refresh_status"] == "unverified"
 
 
 def test_refresh_resolves_alias_with_provenance_and_atomic_private_state(

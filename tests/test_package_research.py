@@ -21,11 +21,7 @@ def _claude_package_fixture(tmp_path: Path) -> tuple[Path, Path]:
     home = tmp_path / "home"
     plugins = home / ".claude" / "plugins"
     installed_tree = (
-        plugins
-        / "cache"
-        / "claude-plugins-official"
-        / "superpowers"
-        / "5.0.7"
+        plugins / "cache" / "claude-plugins-official" / "superpowers" / "5.0.7"
     )
     skill = installed_tree / "skills" / "using-superpowers"
     skill.mkdir(parents=True)
@@ -56,9 +52,7 @@ def _claude_package_fixture(tmp_path: Path) -> tuple[Path, Path]:
         ),
         encoding="utf-8",
     )
-    marketplace = (
-        plugins / "marketplaces" / "claude-plugins-official"
-    )
+    marketplace = plugins / "marketplaces" / "claude-plugins-official"
     manifest = marketplace / ".claude-plugin" / "marketplace.json"
     manifest.parent.mkdir(parents=True)
     manifest.write_text(
@@ -79,13 +73,7 @@ def _claude_package_fixture(tmp_path: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     (plugins / "known_marketplaces.json").write_text(
-        json.dumps(
-            {
-                "claude-plugins-official": {
-                    "installLocation": str(marketplace)
-                }
-            }
-        ),
+        json.dumps({"claude-plugins-official": {"installLocation": str(marketplace)}}),
         encoding="utf-8",
     )
     return home, installed_tree
@@ -134,8 +122,7 @@ def _candidate_resolver(tmp_path: Path):
                 "source_kind": "github-commit-archive",
                 "source_url": kwargs["source_url"],
                 "archive_url": (
-                    "https://codeload.github.com/example/superpowers/zip/"
-                    + "b" * 40
+                    "https://codeload.github.com/example/superpowers/zip/" + "b" * 40
                 ),
             },
             "normalization": normalization,
@@ -283,8 +270,7 @@ def test_research_rejects_a_tampered_content_addressed_candidate(
                 "source_kind": "github-commit-archive",
                 "source_url": kwargs["source_url"],
                 "archive_url": (
-                    "https://codeload.github.com/example/superpowers/zip/"
-                    + "b" * 40
+                    "https://codeload.github.com/example/superpowers/zip/" + "b" * 40
                 ),
             },
             "normalization": normalization,
@@ -362,8 +348,7 @@ def test_research_rejects_candidate_manifest_for_another_package(
                 "source_kind": "github-commit-archive",
                 "source_url": kwargs["source_url"],
                 "archive_url": (
-                    "https://codeload.github.com/example/superpowers/zip/"
-                    + "b" * 40
+                    "https://codeload.github.com/example/superpowers/zip/" + "b" * 40
                 ),
             },
             "normalization": normalization,
@@ -412,12 +397,9 @@ def test_research_aborts_if_trees_change_during_analysis(
             "changed",
             encoding="utf-8",
         )
-        (
-            installed_tree
-            / "skills"
-            / "using-superpowers"
-            / "SKILL.md"
-        ).write_text("changed", encoding="utf-8")
+        (installed_tree / "skills" / "using-superpowers" / "SKILL.md").write_text(
+            "changed", encoding="utf-8"
+        )
         return result
 
     monkeypatch.setattr(
@@ -462,9 +444,9 @@ def test_research_aborts_if_provider_authority_changes_after_fetch(
         if calls == 3:
             path = home / ".claude" / "plugins" / "installed_plugins.json"
             metadata = json.loads(path.read_text(encoding="utf-8"))
-            metadata["plugins"][
-                "superpowers@claude-plugins-official"
-            ][0]["version"] = "5.0.8"
+            metadata["plugins"]["superpowers@claude-plugins-official"][0]["version"] = (
+                "5.0.8"
+            )
             path.write_text(json.dumps(metadata), encoding="utf-8")
         return observed
 
@@ -506,9 +488,7 @@ def test_candidate_leaf_rejects_false_upstream_provenance(
     defect: str,
     message: str,
 ) -> None:
-    coordinate = parse_profile_package(
-        "superpowers@claude-plugins-official"
-    )
+    coordinate = parse_profile_package("superpowers@claude-plugins-official")
     state = tmp_path / "state"
     source = tmp_path / "candidate"
     source.mkdir()
@@ -558,11 +538,9 @@ def test_candidate_leaf_rejects_false_upstream_provenance(
             "source_kind": "github-commit-archive",
             "source_url": "https://github.com/example/superpowers.git",
             "archive_url": (
-                "https://codeload.github.com/another/repository/zip/"
-                + "b" * 40
+                "https://codeload.github.com/another/repository/zip/" + "b" * 40
                 if defect == "archive-url"
-                else "https://codeload.github.com/example/superpowers/zip/"
-                + "b" * 40
+                else "https://codeload.github.com/example/superpowers/zip/" + "b" * 40
             ),
         },
         "normalization": normalization,

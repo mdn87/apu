@@ -15,9 +15,7 @@ def _profile(tmp_path: Path, *, guidance: bool = False) -> Path:
     projects.mkdir()
     path = tmp_path / "profile.toml"
     source = (
-        'guidance_sources = ["https://example.test/guidance"]\n'
-        if guidance
-        else ""
+        'guidance_sources = ["https://example.test/guidance"]\n' if guidance else ""
     )
     path.write_text(
         "schema_version = 1\n"
@@ -82,10 +80,7 @@ def test_system_audit_stamps_offline_local_observations_without_network(
     assert len(context["models"]["artifact_sha256"]) == 64
     assert context["models"]["identities"][0]["raw_alias"] == "gpt-test"
     artifact = (
-        state
-        / "models"
-        / "registries"
-        / f"{context['models']['artifact_sha256']}.json"
+        state / "models" / "registries" / f"{context['models']['artifact_sha256']}.json"
     )
     assert artifact.is_file()
 
@@ -113,9 +108,12 @@ def test_refresh_guidance_fetches_only_on_explicit_command(
     assert raw not in captured.encode()
     object_path = next((state / "guidance" / "objects").glob("*.bin"))
     assert object_path.read_bytes() == raw
-    assert result["distillation_work_order"]["candidate_schema"][
-        "fixed_values"
-    ]["artifact_type"] == "guidance-baseline-candidate"
+    assert (
+        result["distillation_work_order"]["candidate_schema"]["fixed_values"][
+            "artifact_type"
+        ]
+        == "guidance-baseline-candidate"
+    )
 
 
 def test_refresh_models_persists_verified_immutable_registry(
@@ -166,12 +164,7 @@ def test_refresh_models_persists_verified_immutable_registry(
     result = json.loads(capsys.readouterr().out)
     assert result["registry"]["refresh_status"] == "current"
     assert result["registry"]["generation"].startswith("models-sha256:")
-    artifact = (
-        state
-        / "models"
-        / "registries"
-        / f"{result['artifact_sha256']}.json"
-    )
+    artifact = state / "models" / "registries" / f"{result['artifact_sha256']}.json"
     assert artifact.is_file()
     pointer = json.loads(
         (state / "models" / "registry.json").read_text(encoding="utf-8")
@@ -179,8 +172,7 @@ def test_refresh_models_persists_verified_immutable_registry(
     assert pointer["artifact_sha256"] == result["artifact_sha256"]
 
     later = tuple(
-        replace(item, observed_at="2026-08-07T05:00:00Z")
-        for item in observations
+        replace(item, observed_at="2026-08-07T05:00:00Z") for item in observations
     )
     monkeypatch.setattr(
         "apu.model_registry.observe_local_models",

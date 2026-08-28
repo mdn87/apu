@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "direct-config-edit",
+  "supported_runners": ["codex"],
+  "expected_tier": "direct",
+  "events": {"required": [], "forbidden": ["delegation", "review"]},
+  "expected_outputs": [{"path": "settings.toml", "contains": "mode = \"safe\""}],
+  "validation_commands": [["{python}", "../checks/check.py"]],
+  "timeout_seconds": 30,
+  "cleanup": "always"
+}

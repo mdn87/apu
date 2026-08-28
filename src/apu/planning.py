@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from hashlib import sha256
-import os
 from pathlib import Path
 from typing import Iterable
 
 from apu.classify import AUTO_REMOVABLE_CATEGORIES
+from apu.filesystem import hash_object
 from apu.models import (
     Approval,
     Finding,
@@ -17,7 +18,6 @@ from apu.models import (
     derive_plan_status,
     sha256_bytes,
 )
-from apu.filesystem import hash_object
 from apu.render import render_bytes
 
 
@@ -51,8 +51,7 @@ def propose_inventory(
             representatives[surface.path] = surface
         seen = grouped.setdefault(surface.path, [])
         if any(
-            item.category == finding.category
-            and item.location == finding.location
+            item.category == finding.category and item.location == finding.location
             for item in seen
         ):
             continue
@@ -114,8 +113,7 @@ def propose_inventory(
                 or any(finding.confidence != "high" for finding in findings),
                 approval=Approval(),
                 reason="; ".join(
-                    f"{finding.category}: {finding.summary}"
-                    for finding in findings
+                    f"{finding.category}: {finding.summary}" for finding in findings
                 ),
                 evidence=tuple(finding.id for finding in findings),
             )
@@ -244,10 +242,7 @@ def build_skill_install_operations(
         targets.append(
             (
                 "claude",
-                home
-                / ".claude"
-                / "skills"
-                / "optimizing-agent-instructions",
+                home / ".claude" / "skills" / "optimizing-agent-instructions",
             )
         )
     operations: list[PlanOperation] = []

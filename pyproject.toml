@@ -4,20 +4,42 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-policy-updater"
-version = "0.9.0.dev0"
+dynamic = ["version"]
 description = "Audit, simplify, install, and evaluate durable coding-agent instructions."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "APU contributors" }]
+keywords = ["agent", "codex", "claude", "developer-tools", "policy"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/mdn87/apu"
+Source = "https://github.com/mdn87/apu"
+Issues = "https://github.com/mdn87/apu/issues"
+Changelog = "https://github.com/mdn87/apu/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
   "build>=1.2",
   "jsonschema>=4.23",
+  "pre-commit>=4.3",
   "pytest>=8",
+  "ruff==0.16.3",
+  "twine>=6.1",
 ]
 
 [project.scripts]
@@ -30,91 +52,23 @@ apu-watch = "apu.behavior_cli:watch_main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.data-files]
-"share/apu/schemas" = [
-  "schemas/behavior-evaluation-evidence.schema.json",
-  "schemas/behavior-registry-candidate-patch.schema.json",
+[tool.setuptools.dynamic]
+version = { attr = "apu.__version__" }
+
+[tool.setuptools.package-data]
+apu = [
+  "_resources/**/*",
+  "_resources/**/.gitkeep",
 ]
-"share/apu/skills/optimizing-agent-instructions" = [
-  "skills/optimizing-agent-instructions/SKILL.md",
-]
-"share/apu/skills/optimizing-agent-instructions/agents" = [
-  "skills/optimizing-agent-instructions/agents/openai.yaml",
-]
-"share/apu/skills/optimizing-agent-instructions/references" = [
-  "skills/optimizing-agent-instructions/references/evaluation-scenarios.md",
-]
-"share/apu/skills/optimizing-agent-instructions/scripts" = [
-  "skills/optimizing-agent-instructions/scripts/analyze_agent_instructions.py",
-]
-"share/apu/templates" = [
-  "templates/global-AGENTS.md",
-  "templates/global-CLAUDE.md",
-  "templates/repository-instructions.md",
-]
-"share/apu/fixtures/behavioral/direct-config-edit" = [
-  "fixtures/behavioral/direct-config-edit/case.json",
-  "fixtures/behavioral/direct-config-edit/prompt.md",
-]
-"share/apu/fixtures/behavioral/direct-config-edit/checks" = [
-  "fixtures/behavioral/direct-config-edit/checks/check.py",
-]
-"share/apu/fixtures/behavioral/direct-config-edit/repo" = [
-  "fixtures/behavioral/direct-config-edit/repo/.gitkeep",
-]
-"share/apu/fixtures/behavioral/planned-coupled-change" = [
-  "fixtures/behavioral/planned-coupled-change/case.json",
-  "fixtures/behavioral/planned-coupled-change/prompt.md",
-]
-"share/apu/fixtures/behavioral/planned-coupled-change/checks" = [
-  "fixtures/behavioral/planned-coupled-change/checks/check.py",
-]
-"share/apu/fixtures/behavioral/planned-coupled-change/repo" = [
-  "fixtures/behavioral/planned-coupled-change/repo/caller.py",
-  "fixtures/behavioral/planned-coupled-change/repo/service.py",
-]
-"share/apu/fixtures/behavioral/delegated-independent-analysis" = [
-  "fixtures/behavioral/delegated-independent-analysis/case.json",
-  "fixtures/behavioral/delegated-independent-analysis/prompt.md",
-]
-"share/apu/fixtures/behavioral/delegated-independent-analysis/checks" = [
-  "fixtures/behavioral/delegated-independent-analysis/checks/check.py",
-]
-"share/apu/fixtures/behavioral/delegated-independent-analysis/repo" = [
-  "fixtures/behavioral/delegated-independent-analysis/repo/alpha.txt",
-  "fixtures/behavioral/delegated-independent-analysis/repo/beta.txt",
-]
-"share/apu/fixtures/behavioral/high-risk-auth-migration" = [
-  "fixtures/behavioral/high-risk-auth-migration/case.json",
-  "fixtures/behavioral/high-risk-auth-migration/prompt.md",
-]
-"share/apu/fixtures/behavioral/high-risk-auth-migration/checks" = [
-  "fixtures/behavioral/high-risk-auth-migration/checks/check.py",
-]
-"share/apu/fixtures/behavioral/high-risk-auth-migration/repo" = [
-  "fixtures/behavioral/high-risk-auth-migration/repo/auth.conf",
-]
-"share/apu/fixtures/behavioral/seeded-boundary-defect" = [
-  "fixtures/behavioral/seeded-boundary-defect/case.json",
-  "fixtures/behavioral/seeded-boundary-defect/prompt.md",
-]
-"share/apu/fixtures/behavioral/seeded-boundary-defect/checks" = [
-  "fixtures/behavioral/seeded-boundary-defect/checks/check.py",
-]
-"share/apu/fixtures/behavioral/seeded-boundary-defect/repo" = [
-  "fixtures/behavioral/seeded-boundary-defect/repo/limit.py",
-  "fixtures/behavioral/seeded-boundary-defect/repo/test_limit.py",
-]
-"share/apu/fixtures/behavioral/explicit-named-skill" = [
-  "fixtures/behavioral/explicit-named-skill/case.json",
-  "fixtures/behavioral/explicit-named-skill/prompt.md",
-]
-"share/apu/fixtures/behavioral/explicit-named-skill/checks" = [
-  "fixtures/behavioral/explicit-named-skill/checks/check.py",
-]
-"share/apu/fixtures/behavioral/explicit-named-skill/repo" = [
-  "fixtures/behavioral/explicit-named-skill/repo/AGENTS.md",
-]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["src/apu/_resources"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

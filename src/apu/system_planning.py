@@ -94,9 +94,7 @@ def _policy_map(value: Mapping[str, str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for raw_category, raw_policy in value.items():
         category = _require_string(raw_category, "remediation policy category")
-        policy = _require_string(
-            raw_policy, f"remediation policy for {category}"
-        )
+        policy = _require_string(raw_policy, f"remediation policy for {category}")
         if policy not in REMEDIATION_POLICIES:
             raise SystemPlanningError(
                 f"unsupported remediation policy for {category}: {policy}"
@@ -170,13 +168,9 @@ class RoutedFinding:
         ):
             _require_string(getattr(self, field), f"{self.id}.{field}")
         if self.requested_policy not in REMEDIATION_POLICIES:
-            raise SystemPlanningError(
-                f"{self.id}.requested_policy is unsupported"
-            )
+            raise SystemPlanningError(f"{self.id}.requested_policy is unsupported")
         if self.effective_policy not in REMEDIATION_POLICIES:
-            raise SystemPlanningError(
-                f"{self.id}.effective_policy is unsupported"
-            )
+            raise SystemPlanningError(f"{self.id}.effective_policy is unsupported")
         if self.category == SENSITIVE_CATEGORY:
             if self.effective_policy != "work-order":
                 raise SystemPlanningError(
@@ -194,9 +188,9 @@ class RoutedFinding:
             raise SystemPlanningError(
                 f"{self.id} sensitive surface cannot embed evidence"
             )
-        if (
-            self.surface_sensitive or self.category == SENSITIVE_CATEGORY
-        ) and set(self.location) - {"line"}:
+        if (self.surface_sensitive or self.category == SENSITIVE_CATEGORY) and set(
+            self.location
+        ) - {"line"}:
             raise SystemPlanningError(
                 f"{self.id} sensitive location may contain only a line number"
             )
@@ -271,9 +265,7 @@ class RoutedFinding:
             ),
             inventory_refs=tuple(
                 _require_string(item, "inventory_refs[]")
-                for item in _require_array(
-                    value["inventory_refs"], "inventory_refs"
-                )
+                for item in _require_array(value["inventory_refs"], "inventory_refs")
             ),
             surface_ids=tuple(
                 _require_string(item, "surface_ids[]")
@@ -304,9 +296,7 @@ class RoutedFinding:
             effective_policy=_require_string(
                 value["effective_policy"], "effective_policy"
             ),
-            routing_reason=_require_string(
-                value["routing_reason"], "routing_reason"
-            ),
+            routing_reason=_require_string(value["routing_reason"], "routing_reason"),
             surface_sensitive=_require_bool(
                 value["surface_sensitive"], "surface_sensitive"
             ),
@@ -336,9 +326,7 @@ class SystemAutoOperation:
             )
         if not Path(self.target).is_absolute():
             raise SystemPlanningError(f"{self.id}.target must be absolute")
-        _validate_sha256(
-            self.precondition_sha256, f"{self.id}.precondition_sha256"
-        )
+        _validate_sha256(self.precondition_sha256, f"{self.id}.precondition_sha256")
         if self.authority == "package":
             raise SystemPlanningError(
                 f"{self.id} cannot directly rewrite package-authority content"
@@ -350,10 +338,8 @@ class SystemAutoOperation:
         if not self.findings:
             raise SystemPlanningError(f"{self.id} must contain findings")
         if not self.line_numbers or any(
-                not isinstance(line, int)
-                or isinstance(line, bool)
-                or line < 1
-                for line in self.line_numbers
+            not isinstance(line, int) or isinstance(line, bool) or line < 1
+            for line in self.line_numbers
         ):
             raise SystemPlanningError(
                 f"{self.id}.line_numbers must be sorted unique positive integers"
@@ -365,9 +351,7 @@ class SystemAutoOperation:
         for finding in self.findings:
             finding.validate()
             if finding.effective_policy != "auto":
-                raise SystemPlanningError(
-                    f"{self.id} contains a non-auto finding"
-                )
+                raise SystemPlanningError(f"{self.id} contains a non-auto finding")
             if finding.target != self.target:
                 raise SystemPlanningError(
                     f"{self.id} contains findings for another target"
@@ -381,9 +365,7 @@ class SystemAutoOperation:
             {
                 "target": _normalized_target(self.target),
                 "precondition_sha256": self.precondition_sha256,
-                "finding_route_ids": [
-                    finding.id for finding in self.findings
-                ],
+                "finding_route_ids": [finding.id for finding in self.findings],
             },
         )
         if self.id != expected_id:
@@ -426,10 +408,7 @@ class SystemAutoOperation:
             action=_require_string(value["action"], "action"),
             strategy=_require_string(value["strategy"], "strategy"),
             line_numbers=tuple(
-                item
-                for item in _require_array(
-                    value["line_numbers"], "line_numbers"
-                )
+                item for item in _require_array(value["line_numbers"], "line_numbers")
             ),
             findings=tuple(
                 RoutedFinding.from_dict(
@@ -459,9 +438,7 @@ class SystemWorkOrder:
     def validate(self) -> None:
         _require_string(self.id, "work order id")
         if not self.id.startswith("work-order-"):
-            raise SystemPlanningError(
-                f"work order id has unsupported form: {self.id}"
-            )
+            raise SystemPlanningError(f"work order id has unsupported form: {self.id}")
         if not Path(self.target).is_absolute():
             raise SystemPlanningError(f"{self.id}.target must be absolute")
         if self.handling not in {"manual-only", "sanitized", "standard"}:
@@ -495,9 +472,7 @@ class SystemWorkOrder:
             else "finding-evidence"
         )
         if self.content_policy != expected_policy:
-            raise SystemPlanningError(
-                f"{self.id} has inconsistent content policy"
-            )
+            raise SystemPlanningError(f"{self.id} has inconsistent content policy")
         if not self.findings:
             raise SystemPlanningError(f"{self.id} must contain findings")
         for finding in self.findings:
@@ -511,8 +486,7 @@ class SystemWorkOrder:
                     f"{self.id} contains findings for another target"
                 )
         contains_sensitive_material = any(
-            finding.category == SENSITIVE_CATEGORY
-            for finding in self.findings
+            finding.category == SENSITIVE_CATEGORY for finding in self.findings
         )
         if contains_sensitive_material != self.manual_only:
             raise SystemPlanningError(
@@ -529,15 +503,11 @@ class SystemWorkOrder:
             {
                 "target": _normalized_target(self.target),
                 "handling": self.handling,
-                "finding_route_ids": [
-                    finding.id for finding in self.findings
-                ],
+                "finding_route_ids": [finding.id for finding in self.findings],
             },
         )
         if self.id != expected_id:
-            raise SystemPlanningError(
-                f"{self.id} does not match work order contents"
-            )
+            raise SystemPlanningError(f"{self.id} does not match work order contents")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -576,16 +546,12 @@ class SystemWorkOrder:
                 value["requires_sanitized_staging"],
                 "requires_sanitized_staging",
             ),
-            content_policy=_require_string(
-                value["content_policy"], "content_policy"
-            ),
+            content_policy=_require_string(value["content_policy"], "content_policy"),
             package_authority=_require_bool(
                 value["package_authority"], "package_authority"
             ),
             findings=tuple(
-                RoutedFinding.from_dict(
-                    _require_mapping(item, "work order finding")
-                )
+                RoutedFinding.from_dict(_require_mapping(item, "work order finding"))
                 for item in _require_array(value["findings"], "findings")
             ),
         )
@@ -625,9 +591,7 @@ class SystemPlan:
             )
         if self.schema_version == SYSTEM_PLAN_SCHEMA_VERSION:
             if self.evaluation_context is None:
-                raise SystemPlanningError(
-                    "system plan v2 requires evaluation_context"
-                )
+                raise SystemPlanningError("system plan v2 requires evaluation_context")
             try:
                 EvaluationContext.from_dict(self.evaluation_context)
             except ValueError as error:
@@ -645,9 +609,7 @@ class SystemPlan:
         policy = _policy_map(self.remediation_policy)
         expected_policy_hash = sha256_json(policy)
         if self.policy_sha256 != expected_policy_hash:
-            raise SystemPlanningError(
-                "policy_sha256 does not match remediation_policy"
-            )
+            raise SystemPlanningError("policy_sha256 does not match remediation_policy")
 
         artifact_ids: set[str] = set()
         source_finding_ids: set[str] = set()
@@ -670,9 +632,7 @@ class SystemPlan:
         for finding in self.ignored_findings:
             finding.validate()
             if finding.effective_policy != "ignore":
-                raise SystemPlanningError(
-                    f"{finding.id} is not an ignored finding"
-                )
+                raise SystemPlanningError(f"{finding.id} is not an ignored finding")
             overlap = source_finding_ids.intersection(finding.finding_ids)
             if overlap:
                 raise SystemPlanningError(
@@ -710,9 +670,7 @@ class SystemPlan:
             "auto_operations": [
                 operation.to_dict() for operation in self.auto_operations
             ],
-            "work_orders": [
-                work_order.to_dict() for work_order in self.work_orders
-            ],
+            "work_orders": [work_order.to_dict() for work_order in self.work_orders],
             "ignored_findings": [
                 finding.to_dict() for finding in self.ignored_findings
             ],
@@ -726,9 +684,7 @@ class SystemPlan:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> SystemPlan:
         if "schema_version" not in value:
-            raise SystemPlanningError(
-                "system plan is missing fields: schema_version"
-            )
+            raise SystemPlanningError("system plan is missing fields: schema_version")
         base_fields = {
             "schema_version",
             "apu_version",
@@ -743,17 +699,13 @@ class SystemPlan:
             "ignored_findings",
         }
         schema_version = value["schema_version"]
-        if not isinstance(schema_version, int) or isinstance(
-            schema_version, bool
-        ):
+        if not isinstance(schema_version, int) or isinstance(schema_version, bool):
             raise SystemPlanningError("schema_version must be an integer")
         fields = set(base_fields)
         if schema_version == SYSTEM_PLAN_SCHEMA_VERSION:
             fields.add("evaluation_context")
         _require_fields(value, fields, artifact="system plan")
-        raw_policy = _require_mapping(
-            value["remediation_policy"], "remediation_policy"
-        )
+        raw_policy = _require_mapping(value["remediation_policy"], "remediation_policy")
         policy = _policy_map(
             {
                 _require_string(key, "remediation policy category"): (
@@ -770,40 +722,26 @@ class SystemPlan:
             inventory_sha256=_require_string(
                 value["inventory_sha256"], "inventory_sha256"
             ),
-            profile_sha256=_require_string(
-                value["profile_sha256"], "profile_sha256"
-            ),
+            profile_sha256=_require_string(value["profile_sha256"], "profile_sha256"),
             remediation_policy=policy,
-            policy_sha256=_require_string(
-                value["policy_sha256"], "policy_sha256"
-            ),
+            policy_sha256=_require_string(value["policy_sha256"], "policy_sha256"),
             auto_operations=tuple(
-                SystemAutoOperation.from_dict(
-                    _require_mapping(item, "auto operation")
-                )
-                for item in _require_array(
-                    value["auto_operations"], "auto_operations"
-                )
+                SystemAutoOperation.from_dict(_require_mapping(item, "auto operation"))
+                for item in _require_array(value["auto_operations"], "auto_operations")
             ),
             work_orders=tuple(
-                SystemWorkOrder.from_dict(
-                    _require_mapping(item, "work order")
-                )
+                SystemWorkOrder.from_dict(_require_mapping(item, "work order"))
                 for item in _require_array(value["work_orders"], "work_orders")
             ),
             ignored_findings=tuple(
-                RoutedFinding.from_dict(
-                    _require_mapping(item, "ignored finding")
-                )
+                RoutedFinding.from_dict(_require_mapping(item, "ignored finding"))
                 for item in _require_array(
                     value["ignored_findings"], "ignored_findings"
                 )
             ),
             evaluation_context=(
                 EvaluationContext.from_dict(
-                    _require_mapping(
-                        value["evaluation_context"], "evaluation_context"
-                    )
+                    _require_mapping(value["evaluation_context"], "evaluation_context")
                 ).to_dict()
                 if schema_version == SYSTEM_PLAN_SCHEMA_VERSION
                 else None
@@ -850,11 +788,12 @@ def _all_sources(inventory: SystemInventory) -> tuple[_FindingSource, ...]:
 
 def _source_key(source: _FindingSource) -> tuple[str, str, str, str]:
     protected = (
-        source.surface.sensitive
-        or source.finding.category == SENSITIVE_CATEGORY
+        source.surface.sensitive or source.finding.category == SENSITIVE_CATEGORY
     )
-    location = _safe_location(source.finding.location) if protected else dict(
-        source.finding.location
+    location = (
+        _safe_location(source.finding.location)
+        if protected
+        else dict(source.finding.location)
     )
     summary = (
         "Sensitive material requires manual remediation."
@@ -915,17 +854,13 @@ def _route_sources(
 
     routes: list[RoutedFinding] = []
     for key, members in sorted(grouped.items()):
-        content_hashes = {
-            member.surface.content_sha256 for member in members
-        }
+        content_hashes = {member.surface.content_sha256 for member in members}
         if len(content_hashes) != 1:
             raise SystemPlanningError(
                 f"surface has conflicting audited hashes: {members[0].surface.path}"
             )
         categories = {member.finding.category for member in members}
-        locations = {
-            canonical_json(member.finding.location) for member in members
-        }
+        locations = {canonical_json(member.finding.location) for member in members}
         if len(categories) != 1 or len(locations) != 1:
             raise SystemPlanningError("deduplicated findings are inconsistent")
         representatives = sorted(
@@ -944,9 +879,8 @@ def _route_sources(
             else representative.surface.authority
         )
         category = representative.finding.category
-        protected = (
-            category == SENSITIVE_CATEGORY
-            or any(item.surface.sensitive for item in members)
+        protected = category == SENSITIVE_CATEGORY or any(
+            item.surface.sensitive for item in members
         )
         location = (
             _safe_location(representative.finding.location)
@@ -977,15 +911,9 @@ def _route_sources(
         }
         route = RoutedFinding(
             id=_stable_id("finding-route", identity),
-            finding_ids=tuple(
-                sorted({item.finding.id for item in members})
-            ),
-            inventory_refs=tuple(
-                sorted({item.inventory_ref for item in members})
-            ),
-            surface_ids=tuple(
-                sorted({item.surface.id for item in members})
-            ),
+            finding_ids=tuple(sorted({item.finding.id for item in members})),
+            inventory_refs=tuple(sorted({item.inventory_ref for item in members})),
+            surface_ids=tuple(sorted({item.surface.id for item in members})),
             target=representative.surface.path,
             surface_content_sha256=representative.surface.content_sha256,
             authority=authority,
@@ -997,11 +925,7 @@ def _route_sources(
             location=location,
             evidence=tuple(
                 sorted(
-                    {
-                        evidence
-                        for item in members
-                        for evidence in item.finding.evidence
-                    }
+                    {evidence for item in members for evidence in item.finding.evidence}
                 )
             )
             if not protected
@@ -1131,9 +1055,7 @@ def _instruction_consolidation_routes(
             requested_policy="work-order",
             effective_policy="work-order",
             routing_reason=(
-                "sensitive-surface-sanitized"
-                if sensitive
-                else "explicit-user-request"
+                "sensitive-surface-sanitized" if sensitive else "explicit-user-request"
             ),
             surface_sensitive=sensitive,
         )
@@ -1158,9 +1080,7 @@ def _build_auto_operations(
             raise SystemPlanningError(
                 f"auto batch has conflicting surface metadata: {findings[0].target}"
             )
-        findings_tuple = tuple(
-            sorted(findings, key=lambda finding: finding.id)
-        )
+        findings_tuple = tuple(sorted(findings, key=lambda finding: finding.id))
         line_numbers = tuple(
             sorted(
                 {
@@ -1173,9 +1093,7 @@ def _build_auto_operations(
         identity = {
             "target": _normalized_target(findings_tuple[0].target),
             "precondition_sha256": findings_tuple[0].surface_content_sha256,
-            "finding_route_ids": [
-                finding.id for finding in findings_tuple
-            ],
+            "finding_route_ids": [finding.id for finding in findings_tuple],
         }
         operation = SystemAutoOperation(
             id=_stable_id("system-op", identity),
@@ -1216,16 +1134,12 @@ def _build_work_orders(
 
     result: list[SystemWorkOrder] = []
     for (_, handling), findings in sorted(grouped.items()):
-        findings_tuple = tuple(
-            sorted(findings, key=lambda finding: finding.id)
-        )
+        findings_tuple = tuple(sorted(findings, key=lambda finding: finding.id))
         manual_only = handling == "manual-only"
         identity = {
             "target": _normalized_target(findings_tuple[0].target),
             "handling": handling,
-            "finding_route_ids": [
-                finding.id for finding in findings_tuple
-            ],
+            "finding_route_ids": [finding.id for finding in findings_tuple],
         }
         work_order = SystemWorkOrder(
             id=_stable_id("work-order", identity),
@@ -1272,13 +1186,9 @@ def _derive_plan_id(
         "inventory_sha256": inventory_sha256,
         "profile_sha256": profile_sha256,
         "policy_sha256": policy_sha256,
-        "auto_operations": [
-            operation.to_dict() for operation in auto_operations
-        ],
+        "auto_operations": [operation.to_dict() for operation in auto_operations],
         "work_orders": [work_order.to_dict() for work_order in work_orders],
-        "ignored_findings": [
-            finding.to_dict() for finding in ignored_findings
-        ],
+        "ignored_findings": [finding.to_dict() for finding in ignored_findings],
     }
     if evaluation_context is not None:
         identity["evaluation_context"] = EvaluationContext.from_dict(
@@ -1326,9 +1236,7 @@ def propose_system(
         )
     auto_operations = _build_auto_operations(routes)
     work_orders = _build_work_orders(routes)
-    ignored = tuple(
-        route for route in routes if route.effective_policy == "ignore"
-    )
+    ignored = tuple(route for route in routes if route.effective_policy == "ignore")
     plan_id = _derive_plan_id(
         inventory_sha256=inventory.artifact_sha256,
         profile_sha256=inventory.profile_sha256,

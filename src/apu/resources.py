@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
+from importlib.resources import files
 from pathlib import Path
-import sysconfig
 
 
 def resource_root() -> Path:
@@ -13,13 +13,9 @@ def resource_root() -> Path:
             raise ValueError("APU_RESOURCE_ROOT must be absolute")
         return path
 
-    checkout = Path(__file__).resolve().parents[2]
-    if (checkout / "skills" / "optimizing-agent-instructions" / "SKILL.md").is_file():
-        return checkout
-
-    installed = Path(sysconfig.get_path("data")) / "share" / "apu"
-    if installed.is_dir():
-        return installed
+    bundled = Path(str(files("apu").joinpath("_resources")))
+    if bundled.is_dir():
+        return bundled
     raise FileNotFoundError("APU package resources are unavailable")
 
 

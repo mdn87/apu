@@ -619,6 +619,18 @@ def _is_mutation(event: Mapping[str, Any]) -> bool:
     ) or observation["command_class"] == "git-write"
 
 
+@dataclass(frozen=True)
+class _EvidenceContext:
+    ordered: tuple[dict[str, Any], ...]
+    positions: Mapping[str, int]
+    requests: Mapping[str, dict[str, Any]]
+    results: Mapping[str, dict[str, Any]]
+    provider: str
+    session_id: str
+    verification: Mapping[str, Mapping[str, Any]]
+    now: datetime
+
+
 def _evidence_findings(
     events: list[dict[str, Any]],
     *,
@@ -627,66 +639,98 @@ def _evidence_findings(
     verification: Mapping[str, Mapping[str, Any]],
     now: datetime,
 ) -> list[dict[str, Any]]:
-    ordered = sorted(events, key=_event_sort_key)
-    positions = {event["event_id"]: index for index, event in enumerate(ordered)}
-    requests = {
-        event["correlation_sha256"]: event
-        for event in ordered
-        if event["event_type"] == "tool.requested" and event["correlation_sha256"]
-    }
-    results = {
-        event["correlation_sha256"]: event
-        for event in ordered
-        if event["event_type"] in {"tool.completed", "tool.failed"}
-        and event["correlation_sha256"]
-    }
+    ordered = tuple(sorted(events, key=_event_sort_key))
+    context = _EvidenceContext(
+        ordered=ordered,
+        positions={event["event_id"]: index for index, event in enumerate(ordered)},
+        requests={
+            event["correlation_sha256"]: event
+            for event in ordered
+            if event["event_type"] == "tool.requested" and event["correlation_sha256"]
+        },
+        results={
+            event["correlation_sha256"]: event
+            for event in ordered
+            if event["event_type"] in {"tool.completed", "tool.failed"}
+            and event["correlation_sha256"]
+        },
+        provider=provider,
+        session_id=session_id,
+        verification=verification,
+        now=now,
+    )
     findings: list[dict[str, Any]] = []
+    for detector in (
+        _detect_repeated_identical_tool_failures,
+        _detect_repeated_permission_denials,
+        _detect_request_lifecycle_findings,
+        _detect_completion_findings,
+    ):
+        findings.extend(detector(context))
+    return findings
+
+
+def _detect_repeated_identical_tool_failures(
+    context: _EvidenceContext,
+) -> list[dict[str, Any]]:
     repeated: dict[str, list[str]] = defaultdict(list)
-    for correlation, result in results.items():
-        request = requests.get(correlation)
+    for correlation, result in context.results.items():
+        request = context.requests.get(correlation)
         if request is None or result["event_type"] != "tool.failed":
             continue
         input_sha = request["observation"]["input_sha256"]
         if input_sha:
             repeated[input_sha].extend([request["event_id"], result["event_id"]])
-    for refs in repeated.values():
-        if len(refs) < 4:
-            continue
-        findings.append(
-            _finding(
-                detector="repeated-identical-tool-failure",
-                severity="medium",
-                session_id=session_id,
-                provider=provider,
-                evidence_refs=refs,
-                verification=verification,
-                summary="The same tool input failed more than once without new evidence.",
-                reason_codes=["repeated-identical-tool-failure"],
-            )
+    return [
+        _finding(
+            detector="repeated-identical-tool-failure",
+            severity="medium",
+            session_id=context.session_id,
+            provider=context.provider,
+            evidence_refs=refs,
+            verification=context.verification,
+            summary="The same tool input failed more than once without new evidence.",
+            reason_codes=["repeated-identical-tool-failure"],
         )
-    denied = [event for event in ordered if event["event_type"] == "permission.denied"]
-    if len(denied) > 1:
-        findings.append(
-            _finding(
-                detector="repeated-permission-denial",
-                severity="medium",
-                session_id=session_id,
-                provider=provider,
-                evidence_refs=[event["event_id"] for event in denied],
-                verification=verification,
-                summary="The session continued requesting actions after repeated denials.",
-                reason_codes=["repeated-permission-denial"],
-            )
+        for refs in repeated.values()
+        if len(refs) >= 4
+    ]
+
+
+def _detect_repeated_permission_denials(
+    context: _EvidenceContext,
+) -> list[dict[str, Any]]:
+    denied = [
+        event for event in context.ordered if event["event_type"] == "permission.denied"
+    ]
+    if len(denied) <= 1:
+        return []
+    return [
+        _finding(
+            detector="repeated-permission-denial",
+            severity="medium",
+            session_id=context.session_id,
+            provider=context.provider,
+            evidence_refs=[event["event_id"] for event in denied],
+            verification=context.verification,
+            summary="The session continued requesting actions after repeated denials.",
+            reason_codes=["repeated-permission-denial"],
         )
+    ]
+
+
+def _detect_request_lifecycle_findings(
+    context: _EvidenceContext,
+) -> list[dict[str, Any]]:
     terminal_positions = [
-        positions[event["event_id"]]
-        for event in ordered
+        context.positions[event["event_id"]]
+        for event in context.ordered
         if event["event_type"]
         in {"task.completed", "turn.completed", "turn.failed", "session.ended"}
     ]
     start_positions = [
-        positions[event["event_id"]]
-        for event in ordered
+        context.positions[event["event_id"]]
+        for event in context.ordered
         if event["event_type"] in {"task.started", "turn.started", "session.started"}
     ]
     terminal = bool(terminal_positions) and max(terminal_positions) > max(
@@ -695,181 +739,271 @@ def _evidence_findings(
     latest_time = max(
         (
             parsed
-            for parsed in (_parse_timestamp(event["observed_at"]) for event in ordered)
+            for parsed in (
+                _parse_timestamp(event["observed_at"]) for event in context.ordered
+            )
             if parsed is not None
         ),
-        default=now,
+        default=context.now,
     )
-    old_incomplete = now - latest_time >= _STALE_ACTIVE_AFTER
+    old_incomplete = context.now - latest_time >= _STALE_ACTIVE_AFTER
     unresolved = [
         request
-        for correlation, request in requests.items()
-        if correlation not in results
+        for correlation, request in context.requests.items()
+        if correlation not in context.results
     ]
+    findings: list[dict[str, Any]] = []
     if unresolved and (terminal or old_incomplete):
         findings.append(
             _finding(
                 detector="unresolved-tool-request",
                 severity="low",
-                session_id=session_id,
-                provider=provider,
+                session_id=context.session_id,
+                provider=context.provider,
                 evidence_refs=[event["event_id"] for event in unresolved],
-                verification=verification,
-                summary="One or more tool requests have no matching result in a stopped session.",
+                verification=context.verification,
+                summary=(
+                    "One or more tool requests have no matching result "
+                    "in a stopped session."
+                ),
                 reason_codes=["tool-request-without-result"],
             )
         )
     orphaned = [
-        result for correlation, result in results.items() if correlation not in requests
+        result
+        for correlation, result in context.results.items()
+        if correlation not in context.requests
     ]
     if orphaned:
         findings.append(
             _finding(
                 detector="orphaned-tool-result",
                 severity="low",
-                session_id=session_id,
-                provider=provider,
+                session_id=context.session_id,
+                provider=context.provider,
                 evidence_refs=[event["event_id"] for event in orphaned],
-                verification=verification,
+                verification=context.verification,
                 summary="Tool results could not be linked to an observed request.",
                 reason_codes=["tool-result-without-request"],
             )
         )
+    return findings
+
+
+def _detect_completion_findings(
+    context: _EvidenceContext,
+) -> list[dict[str, Any]]:
     completions = [
         event
-        for event in ordered
+        for event in context.ordered
         if event["event_type"] in {"task.completed", "turn.completed"}
     ]
+    findings: list[dict[str, Any]] = []
     previous_completion_position = -1
     for completion in completions:
-        completion_position = positions[completion["event_id"]]
-        preceding_starts = [
-            positions[event["event_id"]]
-            for event in ordered
-            if event["event_type"] in {"task.started", "turn.started"}
-            and previous_completion_position
-            < positions[event["event_id"]]
-            < completion_position
-        ]
-        segment_start = max(
-            [previous_completion_position, *preceding_starts],
+        completion_position, segment_start, segment_end = _completion_bounds(
+            context,
+            completion,
+            previous_completion_position=previous_completion_position,
         )
-        following_starts = [
-            positions[event["event_id"]]
-            for event in ordered
-            if event["event_type"] in {"task.started", "turn.started"}
-            and positions[event["event_id"]] > completion_position
-        ]
-        segment_end = min(following_starts, default=len(ordered))
-        later_tools = [
-            event
-            for event in ordered
-            if event["event_type"] == "tool.requested"
-            and completion_position < positions[event["event_id"]] < segment_end
-        ]
-        if later_tools:
-            findings.append(
-                _finding(
-                    detector="post-completion-activity",
-                    severity="low",
-                    session_id=session_id,
-                    provider=provider,
-                    evidence_refs=[completion["event_id"]]
-                    + [event["event_id"] for event in later_tools],
-                    verification=verification,
-                    summary="Tool activity occurred after a completion event.",
-                    reason_codes=["activity-after-completion"],
-                )
+        findings.extend(
+            _detect_post_completion_activity(
+                context,
+                completion,
+                completion_position=completion_position,
+                segment_end=segment_end,
             )
-        state_events = [
-            event
-            for event in ordered
-            if event["event_type"] == "state.observed"
-            and segment_start < positions[event["event_id"]] < segment_end
-        ]
-        if state_events:
-            latest_state = state_events[-1]
-            if positions[latest_state["event_id"]] < completion_position:
-                findings.append(
-                    _finding(
-                        detector="stale-state-at-completion",
-                        severity="low",
-                        session_id=session_id,
-                        provider=provider,
-                        evidence_refs=[
-                            latest_state["event_id"],
-                            completion["event_id"],
-                        ],
-                        verification=verification,
-                        summary="The latest repository observation predates task completion.",
-                        reason_codes=["state-observation-before-completion"],
-                    )
-                )
-            elif latest_state["state"]["dirty"] is True:
-                findings.append(
-                    _finding(
-                        detector="dirty-state-at-completion",
-                        severity="low",
-                        session_id=session_id,
-                        provider=provider,
-                        evidence_refs=[
-                            latest_state["event_id"],
-                            completion["event_id"],
-                        ],
-                        verification=verification,
-                        summary="The repository was dirty at the post-completion observation.",
-                        reason_codes=["dirty-state-after-completion"],
-                    )
-                )
-        successful_tests: list[dict[str, Any]] = []
-        for correlation, result in results.items():
-            request = requests.get(correlation)
-            if (
-                request is not None
-                and request["observation"]["command_class"] == "test"
-                and result["event_type"] == "tool.completed"
-                and segment_start < positions[result["event_id"]] < completion_position
-            ):
-                successful_tests.append(result)
-        mutations = [
-            event
-            for event in ordered
-            if event["event_type"] == "tool.requested"
-            and _is_mutation(event)
-            and segment_start < positions[event["event_id"]] < completion_position
-        ]
-        latest_test = max(
-            successful_tests,
-            key=lambda event: positions[event["event_id"]],
-            default=None,
         )
-        latest_mutation = max(
-            mutations,
-            key=lambda event: positions[event["event_id"]],
-            default=None,
-        )
-        if (
-            latest_test is not None
-            and latest_mutation is not None
-            and positions[latest_mutation["event_id"]]
-            > positions[latest_test["event_id"]]
-        ):
-            refs = [completion["event_id"]]
-            refs.extend([latest_test["event_id"], latest_mutation["event_id"]])
-            findings.append(
-                _finding(
-                    detector="completion-after-stale-gate",
-                    severity="medium",
-                    session_id=session_id,
-                    provider=provider,
-                    evidence_refs=refs,
-                    verification=verification,
-                    summary="A mutation occurred after the latest observed successful test.",
-                    reason_codes=["mutation-after-latest-test"],
-                )
+        findings.extend(
+            _detect_completion_state(
+                context,
+                completion,
+                completion_position=completion_position,
+                segment_start=segment_start,
+                segment_end=segment_end,
             )
+        )
+        findings.extend(
+            _detect_stale_test_gate(
+                context,
+                completion,
+                completion_position=completion_position,
+                segment_start=segment_start,
+            )
+        )
         previous_completion_position = completion_position
     return findings
+
+
+def _completion_bounds(
+    context: _EvidenceContext,
+    completion: Mapping[str, Any],
+    *,
+    previous_completion_position: int,
+) -> tuple[int, int, int]:
+    completion_position = context.positions[completion["event_id"]]
+    preceding_starts = [
+        context.positions[event["event_id"]]
+        for event in context.ordered
+        if event["event_type"] in {"task.started", "turn.started"}
+        and previous_completion_position
+        < context.positions[event["event_id"]]
+        < completion_position
+    ]
+    segment_start = max(
+        [previous_completion_position, *preceding_starts],
+    )
+    following_starts = [
+        context.positions[event["event_id"]]
+        for event in context.ordered
+        if event["event_type"] in {"task.started", "turn.started"}
+        and context.positions[event["event_id"]] > completion_position
+    ]
+    return (
+        completion_position,
+        segment_start,
+        min(following_starts, default=len(context.ordered)),
+    )
+
+
+def _detect_post_completion_activity(
+    context: _EvidenceContext,
+    completion: Mapping[str, Any],
+    *,
+    completion_position: int,
+    segment_end: int,
+) -> list[dict[str, Any]]:
+    later_tools = [
+        event
+        for event in context.ordered
+        if event["event_type"] == "tool.requested"
+        and completion_position < context.positions[event["event_id"]] < segment_end
+    ]
+    if not later_tools:
+        return []
+    return [
+        _finding(
+            detector="post-completion-activity",
+            severity="low",
+            session_id=context.session_id,
+            provider=context.provider,
+            evidence_refs=[completion["event_id"]]
+            + [event["event_id"] for event in later_tools],
+            verification=context.verification,
+            summary="Tool activity occurred after a completion event.",
+            reason_codes=["activity-after-completion"],
+        )
+    ]
+
+
+def _detect_completion_state(
+    context: _EvidenceContext,
+    completion: Mapping[str, Any],
+    *,
+    completion_position: int,
+    segment_start: int,
+    segment_end: int,
+) -> list[dict[str, Any]]:
+    state_events = [
+        event
+        for event in context.ordered
+        if event["event_type"] == "state.observed"
+        and segment_start < context.positions[event["event_id"]] < segment_end
+    ]
+    if not state_events:
+        return []
+    latest_state = state_events[-1]
+    refs = [latest_state["event_id"], completion["event_id"]]
+    if context.positions[latest_state["event_id"]] < completion_position:
+        return [
+            _finding(
+                detector="stale-state-at-completion",
+                severity="low",
+                session_id=context.session_id,
+                provider=context.provider,
+                evidence_refs=refs,
+                verification=context.verification,
+                summary=("The latest repository observation predates task completion."),
+                reason_codes=["state-observation-before-completion"],
+            )
+        ]
+    if latest_state["state"]["dirty"] is True:
+        return [
+            _finding(
+                detector="dirty-state-at-completion",
+                severity="low",
+                session_id=context.session_id,
+                provider=context.provider,
+                evidence_refs=refs,
+                verification=context.verification,
+                summary=(
+                    "The repository was dirty at the post-completion observation."
+                ),
+                reason_codes=["dirty-state-after-completion"],
+            )
+        ]
+    return []
+
+
+def _detect_stale_test_gate(
+    context: _EvidenceContext,
+    completion: Mapping[str, Any],
+    *,
+    completion_position: int,
+    segment_start: int,
+) -> list[dict[str, Any]]:
+    successful_tests: list[dict[str, Any]] = []
+    for correlation, result in context.results.items():
+        request = context.requests.get(correlation)
+        if (
+            request is not None
+            and request["observation"]["command_class"] == "test"
+            and result["event_type"] == "tool.completed"
+            and segment_start
+            < context.positions[result["event_id"]]
+            < completion_position
+        ):
+            successful_tests.append(result)
+    mutations = [
+        event
+        for event in context.ordered
+        if event["event_type"] == "tool.requested"
+        and _is_mutation(event)
+        and segment_start < context.positions[event["event_id"]] < completion_position
+    ]
+    latest_test = max(
+        successful_tests,
+        key=lambda event: context.positions[event["event_id"]],
+        default=None,
+    )
+    latest_mutation = max(
+        mutations,
+        key=lambda event: context.positions[event["event_id"]],
+        default=None,
+    )
+    if (
+        latest_test is None
+        or latest_mutation is None
+        or context.positions[latest_mutation["event_id"]]
+        <= context.positions[latest_test["event_id"]]
+    ):
+        return []
+    return [
+        _finding(
+            detector="completion-after-stale-gate",
+            severity="medium",
+            session_id=context.session_id,
+            provider=context.provider,
+            evidence_refs=[
+                completion["event_id"],
+                latest_test["event_id"],
+                latest_mutation["event_id"],
+            ],
+            verification=context.verification,
+            summary="A mutation occurred after the latest observed successful test.",
+            reason_codes=["mutation-after-latest-test"],
+        )
+    ]
 
 
 def _incident_findings(

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +19,6 @@ from apu.validate import (
     validate_receipt_path,
     validate_registered_installations,
 )
-
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "behavioral"
 
@@ -121,9 +120,7 @@ def test_registry_validation_checks_only_active_installations(
     result = validate_registered_installations(state_home)
 
     assert result.status == "passed"
-    assert [check.name for check in result.checks] == [
-        "installation:active-install"
-    ]
+    assert [check.name for check in result.checks] == ["installation:active-install"]
 
 
 def test_receipt_validation_checks_recorded_symlink_target(tmp_path: Path) -> None:
@@ -270,7 +267,7 @@ def test_fixture_runs_in_isolated_copy_and_sanitizes_runner_output(
         )
         assert "configuration" in input_text
         assert timeout == 30
-        (cwd / "settings.toml").write_text("mode = \"safe\"\n", encoding="utf-8")
+        (cwd / "settings.toml").write_text('mode = "safe"\n', encoding="utf-8")
         return subprocess.CompletedProcess(
             command,
             0,
@@ -308,7 +305,7 @@ def test_fixture_runs_in_isolated_copy_and_sanitizes_runner_output(
 
 def test_unobservable_event_check_is_skipped_after_commands_pass() -> None:
     def executor(command, *, cwd, input_text, timeout):
-        (cwd / "settings.toml").write_text("mode = \"safe\"\n", encoding="utf-8")
+        (cwd / "settings.toml").write_text('mode = "safe"\n', encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     adapter = RunnerInvocationAdapter.codex(

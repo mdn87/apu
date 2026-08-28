@@ -73,7 +73,8 @@ def _finding(
         confidence="high",
         analysis_method=(
             "structural"
-            if category in {
+            if category
+            in {
                 "duplicate-instruction",
                 "sensitive-material-exposure",
             }
@@ -176,22 +177,16 @@ def test_proposal_persists_private_redacted_campaign_artifacts(
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["schema_version"] == 2
     assert manifest["campaign_id"] == bundle["campaign_id"]
-    assert manifest["evaluation_context"] == (
-        inventory.evaluation_context.to_dict()
-    )
+    assert manifest["evaluation_context"] == (inventory.evaluation_context.to_dict())
     assert len(bundle["work_orders"]) == 2
     assert any(item["manual_only"] for item in bundle["work_orders"])
-    assert any(
-        item["requires_sanitized_stage"] for item in bundle["work_orders"]
-    )
+    assert any(item["requires_sanitized_stage"] for item in bundle["work_orders"])
     rendered = "\n".join(
-        Path(item["path"]).read_text(encoding="utf-8")
-        for item in bundle["work_orders"]
+        Path(item["path"]).read_text(encoding="utf-8") for item in bundle["work_orders"]
     )
     assert secret not in rendered
     assert secret not in "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in exported.glob("*.md")
+        path.read_text(encoding="utf-8") for path in exported.glob("*.md")
     )
     assert (root / "redactions").is_dir()
     assert (root / "staging").is_dir()
@@ -338,8 +333,7 @@ def test_instruction_consolidation_renders_effective_stack_context(
 
     assert len(bundle["work_orders"]) == 4
     rendered = "\n".join(
-        Path(item["path"]).read_text(encoding="utf-8")
-        for item in bundle["work_orders"]
+        Path(item["path"]).read_text(encoding="utf-8") for item in bundle["work_orders"]
     )
     assert "explicitly requested instruction consolidation" in rendered
     assert "Use skills only when they materially help." in rendered
@@ -372,9 +366,7 @@ def test_instruction_consolidation_fails_closed_on_sensitive_context(
         generated_at=inventory.generated_at,
         scope={"roots": [str(repository)]},
         surfaces=(sensitive,),
-        effective_stacks=(
-            {"provider": "claude", "surface_ids": [sensitive.id]},
-        ),
+        effective_stacks=({"provider": "claude", "surface_ids": [sensitive.id]},),
         findings=(),
     )
     inventory = replace(
@@ -427,9 +419,7 @@ def test_campaign_apply_snapshots_then_stamps_receipt(
     assert receipt["campaign_id"] == bundle["campaign_id"]
     assert receipt["snapshot_id"] == result["snapshot_id"]
     index = json.loads(
-        (
-            Path(bundle["campaign_directory"]) / "index.json"
-        ).read_text(encoding="utf-8")
+        (Path(bundle["campaign_directory"]) / "index.json").read_text(encoding="utf-8")
     )
     assert index["snapshot_id"] == result["snapshot_id"]
     assert {item["artifact_type"] for item in index["artifacts"]} >= {
@@ -465,9 +455,7 @@ def test_tampered_exported_auto_plan_is_rejected_before_mutation(
     tampered = json.loads(json.dumps(bundle))
     replacement_target = tmp_path / "outside.txt"
     replacement_target.write_text("outside\n", encoding="utf-8")
-    tampered["auto_plan"]["operations"][0]["target"] = str(
-        replacement_target.resolve()
-    )
+    tampered["auto_plan"]["operations"][0]["target"] = str(replacement_target.resolve())
     exported = tmp_path / "tampered-campaign.json"
     exported.write_text(json.dumps(tampered), encoding="utf-8")
     loaded = load_campaign_bundle(exported)
@@ -655,9 +643,7 @@ def test_package_authority_work_order_forbids_direct_target_edit(
     )
 
     assert bundle["auto_plan"]["operations"] == []
-    rendered = Path(bundle["work_orders"][0]["path"]).read_text(
-        encoding="utf-8"
-    )
+    rendered = Path(bundle["work_orders"][0]["path"]).read_text(encoding="utf-8")
     assert "Do not edit the package-owned target directly" in rendered
     assert "upgrade, pin, fork, or package-management remediation" in rendered
 
@@ -751,10 +737,7 @@ def test_campaign_rollback_preserves_receipt_and_appends_evidence(
     assert receipt_path.read_bytes() == immutable_receipt
     status = list_campaign_status(state)[0]
     assert status["reconcile_error"] is None
-    assert any(
-        item["artifact_type"] == "rollback"
-        for item in status["artifacts"]
-    )
+    assert any(item["artifact_type"] == "rollback" for item in status["artifacts"])
     assert rollback_receipt(receipt_path) == result
 
 
@@ -792,9 +775,7 @@ def test_campaign_rollback_repairs_registry_from_committed_leaf(
 
     assert target.read_text(encoding="utf-8") == "keep\nremove duplicate\n"
     assert (
-        load_registry(state)["installations"]["campaign-rollback-retry"][
-            "status"
-        ]
+        load_registry(state)["installations"]["campaign-rollback-retry"]["status"]
         == "active"
     )
 
@@ -803,9 +784,7 @@ def test_campaign_rollback_repairs_registry_from_committed_leaf(
 
     assert result == {"status": "rolled_back", "drifted_operation_ids": []}
     assert (
-        load_registry(state)["installations"]["campaign-rollback-retry"][
-            "status"
-        ]
+        load_registry(state)["installations"]["campaign-rollback-retry"]["status"]
         == "rolled_back"
     )
     assert list_campaign_status(state)[0]["reconcile_error"] is None

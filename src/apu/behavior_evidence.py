@@ -1,21 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import math
 import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from .models import canonical_json, sha256_json
 from .work_orders import find_secret_spans
 
-
 EVIDENCE_KIND = "lugos.apu.behavior-evaluation-evidence"
-CANDIDATE_PATCH_KIND = (
-    "lugos.apu.lugos-orca.behavior-registry-candidate-patch"
-)
+CANDIDATE_PATCH_KIND = "lugos.apu.lugos-orca.behavior-registry-candidate-patch"
 SOURCE_RECEIPT_KIND = "lugos.autowork.behavior-delegation-receipt"
 
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -81,9 +78,7 @@ def _string(value: Any, label: str, *, nullable: bool = False) -> str | None:
     return value
 
 
-def _source_string(
-    value: Any, label: str, *, nullable: bool = False
-) -> str | None:
+def _source_string(value: Any, label: str, *, nullable: bool = False) -> str | None:
     if value is None and nullable:
         return None
     if not isinstance(value, str) or not value:
@@ -235,9 +230,7 @@ def _validate_receipt(value: Any) -> dict[str, Any]:
         "model_resolved",
         "thinking_level_requested",
     ):
-        result[name] = _source_string(
-            receipt[name], f"receipt.{name}", nullable=True
-        )
+        result[name] = _source_string(receipt[name], f"receipt.{name}", nullable=True)
     for name in (
         "loadout_advice_sha256",
         "seat_policy_advice_sha256",
@@ -321,7 +314,9 @@ def _validate_evaluation(value: Any) -> dict[str, Any]:
         _exact(item, {"id", "status"}, label)
         check_id = _identifier(item["id"], f"{label}.id")
         if check_id in seen_checks or item["status"] not in _EVALUATION_STATUSES:
-            raise BehaviorEvidenceError(f"{label} is duplicate or has unsupported status")
+            raise BehaviorEvidenceError(
+                f"{label} is duplicate or has unsupported status"
+            )
         seen_checks.add(check_id)
         normalized_checks.append({"id": check_id, "status": item["status"]})
     metrics = evaluation["metrics"]
@@ -443,58 +438,118 @@ def _validate_evidence_mapping(value: Any) -> dict[str, Any]:
     source = _object(evidence["source"], "behavior evidence.source")
     _exact(
         source,
-        {"contract", "receipt_sha256", "behavior_advice_sha256", "compiled_envelope_sha256"},
+        {
+            "contract",
+            "receipt_sha256",
+            "behavior_advice_sha256",
+            "compiled_envelope_sha256",
+        },
         "behavior evidence.source",
     )
     if source["contract"] != SOURCE_RECEIPT_KIND:
         raise BehaviorEvidenceError("behavior evidence source contract is unsupported")
-    for name in ("receipt_sha256", "behavior_advice_sha256", "compiled_envelope_sha256"):
+    for name in (
+        "receipt_sha256",
+        "behavior_advice_sha256",
+        "compiled_envelope_sha256",
+    ):
         _hash(source[name], f"behavior evidence.source.{name}")
     run = _object(evidence["run"], "behavior evidence.run")
-    _exact(run, {"run_id", "assignment_id", "suite_id", "task_id", "comparison_group_id"}, "behavior evidence.run")
+    _exact(
+        run,
+        {"run_id", "assignment_id", "suite_id", "task_id", "comparison_group_id"},
+        "behavior evidence.run",
+    )
     for name in ("run_id", "assignment_id"):
         _source_string(run[name], f"behavior evidence.run.{name}")
     for name in ("suite_id", "task_id", "comparison_group_id"):
         _identifier(run[name], f"behavior evidence.run.{name}")
     identity = _object(evidence["identity"], "behavior evidence.identity")
-    _exact(identity, {"provider", "model_requested", "model_resolved", "thinking_level_requested", "route", "seat", "adaptation_tier"}, "behavior evidence.identity")
+    _exact(
+        identity,
+        {
+            "provider",
+            "model_requested",
+            "model_resolved",
+            "thinking_level_requested",
+            "route",
+            "seat",
+            "adaptation_tier",
+        },
+        "behavior evidence.identity",
+    )
     for name in ("provider", "route", "seat"):
         _source_string(identity[name], f"behavior evidence.identity.{name}")
     for name in ("model_requested", "model_resolved", "thinking_level_requested"):
         _source_string(
             identity[name], f"behavior evidence.identity.{name}", nullable=True
         )
-    if type(identity["adaptation_tier"]) is not int or identity["adaptation_tier"] not in {0, 1, 2}:
+    if type(identity["adaptation_tier"]) is not int or identity[
+        "adaptation_tier"
+    ] not in {0, 1, 2}:
         raise BehaviorEvidenceError("behavior evidence adaptation_tier is unsupported")
-    _validate_revision(evidence["registry_revision"], "behavior evidence.registry_revision")
-    artifacts = _validate_artifacts(evidence["applied_artifacts"], "behavior evidence.applied_artifacts")
-    if artifacts != sorted(artifacts, key=lambda item: (item["kind"], item["id"], item["content_sha256"])):
-        raise BehaviorEvidenceError("behavior evidence applied_artifacts are not canonical")
+    _validate_revision(
+        evidence["registry_revision"], "behavior evidence.registry_revision"
+    )
+    artifacts = _validate_artifacts(
+        evidence["applied_artifacts"], "behavior evidence.applied_artifacts"
+    )
+    if artifacts != sorted(
+        artifacts, key=lambda item: (item["kind"], item["id"], item["content_sha256"])
+    ):
+        raise BehaviorEvidenceError(
+            "behavior evidence applied_artifacts are not canonical"
+        )
     if type(evidence["narrowing_count"]) is not int or evidence["narrowing_count"] < 0:
-        raise BehaviorEvidenceError("behavior evidence narrowing_count must be nonnegative")
+        raise BehaviorEvidenceError(
+            "behavior evidence narrowing_count must be nonnegative"
+        )
     rejected = evidence["rejected_technique_ids"]
     if not isinstance(rejected, list) or rejected != sorted(set(rejected)):
-        raise BehaviorEvidenceError("behavior evidence rejected_technique_ids are not canonical")
+        raise BehaviorEvidenceError(
+            "behavior evidence rejected_technique_ids are not canonical"
+        )
     for index, item in enumerate(rejected):
         _source_string(item, f"behavior evidence.rejected_technique_ids[{index}]")
     telemetry = _object(evidence["telemetry"], "behavior evidence.telemetry")
-    _exact(telemetry, {"duration_ms", "input_tokens", "output_tokens", "exit_status"}, "behavior evidence.telemetry")
+    _exact(
+        telemetry,
+        {"duration_ms", "input_tokens", "output_tokens", "exit_status"},
+        "behavior evidence.telemetry",
+    )
     for name in ("duration_ms", "input_tokens", "output_tokens"):
         number = telemetry[name]
         if number is not None and (type(number) is not int or number < 0):
-            raise BehaviorEvidenceError(f"behavior evidence.telemetry.{name} must be nonnegative")
+            raise BehaviorEvidenceError(
+                f"behavior evidence.telemetry.{name} must be nonnegative"
+            )
     _source_string(
         telemetry["exit_status"],
         "behavior evidence.telemetry.exit_status",
         nullable=True,
     )
     evaluation = _object(evidence["evaluation"], "behavior evidence.evaluation")
-    _validate_evaluation({
-        "suite_id": run["suite_id"], "task_id": run["task_id"],
-        "comparison_group_id": run["comparison_group_id"], **evaluation,
-    })
+    _validate_evaluation(
+        {
+            "suite_id": run["suite_id"],
+            "task_id": run["task_id"],
+            "comparison_group_id": run["comparison_group_id"],
+            **evaluation,
+        }
+    )
     privacy = _object(evidence["privacy"], "behavior evidence.privacy")
-    _exact(privacy, {"redacted", "contains_raw_prompt", "contains_raw_response", "contains_reasoning", "contains_environment", "contains_credentials"}, "behavior evidence.privacy")
+    _exact(
+        privacy,
+        {
+            "redacted",
+            "contains_raw_prompt",
+            "contains_raw_response",
+            "contains_reasoning",
+            "contains_environment",
+            "contains_credentials",
+        },
+        "behavior evidence.privacy",
+    )
     if privacy != {
         "redacted": True,
         "contains_raw_prompt": False,
@@ -550,7 +605,9 @@ def _operation_path(value: Any, label: str) -> str:
 
 def _validate_operations(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list) or not value:
-        raise BehaviorEvidenceError("candidate patch operations must be a non-empty array")
+        raise BehaviorEvidenceError(
+            "candidate patch operations must be a non-empty array"
+        )
     result: list[dict[str, Any]] = []
     paths: list[str] = []
     for index, raw in enumerate(value):
@@ -568,29 +625,45 @@ def _validate_operations(value: Any) -> list[dict[str, Any]]:
         path = _operation_path(operation["path"], f"{label}.path")
         normalized = dict(operation)
         if "prior_value_sha256" in operation:
-            normalized["prior_value_sha256"] = _hash(operation["prior_value_sha256"], f"{label}.prior_value_sha256")
+            normalized["prior_value_sha256"] = _hash(
+                operation["prior_value_sha256"], f"{label}.prior_value_sha256"
+            )
         if "value" in operation:
             _reject_private_content(operation["value"], f"{label}.value")
             expected_hash = _hash(operation["value_sha256"], f"{label}.value_sha256")
             if expected_hash != sha256_json(operation["value"]):
-                raise BehaviorEvidenceError(f"{label}.value_sha256 does not match value")
+                raise BehaviorEvidenceError(
+                    f"{label}.value_sha256 does not match value"
+                )
         normalized["path"] = path
         paths.append(path)
         result.append(normalized)
     if paths != sorted(paths) or len(paths) != len(set(paths)):
-        raise BehaviorEvidenceError("candidate patch operations must have unique sorted paths")
+        raise BehaviorEvidenceError(
+            "candidate patch operations must have unique sorted paths"
+        )
     for index, path in enumerate(paths):
         for other in paths[index + 1 :]:
             if other.startswith(path.rstrip("/") + "/"):
-                raise BehaviorEvidenceError("candidate patch operations may not overlap")
+                raise BehaviorEvidenceError(
+                    "candidate patch operations may not overlap"
+                )
     return result
 
 
 def _validate_candidate_mapping(value: Any) -> dict[str, Any]:
     candidate = _object(value, "candidate patch")
     fields = {
-        "schema_version", "kind", "proposal_id", "created_at", "target_repository",
-        "base_registry_revision", "evidence", "operations", "requires_review", "apply_authorized",
+        "schema_version",
+        "kind",
+        "proposal_id",
+        "created_at",
+        "target_repository",
+        "base_registry_revision",
+        "evidence",
+        "operations",
+        "requires_review",
+        "apply_authorized",
     }
     _exact(candidate, fields, "candidate patch")
     _reject_private_content(candidate, "candidate patch")
@@ -598,33 +671,66 @@ def _validate_candidate_mapping(value: Any) -> dict[str, Any]:
         raise BehaviorEvidenceError("candidate patch contract is unsupported")
     if candidate["target_repository"] != "lugos-orca":
         raise BehaviorEvidenceError("candidate patch target_repository is unsupported")
-    if candidate["requires_review"] is not True or candidate["apply_authorized"] is not False:
+    if (
+        candidate["requires_review"] is not True
+        or candidate["apply_authorized"] is not False
+    ):
         raise BehaviorEvidenceError("candidate patch must remain review-only")
     _hash(candidate["proposal_id"], "candidate patch.proposal_id")
     _timestamp(candidate["created_at"], "candidate patch.created_at")
-    _validate_revision(candidate["base_registry_revision"], "candidate patch.base_registry_revision", full_commit=True)
+    _validate_revision(
+        candidate["base_registry_revision"],
+        "candidate patch.base_registry_revision",
+        full_commit=True,
+    )
     evidence = _object(candidate["evidence"], "candidate patch.evidence")
-    _exact(evidence, {"supporting_evidence_ids", "counterexample_evidence_ids", "evidence_bundle_sha256"}, "candidate patch.evidence")
+    _exact(
+        evidence,
+        {
+            "supporting_evidence_ids",
+            "counterexample_evidence_ids",
+            "evidence_bundle_sha256",
+        },
+        "candidate patch.evidence",
+    )
     supporting = evidence["supporting_evidence_ids"]
     counter = evidence["counterexample_evidence_ids"]
-    for name, ids, allow_empty in (("supporting_evidence_ids", supporting, False), ("counterexample_evidence_ids", counter, True)):
-        if not isinstance(ids, list) or (not allow_empty and not ids) or ids != sorted(set(ids)):
-            raise BehaviorEvidenceError(f"candidate patch.evidence.{name} must be canonical")
+    for name, ids, allow_empty in (
+        ("supporting_evidence_ids", supporting, False),
+        ("counterexample_evidence_ids", counter, True),
+    ):
+        if (
+            not isinstance(ids, list)
+            or (not allow_empty and not ids)
+            or ids != sorted(set(ids))
+        ):
+            raise BehaviorEvidenceError(
+                f"candidate patch.evidence.{name} must be canonical"
+            )
         for index, item in enumerate(ids):
             _hash(item, f"candidate patch.evidence.{name}[{index}]")
     if set(supporting) & set(counter):
-        raise BehaviorEvidenceError("supporting and counterexample evidence must be disjoint")
+        raise BehaviorEvidenceError(
+            "supporting and counterexample evidence must be disjoint"
+        )
     bundle = {
         "schema_version": 1,
         "kind": "lugos.apu.behavior-evaluation-evidence-bundle",
         "evidence_ids": sorted([*supporting, *counter]),
     }
-    if _hash(evidence["evidence_bundle_sha256"], "candidate patch.evidence.evidence_bundle_sha256") != sha256_json(bundle):
-        raise BehaviorEvidenceError("evidence_bundle_sha256 does not match evidence IDs")
+    if _hash(
+        evidence["evidence_bundle_sha256"],
+        "candidate patch.evidence.evidence_bundle_sha256",
+    ) != sha256_json(bundle):
+        raise BehaviorEvidenceError(
+            "evidence_bundle_sha256 does not match evidence IDs"
+        )
     _validate_operations(candidate["operations"])
     body = {key: item for key, item in candidate.items() if key != "proposal_id"}
     if candidate["proposal_id"] != sha256_json(body):
-        raise BehaviorEvidenceError("proposal_id does not match canonical candidate patch")
+        raise BehaviorEvidenceError(
+            "proposal_id does not match canonical candidate patch"
+        )
     return _copy_json(candidate)
 
 
@@ -639,23 +745,38 @@ def build_behavior_registry_candidate_patch(
     base_registry_revision: Mapping[str, Any],
     supporting_evidence: Sequence[BehaviorEvaluationEvidence | Mapping[str, Any]],
     operations: Sequence[Mapping[str, Any]],
-    counterexample_evidence: Sequence[BehaviorEvaluationEvidence | Mapping[str, Any]] = (),
+    counterexample_evidence: Sequence[
+        BehaviorEvaluationEvidence | Mapping[str, Any]
+    ] = (),
     created_at: str | None = None,
 ) -> BehaviorRegistryCandidatePatch:
-    revision = _validate_revision(base_registry_revision, "base_registry_revision", full_commit=True)
-    supporting = [validate_behavior_evaluation_evidence(item) for item in supporting_evidence]
-    counter = [validate_behavior_evaluation_evidence(item) for item in counterexample_evidence]
+    revision = _validate_revision(
+        base_registry_revision, "base_registry_revision", full_commit=True
+    )
+    supporting = [
+        validate_behavior_evaluation_evidence(item) for item in supporting_evidence
+    ]
+    counter = [
+        validate_behavior_evaluation_evidence(item) for item in counterexample_evidence
+    ]
     if not supporting:
-        raise BehaviorEvidenceError("at least one supporting evidence record is required")
+        raise BehaviorEvidenceError(
+            "at least one supporting evidence record is required"
+        )
     for item in [*supporting, *counter]:
         if item["registry_revision"] != revision:
-            raise BehaviorEvidenceError("evidence registry revision does not exactly match candidate base")
+            raise BehaviorEvidenceError(
+                "evidence registry revision does not exactly match candidate base"
+            )
     supporting_ids = sorted({item["evidence_id"] for item in supporting})
     counter_ids = sorted({item["evidence_id"] for item in counter})
     if set(supporting_ids) & set(counter_ids):
-        raise BehaviorEvidenceError("supporting and counterexample evidence must be disjoint")
+        raise BehaviorEvidenceError(
+            "supporting and counterexample evidence must be disjoint"
+        )
     normalized_operations = sorted(
-        (_copy_json(item) for item in operations), key=lambda item: str(item.get("path", ""))
+        (_copy_json(item) for item in operations),
+        key=lambda item: str(item.get("path", "")),
     )
     _validate_operations(normalized_operations)
     bundle = {

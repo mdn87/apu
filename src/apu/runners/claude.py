@@ -4,7 +4,6 @@ from typing import Any, Iterable, Mapping
 
 from .base import NormalizedEvent, RunnerCapabilities, parse_jsonl
 
-
 CLAUDE_CAPABILITIES = RunnerCapabilities(
     provider="claude",
     cli_name="claude",
@@ -60,8 +59,7 @@ def _is_review_delegation(block: Mapping[str, Any]) -> bool:
         tool_input.get("description"),
     )
     return any(
-        isinstance(value, str) and "review" in value.casefold()
-        for value in values
+        isinstance(value, str) and "review" in value.casefold() for value in values
     )
 
 

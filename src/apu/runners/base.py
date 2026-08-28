@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import json
+from dataclasses import dataclass, replace
 from typing import Any, Iterable, Mapping
 
 
@@ -18,9 +18,7 @@ class RunnerCapabilities:
     version: str | None = None
     authenticated: bool | None = None
 
-    def with_observable_events(
-        self, events: Iterable[str]
-    ) -> RunnerCapabilities:
+    def with_observable_events(self, events: Iterable[str]) -> RunnerCapabilities:
         return replace(self, observable_events=frozenset(events))
 
     def to_dict(self) -> dict[str, Any]:
@@ -120,10 +118,7 @@ def evaluate_event_checks(
                 CheckResult(
                     name=name,
                     status="skipped",
-                    reason=(
-                        f"{capabilities.cli_name} cannot observe "
-                        f"{event_type}"
-                    ),
+                    reason=(f"{capabilities.cli_name} cannot observe {event_type}"),
                 )
             )
         elif event_type in observed:
@@ -150,10 +145,7 @@ def evaluate_event_checks(
                 CheckResult(
                     name=name,
                     status="skipped",
-                    reason=(
-                        f"{capabilities.cli_name} cannot observe "
-                        f"{event_type}"
-                    ),
+                    reason=(f"{capabilities.cli_name} cannot observe {event_type}"),
                 )
             )
         elif event_type in observed:

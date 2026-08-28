@@ -6,7 +6,6 @@ from typing import Any
 
 from .models import canonical_json
 
-
 BEGIN_MARKER = "<!-- apu:begin policy version=0.1.0 -->"
 END_MARKER = "<!-- apu:end policy -->"
 
@@ -52,9 +51,7 @@ def _json_object(content: bytes, description: str) -> dict[str, Any]:
     return value
 
 
-def _deep_merge(
-    existing: dict[str, Any], proposed: dict[str, Any]
-) -> dict[str, Any]:
+def _deep_merge(existing: dict[str, Any], proposed: dict[str, Any]) -> dict[str, Any]:
     merged = dict(existing)
     for key, value in proposed.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):

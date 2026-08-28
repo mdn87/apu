@@ -58,9 +58,7 @@ def item(target: Path, replacement: Path | None) -> RestoreItem:
 
 
 def read_journal(root: Path, journal_id: str) -> dict[str, object]:
-    return json.loads(
-        (root / journal_id / "journal.json").read_text(encoding="utf-8")
-    )
+    return json.loads((root / journal_id / "journal.json").read_text(encoding="utf-8"))
 
 
 def test_list_restore_journals_is_validated_deterministic_and_read_only(
@@ -98,10 +96,9 @@ def test_list_restore_journals_is_validated_deterministic_and_read_only(
     assert first[0]["status"] == "completed"
     assert first[0]["targets"][0]["state"] == "desired"
     assert first[1]["targets"][0]["state"] == "unknown"
-    assert (
-        first[1]["targets"][0]["observed"]["target"]["sha256"]
-        == hash_restore_object(targets[0])
-    )
+    assert first[1]["targets"][0]["observed"]["target"][
+        "sha256"
+    ] == hash_restore_object(targets[0])
     assert {path: path.stat().st_mtime_ns for path in journal_paths} == mtimes
 
 
@@ -520,12 +517,8 @@ def test_incomplete_reverse_can_resume_as_an_idempotent_unwind(
             failure_hook=fail_after_swap_and_reverse,
         )
 
-    first = resume_restore(
-        tmp_path / "journals", "resume-unwind", unwind=True
-    )
-    second = resume_restore(
-        tmp_path / "journals", "resume-unwind", unwind=True
-    )
+    first = resume_restore(tmp_path / "journals", "resume-unwind", unwind=True)
+    second = resume_restore(tmp_path / "journals", "resume-unwind", unwind=True)
 
     assert first.status == second.status == "unwound"
     assert target.read_bytes() == b"old"

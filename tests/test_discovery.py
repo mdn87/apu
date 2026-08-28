@@ -45,9 +45,7 @@ def test_safe_rglob_prunes_generated_trees_before_descending(
 
     monkeypatch.setattr(adapter_base.os, "walk", walk)
 
-    assert safe_rglob(tmp_path, "AGENTS.md") == (
-        tmp_path / "src" / "AGENTS.md",
-    )
+    assert safe_rglob(tmp_path, "AGENTS.md") == (tmp_path / "src" / "AGENTS.md",)
     assert visited == ["src"]
 
 
@@ -90,9 +88,7 @@ def test_codex_discovery_keeps_logical_symlink_identity_and_skill_metadata(
     )
 
     codex_stack = next(
-        stack
-        for stack in result.effective_stacks
-        if stack["provider"] == "codex"
+        stack for stack in result.effective_stacks if stack["provider"] == "codex"
     )
     assert codex_stack["surface_ids"] == [
         surfaces[str(home / ".codex" / "AGENTS.md")].id,
@@ -230,9 +226,7 @@ def test_claude_discovery_reports_imports_rules_skills_hooks_and_marketplaces(
     assert "/private/catalog" not in repr(market.to_dict())
 
     claude_stack = next(
-        stack
-        for stack in result.effective_stacks
-        if stack["provider"] == "claude"
+        stack for stack in result.effective_stacks if stack["provider"] == "claude"
     )
     ids = claude_stack["surface_ids"]
     assert ids.index(surfaces[str(user_rule)].id) < ids.index(
@@ -253,12 +247,8 @@ def test_provider_discovery_sees_canonical_skill_directory_symlinks(
     repo.mkdir()
     canonical = tmp_path / "canonical"
     write(canonical / "SKILL.md", "---\nname: optimizer\n---\n")
-    codex_link = (
-        home / ".agents" / "skills" / "optimizing-agent-instructions"
-    )
-    claude_link = (
-        home / ".claude" / "skills" / "optimizing-agent-instructions"
-    )
+    codex_link = home / ".agents" / "skills" / "optimizing-agent-instructions"
+    claude_link = home / ".claude" / "skills" / "optimizing-agent-instructions"
     codex_link.parent.mkdir(parents=True)
     claude_link.parent.mkdir(parents=True)
     try:
@@ -293,8 +283,7 @@ def test_claude_import_depth_is_capped_and_orphaned_sidecars_are_reported(
     assert str(repo / "level-6.md") not in surfaces
     assert any(
         relationship.type == "imports"
-        and relationship.from_surface_id
-        == surfaces[str(repo / "level-5.md")].id
+        and relationship.from_surface_id == surfaces[str(repo / "level-5.md")].id
         and relationship.status == "max_depth"
         for relationship in result.relationships
     )
@@ -317,9 +306,7 @@ def test_discovery_does_not_modify_the_tree(tmp_path: Path) -> None:
 
     after = sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
     assert before == after
-    assert [
-        (surface.path, surface.content_sha256) for surface in first.surfaces
-    ] == [
+    assert [(surface.path, surface.content_sha256) for surface in first.surfaces] == [
         (surface.path, surface.content_sha256) for surface in second.surfaces
     ]
 
@@ -452,6 +439,4 @@ def test_enabled_plugin_session_start_hooks_are_discovered_without_commands(
     assert hook.location["source"] == "plugin"
     assert "TOP_SECRET" not in repr(hook.to_dict())
 
-    assert not [
-        path for path in surfaces if "disabled-plugin" in path
-    ]
+    assert not [path for path in surfaces if "disabled-plugin" in path]

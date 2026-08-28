@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import fnmatch
 import json
 import os
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -19,6 +18,7 @@ from apu.adapters.base import (
 )
 from apu.audit import build_inventory
 from apu.classify import DetectorPolicy
+from apu.filesystem import matches_exclude as _matches_exclude
 from apu.models import (
     Finding,
     InstructionSurface,
@@ -27,7 +27,6 @@ from apu.models import (
     canonical_json,
     sha256_json,
 )
-from apu.filesystem import matches_exclude as _matches_exclude
 from apu.system_profile import ProfileRoot, ProfileSurface, SystemProfile
 
 SYSTEM_INVENTORY_SCHEMA_VERSION = 2
@@ -36,9 +35,7 @@ _MODEL_GENERATION = re.compile(r"^models-sha256:[0-9a-f]{64}$")
 _BASELINE_STATUSES = frozenset(
     {"unconfigured", "adopted", "stale", "legacy-unverified"}
 )
-_MODEL_STATUSES = frozenset(
-    {"current", "degraded", "unverified", "legacy-unverified"}
-)
+_MODEL_STATUSES = frozenset({"current", "degraded", "unverified", "legacy-unverified"})
 _IDENTITY_FIELDS = frozenset(
     {
         "runtime_id",
@@ -76,8 +73,7 @@ def _validate_baseline_stamp(value: Mapping[str, Any]) -> Mapping[str, Any]:
     required = {"version", "status", "retrieved_at", "artifact_sha256"}
     if set(value) != required:
         raise ValueError(
-            "baseline stamp fields must be exactly: "
-            + ", ".join(sorted(required))
+            "baseline stamp fields must be exactly: " + ", ".join(sorted(required))
         )
     version = _optional_sha256(value["version"], "baseline.version")
     artifact_hash = _optional_sha256(
@@ -86,16 +82,12 @@ def _validate_baseline_stamp(value: Mapping[str, Any]) -> Mapping[str, Any]:
     status = value["status"]
     if status not in _BASELINE_STATUSES:
         raise ValueError(f"unsupported baseline status: {status}")
-    retrieved_at = _optional_text(
-        value["retrieved_at"], "baseline.retrieved_at"
-    )
+    retrieved_at = _optional_text(value["retrieved_at"], "baseline.retrieved_at")
     if (version is None) != (artifact_hash is None):
         raise ValueError(
             "baseline version and artifact_sha256 must both be set or null"
         )
-    if status in {"adopted", "stale"} and (
-        version is None or retrieved_at is None
-    ):
+    if status in {"adopted", "stale"} and (version is None or retrieved_at is None):
         raise ValueError(f"baseline status {status} requires adopted provenance")
     return MappingProxyType(
         {
@@ -117,15 +109,12 @@ def _validate_model_stamp(value: Mapping[str, Any]) -> Mapping[str, Any]:
     }
     if set(value) != required:
         raise ValueError(
-            "model stamp fields must be exactly: "
-            + ", ".join(sorted(required))
+            "model stamp fields must be exactly: " + ", ".join(sorted(required))
         )
     generation = _optional_text(value["generation"], "models.generation")
     if generation is not None and _MODEL_GENERATION.fullmatch(generation) is None:
         raise ValueError("models.generation must be null or a model generation")
-    artifact_hash = _optional_sha256(
-        value["artifact_sha256"], "models.artifact_sha256"
-    )
+    artifact_hash = _optional_sha256(value["artifact_sha256"], "models.artifact_sha256")
     status = value["status"]
     if status not in _MODEL_STATUSES:
         raise ValueError(f"unsupported model status: {status}")
@@ -207,8 +196,7 @@ class RepositoryDiscovery:
         return cls(
             repositories=tuple(str(item) for item in value["repositories"]),
             issues=tuple(
-                TraversalIssue.from_dict(item)
-                for item in value.get("issues", ())
+                TraversalIssue.from_dict(item) for item in value.get("issues", ())
             ),
         )
 
@@ -299,9 +287,7 @@ def discover_repositories(
             for entry in entries:
                 if entry.name == ".git":
                     continue
-                child_relative = (
-                    f"{relative}/{entry.name}" if relative else entry.name
-                )
+                child_relative = f"{relative}/{entry.name}" if relative else entry.name
                 if _matches_exclude(child_relative, root_spec.excludes):
                     continue
                 try:
@@ -393,9 +379,7 @@ class EvaluationContext:
             "baseline": dict(self.baseline),
             "models": {
                 **dict(self.models),
-                "identities": [
-                    dict(item) for item in self.models["identities"]
-                ],
+                "identities": [dict(item) for item in self.models["identities"]],
             },
         }
 
@@ -470,8 +454,8 @@ def load_evaluation_context(
         if model_registry is None
         else dict(model_registry)
     )
-    has_registry = (
-        registry["refresh_attempted_at"] is not None or bool(registry["models"])
+    has_registry = registry["refresh_attempted_at"] is not None or bool(
+        registry["models"]
     )
     artifact_sha256 = model_artifact_sha256
     if model_registry is None and has_registry:
@@ -494,12 +478,7 @@ def verify_evaluation_context(
     baseline = context.baseline
     if baseline["artifact_sha256"] is not None:
         version = baseline["version"]
-        path = (
-            Path(state_home)
-            / "guidance"
-            / "baselines"
-            / f"{version}.json"
-        )
+        path = Path(state_home) / "guidance" / "baselines" / f"{version}.json"
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
@@ -570,20 +549,14 @@ def _model_stamp_from_registry(
                 "runtime_id": runtime_id,
                 "provider": observation["provider"],
                 "canonical_identity": (
-                    resolution["canonical_identity"]
-                    if resolution is not None
-                    else None
+                    resolution["canonical_identity"] if resolution is not None else None
                 ),
                 "raw_alias": observation["raw_alias"],
                 "source_url": (
-                    resolution["source_url"]
-                    if resolution is not None
-                    else None
+                    resolution["source_url"] if resolution is not None else None
                 ),
                 "retrieved_at": (
-                    resolution["retrieved_at"]
-                    if resolution is not None
-                    else None
+                    resolution["retrieved_at"] if resolution is not None else None
                 ),
                 "status": verification["status"],
                 "unverified_since": verification["unverified_since"],
@@ -619,9 +592,7 @@ class SystemInventory:
             "profile_sha256": self.profile_sha256,
             "machine_inventory": self.machine_inventory.to_dict(),
             "repositories": [item.to_dict() for item in self.repositories],
-            "discovery_issues": [
-                issue.to_dict() for issue in self.discovery_issues
-            ],
+            "discovery_issues": [issue.to_dict() for issue in self.discovery_issues],
         }
         if self.schema_version == SYSTEM_INVENTORY_SCHEMA_VERSION:
             value["evaluation_context"] = self.evaluation_context.to_dict()
@@ -652,12 +623,10 @@ class SystemInventory:
             unknown = set(value) - expected_fields
             if missing:
                 raise ValueError(
-                    "system inventory is missing fields: "
-                    + ", ".join(sorted(missing))
+                    "system inventory is missing fields: " + ", ".join(sorted(missing))
                 )
             raise ValueError(
-                "system inventory has unsupported fields: "
-                + ", ".join(sorted(unknown))
+                "system inventory has unsupported fields: " + ", ".join(sorted(unknown))
             )
         raw_context = value.get("evaluation_context")
         if schema_version == SYSTEM_INVENTORY_SCHEMA_VERSION:
@@ -779,9 +748,7 @@ def _filter_stack(
     result = dict(stack)
     ids = result.get("surface_ids")
     if isinstance(ids, (list, tuple)):
-        result["surface_ids"] = [
-            item for item in ids if item in allowed_surface_ids
-        ]
+        result["surface_ids"] = [item for item in ids if item in allowed_surface_ids]
     return result
 
 
@@ -803,9 +770,7 @@ def _scope_inventory(
                 replace(
                     surface,
                     authority=(
-                        surface.authority
-                        if surface.authority == "package"
-                        else "user"
+                        surface.authority if surface.authority == "package" else "user"
                     ),
                     scope="global",
                 )
@@ -824,9 +789,7 @@ def _scope_inventory(
         )
     )
     findings: tuple[Finding, ...] = tuple(
-        finding
-        for finding in inventory.findings
-        if finding.surface_id in allowed_ids
+        finding for finding in inventory.findings if finding.surface_id in allowed_ids
     )
     return Inventory(
         schema_version=inventory.schema_version,
@@ -836,20 +799,15 @@ def _scope_inventory(
         surfaces=tuple(normalized_surfaces),
         relationships=relationships,
         effective_stacks=tuple(
-            _filter_stack(stack, allowed_ids)
-            for stack in inventory.effective_stacks
+            _filter_stack(stack, allowed_ids) for stack in inventory.effective_stacks
         ),
         findings=findings,
         evidence_summary=inventory.evidence_summary,
     )
 
 
-def _deduplicate_global_findings(
-    child: Inventory, machine: Inventory
-) -> Inventory:
-    global_ids = {
-        surface.id for surface in child.surfaces if surface.scope == "global"
-    }
+def _deduplicate_global_findings(child: Inventory, machine: Inventory) -> Inventory:
+    global_ids = {surface.id for surface in child.surfaces if surface.scope == "global"}
     machine_findings = {
         canonical_json(finding.to_dict()) for finding in machine.findings
     }
@@ -878,8 +836,7 @@ def audit_system(
     timestamp = generated_at or _now()
     discovery = discover_repositories(profile.roots)
     global_roots = tuple(
-        Path(surface.path).resolve(strict=False)
-        for surface in profile.global_surfaces
+        Path(surface.path).resolve(strict=False) for surface in profile.global_surfaces
     )
     machine = _scope_inventory(
         build_inventory(
@@ -888,9 +845,7 @@ def audit_system(
             working_directories=global_roots,
             generated_at=timestamp,
             detector_policy=detector_policy,
-            path_filter=_machine_path_filter(
-                global_roots, profile.global_surfaces
-            ),
+            path_filter=_machine_path_filter(global_roots, profile.global_surfaces),
         ),
         global_roots=global_roots,
         machine_only=True,
@@ -919,9 +874,7 @@ def audit_system(
             machine_only=False,
         )
         child = _deduplicate_global_findings(child, machine)
-        children.append(
-            RepositoryInventory(repository=repository, inventory=child)
-        )
+        children.append(RepositoryInventory(repository=repository, inventory=child))
 
     return SystemInventory(
         schema_version=SYSTEM_INVENTORY_SCHEMA_VERSION,

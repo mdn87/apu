@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import os
-from pathlib import Path
 import shutil
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping
 
 from .campaigns import (
@@ -93,16 +93,12 @@ def _rollback_loaded_receipt(
                         "status": committed["status"],
                         "receipt": str(path.relative_to(state_home)),
                         "rolled_back_at": committed["recorded_at"],
-                        "drifted_operation_ids": committed[
-                            "drifted_operation_ids"
-                        ],
+                        "drifted_operation_ids": committed["drifted_operation_ids"],
                     },
                 )
                 return {
                     "status": committed["status"],
-                    "drifted_operation_ids": committed[
-                        "drifted_operation_ids"
-                    ],
+                    "drifted_operation_ids": committed["drifted_operation_ids"],
                 }
         if campaign_id is not None and entry.get("status") in {
             "rolled_back",
@@ -110,9 +106,7 @@ def _rollback_loaded_receipt(
         }:
             return {
                 "status": entry["status"],
-                "drifted_operation_ids": list(
-                    entry.get("drifted_operation_ids", ())
-                ),
+                "drifted_operation_ids": list(entry.get("drifted_operation_ids", ())),
             }
         _preflight_backups(receipt["operations"])
     except (KeyError, OSError, TypeError, ValueError) as error:
@@ -143,9 +137,7 @@ def _rollback_loaded_receipt(
             raise RollbackError(f"rollback failed: {error}") from error
 
     status = "drifted" if drifted else "rolled_back"
-    rolled_back_at = (
-        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    )
+    rolled_back_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if campaign_id is None:
         receipt["rollback_status"] = status
         if drifted:
@@ -250,10 +242,7 @@ def _can_restore(operation: Mapping[str, Any]) -> bool:
     action = operation.get("action")
     if action == "symlink":
         expected = operation.get("created_symlink_target")
-        return (
-            isinstance(expected, str)
-            and symlink_points_to(target, expected)
-        )
+        return isinstance(expected, str) and symlink_points_to(target, expected)
 
     installed_hash = operation.get("installed_sha256")
     if installed_hash is None:

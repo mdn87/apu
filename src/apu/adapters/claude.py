@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import ast
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Iterable
 
+from apu.hooks_config import (
+    plugin_resolution_relationship,
+    structural_hook_relationships,
+)
 from apu.models import InstructionSurface, SurfaceRelationship
 
 from .base import (
@@ -20,7 +24,6 @@ from .base import (
     safe_rglob,
     skill_files,
 )
-
 
 _IMPORT_PATTERN = re.compile(r"(?<![\w@])@([^\s`]+)")
 
@@ -60,9 +63,7 @@ class ClaudeAdapter:
         surfaces: list[InstructionSurface] = []
         relationships: list[SurfaceRelationship] = []
 
-        for filename, kind, precedence in (
-            ("CLAUDE.md", "claude-instructions", 10),
-        ):
+        for filename, kind, precedence in (("CLAUDE.md", "claude-instructions", 10),):
             path = normalized_home / ".claude" / filename
             surface = self._surface(
                 path,
@@ -267,11 +268,7 @@ class ClaudeAdapter:
         local = path.name == "CLAUDE.local.md"
         return self._surface(
             path,
-            kind=(
-                "claude-local-instructions"
-                if local
-                else "claude-instructions"
-            ),
+            kind=("claude-local-instructions" if local else "claude-instructions"),
             authority="repository",
             scope="hierarchical",
             precedence=20 + (directory_depth(path.parent) * 2) + int(local),
@@ -373,23 +370,22 @@ class ClaudeAdapter:
                 )
             )
             return
-        hooks = value.get("hooks")
-        if isinstance(hooks, dict):
-            registrations = hooks.get("SessionStart")
-            if isinstance(registrations, list):
-                for index, _registration in enumerate(registrations):
-                    relationships.append(
-                        SurfaceRelationship(
-                            type="session_start_hook",
-                            from_surface_id=surface.id,
-                            to_surface_id=None,
-                            status="active",
-                            location={
-                                "event": "SessionStart",
-                                "registration_index": index,
-                            },
-                        )
-                    )
+        relationships.extend(
+            _legacy_session_start_relationships(
+                surface,
+                value,
+                status="configured",
+            )
+        )
+        relationships.extend(
+            structural_hook_relationships(
+                surface,
+                value,
+                status="configured",
+                source="settings",
+                scope=scope,
+            )
+        )
         marketplaces = value.get("extraKnownMarketplaces")
         if isinstance(marketplaces, dict):
             relationships.append(
@@ -410,13 +406,11 @@ class ClaudeAdapter:
         relationships: list[SurfaceRelationship],
         path_filter: PathFilter | None,
     ) -> None:
-        """Record instructions contributed by enabled plugins.
+        """Record structurally redacted hooks from enabled plugins.
 
-        A plugin's SessionStart hook injects context before the first turn of
-        every session and its skills are offered in every session, so both are
-        part of the effective instruction stack even though neither lives in a
-        file the user wrote. Only registration metadata is recorded; hook
-        commands are never emitted.
+        ``installed_plugins.json`` is the authoritative pointer when present.
+        A cache directory is used only when it has exactly one possible
+        version; ambiguous caches are reported instead of version-sorted.
         """
 
         plugins_root = home / ".claude" / "plugins"
@@ -426,30 +420,61 @@ class ClaudeAdapter:
         if path_filter is not None and not path_filter(settings_path):
             return
         settings = _read_json(settings_path)
-        enabled = (
-            settings.get("enabledPlugins")
-            if isinstance(settings, dict)
-            else None
-        )
+        enabled = settings.get("enabledPlugins") if isinstance(settings, dict) else None
         if not isinstance(enabled, dict):
             return
+
+        settings_surface = next(
+            (
+                surface
+                for surface in surfaces
+                if surface.path == str(absolute_logical_path(settings_path))
+            ),
+            None,
+        )
 
         for identifier in sorted(
             str(key) for key, value in enabled.items() if value is not False
         ):
             plugin, _, marketplace = identifier.partition("@")
             if not plugin or not marketplace:
+                if settings_surface is not None:
+                    relationships.append(
+                        plugin_resolution_relationship(
+                            settings_surface,
+                            identifier,
+                            status="invalid",
+                            provider=self.name,
+                        )
+                    )
                 continue
-            root = self._plugin_root(plugins_root, marketplace, plugin)
-            if root is None:
-                continue
-            self._discover_plugin_hook_file(
-                root / "hooks" / "hooks.json",
+            root, status = self._plugin_root(
+                plugins_root,
                 identifier=identifier,
-                surfaces=surfaces,
-                relationships=relationships,
-                path_filter=path_filter,
+                marketplace=marketplace,
+                plugin=plugin,
             )
+            if root is None:
+                if settings_surface is not None:
+                    relationships.append(
+                        plugin_resolution_relationship(
+                            settings_surface,
+                            identifier,
+                            status=status,
+                            provider=self.name,
+                        )
+                    )
+                continue
+            hook_paths = self._plugin_hook_paths(root)
+            for hook_path in hook_paths:
+                self._discover_plugin_hook_file(
+                    hook_path,
+                    identifier=identifier,
+                    status=status,
+                    surfaces=surfaces,
+                    relationships=relationships,
+                    path_filter=path_filter,
+                )
             for path in skill_files(
                 root / "skills",
                 path_filter=path_filter,
@@ -467,27 +492,84 @@ class ClaudeAdapter:
 
     @staticmethod
     def _plugin_root(
-        plugins_root: Path, marketplace: str, plugin: str
-    ) -> Path | None:
-        """Return the installed copy of a plugin, preferring the active cache."""
+        plugins_root: Path,
+        *,
+        identifier: str,
+        marketplace: str,
+        plugin: str,
+    ) -> tuple[Path | None, str]:
+        """Resolve a plugin without guessing which cached version is active."""
 
-        cached = sorted(
-            (plugins_root / "cache" / marketplace / plugin).glob("*"),
-            reverse=True,
+        installed_path = plugins_root / "installed_plugins.json"
+        if installed_path.exists():
+            installed = _read_json(installed_path)
+            if not isinstance(installed, dict):
+                return None, "invalid"
+            plugins = installed.get("plugins")
+            records = plugins.get(identifier) if isinstance(plugins, dict) else None
+            if not isinstance(records, list) or not records:
+                return None, "invalid"
+            candidates = {
+                absolute_logical_path(Path(record["installPath"]))
+                for record in records
+                if isinstance(record, dict)
+                and isinstance(record.get("installPath"), str)
+                and Path(record["installPath"]).is_absolute()
+            }
+            if len(candidates) != 1:
+                return None, "ambiguous" if candidates else "invalid"
+            candidate = next(iter(candidates))
+            return (
+                (candidate, "active-observed")
+                if candidate.is_dir()
+                else (None, "invalid")
+            )
+
+        cached = tuple(
+            candidate
+            for candidate in (plugins_root / "cache" / marketplace / plugin).glob("*")
+            if candidate.is_dir()
         )
-        for candidate in cached:
-            if candidate.is_dir():
-                return candidate
-        checkout = (
-            plugins_root / "marketplaces" / marketplace / "plugins" / plugin
+        if len(cached) == 1:
+            return absolute_logical_path(cached[0]), "trust-unknown"
+        if len(cached) > 1:
+            return None, "ambiguous"
+        checkout = plugins_root / "marketplaces" / marketplace / "plugins" / plugin
+        return (
+            (absolute_logical_path(checkout), "trust-unknown")
+            if checkout.is_dir()
+            else (None, "invalid")
         )
-        return checkout if checkout.is_dir() else None
+
+    @staticmethod
+    def _plugin_hook_paths(root: Path) -> tuple[Path, ...]:
+        manifest = _read_json(root / ".claude-plugin" / "plugin.json")
+        declared = manifest.get("hooks") if isinstance(manifest, dict) else None
+        if isinstance(declared, str):
+            values = (declared,)
+        elif isinstance(declared, list) and all(
+            isinstance(value, str) for value in declared
+        ):
+            values = tuple(declared)
+        elif declared is None:
+            values = ("./hooks/hooks.json",)
+        else:
+            return ()
+
+        root_resolved = root.resolve(strict=False)
+        paths: list[Path] = []
+        for value in values:
+            candidate = (root / value).resolve(strict=False)
+            if candidate == root_resolved or root_resolved in candidate.parents:
+                paths.append(absolute_logical_path(candidate))
+        return tuple(paths)
 
     def _discover_plugin_hook_file(
         self,
         path: Path,
         *,
         identifier: str,
+        status: str,
         surfaces: list[InstructionSurface],
         relationships: list[SurfaceRelationship],
         path_filter: PathFilter | None,
@@ -504,38 +586,24 @@ class ClaudeAdapter:
             return
         surfaces.append(surface)
         value = _read_json(path)
-        if not isinstance(value, dict):
-            relationships.append(
-                SurfaceRelationship(
-                    type="plugin_hooks",
-                    from_surface_id=surface.id,
-                    to_surface_id=None,
-                    status="unreadable",
-                    location={"plugin": identifier},
-                )
+        relationships.extend(
+            _legacy_session_start_relationships(
+                surface,
+                value,
+                status=status,
+                plugin_identity=identifier,
             )
-            return
-        hooks = value.get("hooks")
-        if not isinstance(hooks, dict):
-            return
-        registrations = hooks.get("SessionStart")
-        if not isinstance(registrations, list):
-            return
-        for index, _registration in enumerate(registrations):
-            relationships.append(
-                SurfaceRelationship(
-                    type="session_start_hook",
-                    from_surface_id=surface.id,
-                    to_surface_id=None,
-                    status="active",
-                    location={
-                        "event": "SessionStart",
-                        "registration_index": index,
-                        "plugin": identifier,
-                        "source": "plugin",
-                    },
-                )
+        )
+        relationships.extend(
+            structural_hook_relationships(
+                surface,
+                value,
+                status=status,
+                source="plugin",
+                scope="global",
+                plugin_identity=identifier,
             )
+        )
 
     def _discover_marketplace_file(
         self,
@@ -723,6 +791,41 @@ def _read_json(path: Path) -> object | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
+
+
+def _legacy_session_start_relationships(
+    surface: InstructionSurface,
+    value: object,
+    *,
+    status: str,
+    plugin_identity: str | None = None,
+) -> tuple[SurfaceRelationship, ...]:
+    """Keep the original SessionStart inventory shape during schema migration."""
+
+    hooks = value.get("hooks") if isinstance(value, dict) else None
+    registrations = hooks.get("SessionStart") if isinstance(hooks, dict) else None
+    if not isinstance(registrations, list):
+        return ()
+    relationships: list[SurfaceRelationship] = []
+    for index, registration in enumerate(registrations):
+        if not isinstance(registration, dict):
+            continue
+        location: dict[str, object] = {
+            "event": "SessionStart",
+            "registration_index": index,
+        }
+        if plugin_identity is not None:
+            location.update({"plugin": plugin_identity, "source": "plugin"})
+        relationships.append(
+            SurfaceRelationship(
+                type="session_start_hook",
+                from_surface_id=surface.id,
+                to_surface_id=None,
+                status=status,
+                location=location,
+            )
+        )
+    return tuple(relationships)
 
 
 def _imports(path: Path) -> tuple[tuple[int, str], ...]:

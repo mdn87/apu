@@ -431,6 +431,59 @@ def test_completion_findings_do_not_cross_task_windows(tmp_path: Path) -> None:
     assert len(stale_gate_findings[0]["evidence_refs"]) == 3
 
 
+def test_evidence_detectors_preserve_lifecycle_and_completion_order() -> None:
+    def event(
+        sequence: int,
+        event_type: str,
+        *,
+        correlation: str | None = None,
+        dirty: bool = False,
+    ) -> dict[str, object]:
+        return {
+            "event_id": f"event-{sequence}",
+            "event_type": event_type,
+            "observed_at": f"2026-08-14T15:00:{sequence:02d}Z",
+            "sequence": sequence,
+            "correlation_sha256": correlation,
+            "observation": {
+                "tool_name": "Read",
+                "command_class": "other",
+                "input_sha256": f"input-{sequence}",
+            },
+            "state": {"dirty": dirty},
+        }
+
+    events = [
+        event(0, "task.started"),
+        event(1, "permission.denied"),
+        event(2, "permission.denied"),
+        event(3, "tool.completed", correlation="orphan"),
+        event(4, "tool.requested", correlation="unresolved"),
+        event(5, "task.completed"),
+        event(6, "tool.requested", correlation="post-completion"),
+        event(7, "state.observed", dirty=True),
+    ]
+    verification = {
+        item["event_id"]: {"status": "verified", "reason_codes": []} for item in events
+    }
+
+    findings = behavior_audit_module._evidence_findings(
+        events,
+        provider="fixture",
+        session_id="session-1",
+        verification=verification,
+        now=_NOW,
+    )
+
+    assert [finding["detector"] for finding in findings] == [
+        "repeated-permission-denial",
+        "unresolved-tool-request",
+        "orphaned-tool-result",
+        "post-completion-activity",
+        "dirty-state-at-completion",
+    ]
+
+
 def test_behavior_cli_exposes_caps_and_has_no_unbounded_mode(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

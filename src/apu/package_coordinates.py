@@ -54,15 +54,9 @@ class PackageCoordinate:
     source: str
 
     def __post_init__(self) -> None:
-        provider = _normalize_identifier(
-            self.provider, "package coordinate provider"
-        )
-        package = _normalize_identifier(
-            self.package, "package coordinate package"
-        )
-        source = _normalize_identifier(
-            self.source, "package coordinate source"
-        )
+        provider = _normalize_identifier(self.provider, "package coordinate provider")
+        package = _normalize_identifier(self.package, "package coordinate package")
+        source = _normalize_identifier(self.source, "package coordinate source")
         if _PROVIDER_PATTERN.fullmatch(provider) is None:
             raise PackageCoordinateError(
                 f"invalid package coordinate provider: {self.provider!r}"
@@ -106,9 +100,7 @@ class PackageCoordinate:
         value = _strict_text(selector, "package selector")
         package, separator, source = value.rpartition("@")
         if not separator or not package or not source:
-            raise PackageCoordinateError(
-                "package selector must be PACKAGE@SOURCE"
-            )
+            raise PackageCoordinateError("package selector must be PACKAGE@SOURCE")
         return cls(provider=provider, package=package, source=source)
 
     @classmethod
@@ -264,15 +256,12 @@ def select_latest_stable(
         raise VersionSelectionError("no stable semantic versions are available")
     latest = max(stable)
     tied = {
-        str(version)
-        for version in stable
-        if version.compare_precedence(latest) == 0
+        str(version) for version in stable if version.compare_precedence(latest) == 0
     }
     if len(tied) > 1:
         raise VersionSelectionError(
             "latest stable version is ambiguous because build metadata "
-            "does not affect SemVer precedence: "
-            + ", ".join(sorted(tied))
+            "does not affect SemVer precedence: " + ", ".join(sorted(tied))
         )
     return latest
 
@@ -285,9 +274,7 @@ def _strict_text(value: str, field: str) -> str:
     if not isinstance(value, str) or not value:
         raise PackageCoordinateError(f"{field} must be non-empty text")
     if value != value.strip():
-        raise PackageCoordinateError(
-            f"{field} must not contain surrounding whitespace"
-        )
+        raise PackageCoordinateError(f"{field} must not contain surrounding whitespace")
     if not value.isascii():
         raise PackageCoordinateError(f"{field} must contain only ASCII text")
     return value
@@ -301,9 +288,7 @@ def _strict_semantic_version_text(value: str) -> str:
             "semantic version must not contain surrounding whitespace"
         )
     if not value.isascii():
-        raise SemanticVersionError(
-            "semantic version must contain only ASCII text"
-        )
+        raise SemanticVersionError("semantic version must contain only ASCII text")
     return value
 
 
@@ -311,9 +296,7 @@ def _coerce_version(value: str | SemanticVersion) -> SemanticVersion:
     if isinstance(value, SemanticVersion):
         return value
     if not isinstance(value, str):
-        raise SemanticVersionError(
-            "semantic version must be text or a SemanticVersion"
-        )
+        raise SemanticVersionError("semantic version must be text or a SemanticVersion")
     return SemanticVersion.parse(value)
 
 
@@ -340,9 +323,7 @@ def _compare_prerelease(
         left_numeric = left_identifier.isdigit()
         right_numeric = right_identifier.isdigit()
         if left_numeric and right_numeric:
-            return _compare_values(
-                (int(left_identifier),), (int(right_identifier),)
-            )
+            return _compare_values((int(left_identifier),), (int(right_identifier),))
         if left_numeric != right_numeric:
             return -1 if left_numeric else 1
         return (left_identifier > right_identifier) - (

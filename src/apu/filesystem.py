@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import fnmatch
-from hashlib import sha256
 import os
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
@@ -77,9 +77,7 @@ def symlink_points_to(link: Path, expected: Path | str) -> bool:
 
 
 def _path_identity(path: Path) -> str:
-    normalized = os.path.normcase(
-        os.path.normpath(os.path.abspath(os.fspath(path)))
-    )
+    normalized = os.path.normcase(os.path.normpath(os.path.abspath(os.fspath(path))))
     if os.name == "nt":
         if normalized.startswith("\\\\?\\unc\\"):
             normalized = "\\\\" + normalized[8:]

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
+import stat
 import subprocess
 from collections import Counter
 from collections.abc import Iterable, Mapping
@@ -11,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from .locking import ProcessLock
 from .models import canonical_json, sha256_bytes
 from .state import ensure_private_directory, ensure_state_home
 
@@ -23,6 +26,11 @@ SOURCE_KINDS = frozenset({"transcript", "hook", "state-observer"})
 _MAX_TRACE_BYTES = 256 * 1024 * 1024
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_LABEL = re.compile(r"^[A-Za-z0-9_.:/-]{1,128}$")
+_PROVIDER_COMPONENT = re.compile(r"^[a-z0-9._-]{1,128}$")
+_WINDOWS_DEVICE_COMPONENT = re.compile(
+    r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)",
+    re.IGNORECASE,
+)
 _FAILURE_OUTPUT = re.compile(
     r"(?:exit code:\s*[1-9]\d*|script failed|command failed)", re.IGNORECASE
 )
@@ -145,7 +153,7 @@ def validate_evidence_event(event: Mapping[str, Any]) -> None:
     if event["schema_version"] != EVIDENCE_SCHEMA_VERSION:
         raise ValueError("unsupported evidence schema_version")
     _required_string(event["event_id"], "event_id")
-    _required_string(event["provider"], "provider", maximum=128)
+    validate_provider_component(event["provider"])
     if event["source_kind"] not in SOURCE_KINDS:
         raise ValueError("evidence source_kind is unsupported")
     _required_string(event["session_id"], "session_id")
@@ -329,23 +337,81 @@ def _event(
     return stored
 
 
+def validate_provider_component(provider: Any) -> str:
+    """Validate one opaque provider label on POSIX and Windows filesystems."""
+
+    if (
+        not isinstance(provider, str)
+        or not _PROVIDER_COMPONENT.fullmatch(provider)
+        or provider in {".", ".."}
+        or provider.endswith((".", " "))
+        or _WINDOWS_DEVICE_COMPONENT.match(provider)
+    ):
+        raise ValueError(
+            "evidence provider must be one portable 1-128 character path component"
+        )
+    return provider
+
+
 def _safe_provider(provider: str) -> str:
-    return _required_string(provider, "provider", maximum=128)
+    return validate_provider_component(provider)
+
+
+def _evidence_root(state_home: Path) -> Path:
+    state_root = Path(state_home)
+    resolved_state = state_root.resolve(strict=False)
+    behavior_root = state_root / "behavior"
+    evidence_root = behavior_root / "evidence"
+    for candidate, expected, label in (
+        (behavior_root, resolved_state / "behavior", "behavior root"),
+        (
+            evidence_root,
+            resolved_state / "behavior" / "evidence",
+            "evidence root",
+        ),
+    ):
+        if candidate.is_symlink():
+            raise ValueError(f"{label} cannot be a filesystem redirect")
+        if candidate.exists() and not candidate.is_dir():
+            raise ValueError(f"{label} must be a directory")
+        if candidate.resolve(strict=False) != expected:
+            raise ValueError(f"{label} cannot escape APU state")
+    return evidence_root
+
+
+def _evidence_provider_directory(state_home: Path, provider: str) -> Path:
+    evidence_root = _evidence_root(state_home)
+    provider_directory = evidence_root / provider
+    if provider_directory.is_symlink():
+        raise ValueError("evidence provider directory cannot be a symlink")
+    if provider_directory.exists() and not provider_directory.is_dir():
+        raise ValueError("evidence provider path must be a directory")
+    expected = evidence_root.resolve(strict=False) / provider
+    if provider_directory.resolve(strict=False) != expected:
+        raise ValueError("evidence provider directory escapes the evidence root")
+    return provider_directory
+
+
+def _ensure_evidence_provider_directory(state_home: Path, provider: str) -> Path:
+    evidence_root = _evidence_root(state_home)
+    ensure_state_home(state_home)
+    evidence_root = _evidence_root(state_home)
+    ensure_private_directory(evidence_root)
+    evidence_root = _evidence_root(state_home)
+    provider_directory = _evidence_provider_directory(state_home, provider)
+    ensure_private_directory(provider_directory)
+    # Recheck after creation. A same-user symlink swap after this point remains
+    # a documented local race; every ordinary and pre-existing redirect is
+    # rejected before JSONL, lock, or SQLite sidecars are opened.
+    return _evidence_provider_directory(state_home, provider)
 
 
 def evidence_path(state_home: Path, provider: str, session_id: str) -> Path:
     selected_provider = _safe_provider(provider)
-    if not _SAFE_LABEL.fullmatch(selected_provider):
-        raise ValueError("evidence provider is not a safe path label")
+    provider_directory = _evidence_provider_directory(state_home, selected_provider)
     selected_session = _required_string(session_id, "session_id")
     session_digest = sha256(selected_session.encode("utf-8")).hexdigest()
-    return (
-        Path(state_home)
-        / "behavior"
-        / "evidence"
-        / selected_provider
-        / f"{session_digest}.jsonl"
-    )
+    return provider_directory / f"{session_digest}.jsonl"
 
 
 def append_evidence_events(
@@ -361,41 +427,178 @@ def append_evidence_events(
         raise ValueError("one evidence append must target one provider session")
     provider, session_id = next(iter(identities))
     path = evidence_path(state_home, provider, session_id)
-    existing = {
-        event["event_id"] for event in read_evidence(state_home, provider, session_id)
-    }
-    pending = tuple(
-        event for event in stored_events if event["event_id"] not in existing
-    )
-    if not pending:
-        return path, ()
-    ensure_state_home(state_home)
-    ensure_private_directory(path.parent)
-    encoded = b"".join(
-        (canonical_json(event) + "\n").encode("utf-8") for event in pending
-    )
-    descriptor = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+    provider_directory = _ensure_evidence_provider_directory(state_home, provider)
+    path = provider_directory / path.name
+    lock_path = _evidence_lock_path(path)
+    index_path = _evidence_index_path(path)
+    _validate_evidence_artifact(path)
+    _validate_evidence_artifact(lock_path)
+    _validate_evidence_index_artifacts(index_path)
+    with ProcessLock(lock_path, timeout=10.0):
+        _validate_evidence_artifact(path)
+        _validate_evidence_index_artifacts(index_path)
+        with sqlite3.connect(index_path) as index:
+            _prepare_evidence_index(index, path, provider, session_id)
+            pending = _pending_events(index, stored_events)
+            if not pending:
+                return path, ()
+            encoded = b"".join(
+                (canonical_json(event) + "\n").encode("utf-8") for event in pending
+            )
+            flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(path, flags, 0o600)
+            try:
+                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    raise ValueError("evidence artifact must be a regular file")
+                if os.name == "posix":
+                    os.fchmod(descriptor, 0o600)
+                written = 0
+                while written < len(encoded):
+                    count = os.write(descriptor, encoded[written:])
+                    if count == 0:
+                        raise OSError("evidence append made no progress")
+                    written += count
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            index.executemany(
+                "INSERT INTO event_ids(event_id) VALUES (?)",
+                ((event["event_id"],) for event in pending),
+            )
+            _record_index_boundary(index, path)
+            index.commit()
+            _restrict_private_file(index_path)
+            return path, pending
+
+
+def _evidence_lock_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.lock")
+
+
+def _evidence_index_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.index.sqlite3")
+
+
+def _validate_evidence_artifact(path: Path) -> bool:
     try:
-        written = 0
-        while written < len(encoded):
-            count = os.write(descriptor, encoded[written:])
-            if count == 0:
-                raise OSError("evidence append made no progress")
-            written += count
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    return path, pending
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+    ):
+        raise ValueError(f"evidence artifact must be a regular file: {path}")
+    return True
+
+
+def _validate_evidence_index_artifacts(path: Path) -> None:
+    for candidate in (
+        path,
+        Path(f"{path}-journal"),
+        Path(f"{path}-wal"),
+        Path(f"{path}-shm"),
+    ):
+        _validate_evidence_artifact(candidate)
+
+
+def _restrict_private_file(path: Path) -> None:
+    if os.name == "posix" and _validate_evidence_artifact(path):
+        path.chmod(0o600)
+
+
+def _file_boundary(path: Path) -> tuple[int, int]:
+    if not _validate_evidence_artifact(path):
+        return 0, 0
+    metadata = path.stat()
+    return metadata.st_size, metadata.st_mtime_ns
+
+
+def _prepare_evidence_index(
+    index: sqlite3.Connection,
+    path: Path,
+    provider: str,
+    session_id: str,
+) -> None:
+    index.execute("CREATE TABLE IF NOT EXISTS event_ids (event_id TEXT PRIMARY KEY)")
+    index.execute(
+        "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    stored = dict(index.execute("SELECT key, value FROM metadata"))
+    size, modified = _file_boundary(path)
+    if stored.get("size") == str(size) and stored.get("mtime_ns") == str(modified):
+        return
+    events = _read_evidence_unlocked(path, provider, session_id)
+    index.execute("DELETE FROM event_ids")
+    index.executemany(
+        "INSERT OR IGNORE INTO event_ids(event_id) VALUES (?)",
+        ((event["event_id"],) for event in events),
+    )
+    _record_index_boundary(index, path)
+    index.commit()
+
+
+def _record_index_boundary(index: sqlite3.Connection, path: Path) -> None:
+    size, modified = _file_boundary(path)
+    index.executemany(
+        "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
+        (("size", str(size)), ("mtime_ns", str(modified))),
+    )
+
+
+def _pending_events(
+    index: sqlite3.Connection, events: Iterable[dict[str, Any]]
+) -> tuple[dict[str, Any], ...]:
+    unique: dict[str, dict[str, Any]] = {}
+    for event in events:
+        unique.setdefault(event["event_id"], event)
+    identifiers = tuple(unique)
+    existing: set[str] = set()
+    for offset in range(0, len(identifiers), 500):
+        chunk = identifiers[offset : offset + 500]
+        placeholders = ",".join("?" for _ in chunk)
+        existing.update(
+            row[0]
+            for row in index.execute(
+                f"SELECT event_id FROM event_ids WHERE event_id IN ({placeholders})",
+                chunk,
+            )
+        )
+    return tuple(
+        event for identifier, event in unique.items() if identifier not in existing
+    )
 
 
 def read_evidence(
     state_home: Path, provider: str, session_id: str
 ) -> list[dict[str, Any]]:
     path = evidence_path(state_home, provider, session_id)
-    if not path.is_file():
+    if not _validate_evidence_artifact(path):
+        return []
+    lock_path = _evidence_lock_path(path)
+    _validate_evidence_artifact(lock_path)
+    with ProcessLock(lock_path, timeout=10.0):
+        _validate_evidence_artifact(path)
+        return _read_evidence_unlocked(path, provider, session_id)
+
+
+def _read_evidence_unlocked(
+    path: Path, provider: str, session_id: str
+) -> list[dict[str, Any]]:
+    if not _validate_evidence_artifact(path):
         return []
     events: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as stream:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise ValueError("evidence artifact must be a regular file")
+    with os.fdopen(descriptor, encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, start=1):
             if not line.strip():
                 continue

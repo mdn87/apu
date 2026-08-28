@@ -223,11 +223,7 @@ def test_valid_candidate_materializes_only_after_structural_verification() -> No
     stage = sanitize_staged_files(
         {"settings.env": f"OPENAI_API_KEY={SECRET}\nMODE=strict\n"}
     )
-    candidate = {
-        "settings.env": (
-            "OPENAI_API_KEY=«APU-REDACTED-1»\nMODE=reviewed\n"
-        )
-    }
+    candidate = {"settings.env": ("OPENAI_API_KEY=«APU-REDACTED-1»\nMODE=reviewed\n")}
 
     result = verify_plan_candidate(candidate, stage.redactions)
 
@@ -249,8 +245,7 @@ def test_valid_candidate_materializes_only_after_structural_verification() -> No
         (
             {
                 "settings.env": (
-                    "OPENAI_API_KEY=«APU-REDACTED-1»\n"
-                    "COPY=«APU-REDACTED-1»\n"
+                    "OPENAI_API_KEY=«APU-REDACTED-1»\nCOPY=«APU-REDACTED-1»\n"
                 )
             },
             "duplicated placeholder",
@@ -285,14 +280,9 @@ def test_missing_duplicate_and_moved_placeholders_quarantine(
 
 
 def test_unexpected_placeholder_quarantines() -> None:
-    stage = sanitize_staged_files(
-        {"settings.env": f"OPENAI_API_KEY={SECRET}\n"}
-    )
+    stage = sanitize_staged_files({"settings.env": f"OPENAI_API_KEY={SECRET}\n"})
     candidate = {
-        "settings.env": (
-            "OPENAI_API_KEY=«APU-REDACTED-1»\n"
-            "OTHER=«APU-REDACTED-99»\n"
-        )
+        "settings.env": ("OPENAI_API_KEY=«APU-REDACTED-1»\nOTHER=«APU-REDACTED-99»\n")
     }
 
     result = verify_plan_candidate(candidate, stage.redactions)
@@ -307,8 +297,7 @@ def test_live_secret_in_returned_candidate_quarantines_before_persistence() -> N
     )
     candidate = {
         "settings.env": (
-            "OPENAI_API_KEY=«APU-REDACTED-1»\n"
-            f"NEW_API_KEY={('sk-proj-' + 'z' * 30)}\n"
+            f"OPENAI_API_KEY=«APU-REDACTED-1»\nNEW_API_KEY={('sk-proj-' + 'z' * 30)}\n"
         )
     }
 
@@ -321,9 +310,7 @@ def test_live_secret_in_returned_candidate_quarantines_before_persistence() -> N
 
 
 def test_exact_private_map_value_in_candidate_quarantines() -> None:
-    stage = sanitize_staged_files(
-        {"settings.env": f"OPENAI_API_KEY={SECRET}\n"}
-    )
+    stage = sanitize_staged_files({"settings.env": f"OPENAI_API_KEY={SECRET}\n"})
 
     result = verify_plan_candidate(
         {"settings.env": f"OPENAI_API_KEY={SECRET}\n"},

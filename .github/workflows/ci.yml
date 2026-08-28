@@ -7,19 +7,38 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install development tools
+        run: python -m pip install --upgrade pip ".[dev]"
+      - name: Validate hook configuration
+        run: pre-commit validate-config
+      - name: Run incremental quality checks
+        run: pre-commit run --all-files --show-diff-on-failure
+
   deterministic:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.11", "3.14"]
-
     runs-on: ${{ matrix.os }}
-
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -27,18 +46,55 @@ jobs:
         run: python -m pip install --upgrade pip ".[dev]"
       - name: Deterministic tests
         run: python -m pytest
+
+  distribution:
+    needs: [quality, deterministic]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install packaging tools
+        run: python -m pip install --upgrade pip ".[dev]"
       - name: Build distributions
-        run: python -m build
-      - name: Clean wheel and resource smoke test
+        run: python -m build --outdir dist
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+      - name: Verify wheel, sdist, target, and user-base installs
         shell: bash
         run: |
-          python -m pip uninstall -y agent-policy-updater
-          python -m pip install --no-deps dist/*.whl
-          apu --help
-          python - <<'PY'
-          from apu.resources import behavioral_fixtures_path, optimizer_skill_path, resource_root
-          assert (optimizer_skill_path() / "SKILL.md").is_file()
-          assert (resource_root() / "templates" / "global-AGENTS.md").is_file()
-          names = {path.name for path in behavioral_fixtures_path().iterdir() if path.is_dir()}
-          assert "explicit-named-skill" in names
-          PY
+          set -euo pipefail
+          apu_root="$PWD"
+          apu_tmp="$(mktemp -d)"
+          apu_wheel="$(find dist -maxdepth 1 -type f -name '*.whl' -print)"
+          apu_sdist="$(find dist -maxdepth 1 -type f -name '*.tar.gz' -print)"
+          test "$(printf '%s\n' "$apu_wheel" | grep -c .)" -eq 1
+          test "$(printf '%s\n' "$apu_sdist" | grep -c .)" -eq 1
+
+          python -m venv "$apu_tmp/wheel-env"
+          "$apu_tmp/wheel-env/bin/python" -m pip install --no-deps "$apu_root/$apu_wheel"
+          "$apu_tmp/wheel-env/bin/python" scripts/verify_distribution.py \
+            --source-root "$apu_root"
+
+          python -m venv "$apu_tmp/sdist-env"
+          "$apu_tmp/sdist-env/bin/python" -m pip install --no-deps "$apu_root/$apu_sdist"
+          "$apu_tmp/sdist-env/bin/python" scripts/verify_distribution.py \
+            --source-root "$apu_root"
+
+          python -m pip install --no-deps --target "$apu_tmp/target" "$apu_wheel"
+          PYTHONPATH="$apu_tmp/target" python scripts/verify_distribution.py \
+            --source-root "$apu_root" --scripts-dir "$apu_tmp/target/bin"
+
+          PYTHONUSERBASE="$apu_tmp/userbase" python -m pip install \
+            --user --break-system-packages --no-deps "$apu_wheel"
+          PYTHONUSERBASE="$apu_tmp/userbase" python scripts/verify_distribution.py \
+            --source-root "$apu_root" --scripts-dir "$apu_tmp/userbase/bin"
+      - name: Upload verified distributions
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: apu-distributions
+          path: dist/*
+          if-no-files-found: error

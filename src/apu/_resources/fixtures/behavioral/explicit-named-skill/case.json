@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "explicit-named-skill",
+  "supported_runners": ["codex", "claude"],
+  "expected_tier": "explicit-skill",
+  "events": {"required": [], "forbidden": ["delegation", "review"]},
+  "expected_outputs": [
+    {
+      "path": "skill-report.md",
+      "contains": "optimizing-agent-instructions"
+    }
+  ],
+  "validation_commands": [["{python}", "../checks/check.py"]],
+  "timeout_seconds": 30,
+  "cleanup": "always"
+}

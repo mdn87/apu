@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimize Agent Instructions"
+  short_description: "Audit and simplify agent workflow guidance"
+  default_prompt: "Use $optimizing-agent-instructions to audit these agent instructions and produce a proportional, evidence-backed revision."

@@ -89,6 +89,31 @@ IsolationProbe = Callable[[IsolationProbeRequest], IsolationProbeResult]
 DispatchRunner = Callable[[RunnerRequest], Mapping[str, Any]]
 
 
+@dataclass(frozen=True)
+class _PreparedDispatch:
+    state_root: Path
+    campaign_id: str
+    work_order_id: str
+    attempt: int
+    created_at: str
+    idempotency_key: Mapping[str, Any]
+    contract: Mapping[str, Any]
+    order: SystemWorkOrder
+    live_target: Path
+    live_bytes: bytes
+    snapshot_id: str
+    expected_revision: int
+    staged_text: str
+    redactions: RedactionMap
+
+
+@dataclass(frozen=True)
+class _CandidateEvaluation:
+    candidate_sha256: str | None
+    reasons: tuple[str, ...]
+    materialized_files: Mapping[str, str] | None
+
+
 def dispatch_work_order(
     state_home: Path,
     campaign_id: str,
@@ -106,16 +131,14 @@ def dispatch_work_order(
     Rejected output is represented by hashes and reason codes only.
     """
 
-    if not callable(runner) or not callable(isolation_probe):
-        raise TypeError("runner and isolation_probe must be callable")
-    _component(campaign_id, "campaign_id")
-    _component(work_order_id, "work_order_id")
-    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
-        raise ValueError("attempt must be a positive integer")
-    timestamp = created_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    operation_id = f"dispatch-{work_order_id}"
-    idempotency_key = {"operation_id": operation_id, "attempt": attempt}
-
+    timestamp, idempotency_key = _validate_dispatch_request(
+        campaign_id,
+        work_order_id,
+        runner=runner,
+        isolation_probe=isolation_probe,
+        attempt=attempt,
+        created_at=created_at,
+    )
     state_root = Path(state_home).expanduser().resolve()
     with CampaignLock(state_root, campaign_id, purpose="dispatch"):
         existing = _existing_result(
@@ -125,180 +148,319 @@ def dispatch_work_order(
         )
         if existing is not None:
             return _result_from_leaf(state_root, campaign_id, existing)
-
-        contract = _load_dispatch_contract(
+        prepared = _prepare_dispatch(
             state_root,
             campaign_id,
             work_order_id,
-        )
-        order: SystemWorkOrder = contract["order"]
-        if order.manual_only or not order.dispatchable:
-            raise DispatchRejectedError(
-                f"work order {work_order_id} is manual-only and cannot be dispatched"
-            )
-
-        live_target = Path(order.target).expanduser().resolve(strict=True)
-        live_bytes = _read_stable_file(live_target)
-        expected_hashes = {finding.surface_content_sha256 for finding in order.findings}
-        if len(expected_hashes) != 1 or sha256_bytes(live_bytes) not in expected_hashes:
-            raise DispatchRejectedError(
-                f"work order target bytes no longer match {work_order_id}"
-            )
-        try:
-            live_text = live_bytes.decode("utf-8")
-        except UnicodeDecodeError as error:
-            raise DispatchRejectedError(
-                f"work order target is not UTF-8 text: {live_target}"
-            ) from error
-
-        index = load_campaign_index(state_root, campaign_id)
-        bound_snapshot = _bind_snapshot(
-            state_root,
-            campaign_id,
-            order,
-            system_plan=contract["system_plan"],
-            index=index,
-            requested_snapshot_id=snapshot_id,
+            snapshot_id=snapshot_id,
+            attempt=attempt,
             created_at=timestamp,
+            idempotency_key=idempotency_key,
         )
-        index = load_campaign_index(state_root, campaign_id)
-
-        staged_text, redactions = _load_stage_input(
-            contract["root"],
-            order,
-            live_text=live_text,
+        return _execute_prepared_dispatch(
+            prepared,
+            runner=runner,
+            isolation_probe=isolation_probe,
         )
-        with _temporary_dispatch_stage(
-            prefix=(
-                "apu-dispatch-"
-                + sha256_json({"work_order_id": work_order_id})[:12]
-                + f"-a{attempt}-"
-            ),
-        ) as stage_root:
-            ensure_private_directory(stage_root)
-            staged_file = stage_root / "files" / "target.txt"
-            _write_bytes_once(staged_file, staged_text.encode("utf-8"))
-            stage_manifest = {
-                "schema_version": 1,
-                "work_order_id": work_order_id,
-                "files": [
-                    {
-                        "logical_path": str(live_target),
-                        "stage_path": "files/target.txt",
-                        "source_sha256": sha256_bytes(live_bytes),
-                        "staged_sha256": sha256_bytes(staged_text.encode("utf-8")),
-                        "sanitized": order.requires_sanitized_staging,
-                    }
-                ],
-            }
-            write_json_atomic(stage_root / "manifest.json", stage_manifest)
-            stage_before = _tree_identity(stage_root)
 
-            live_before_probe = sha256_bytes(_read_stable_file(live_target))
-            try:
-                probe = isolation_probe(
-                    IsolationProbeRequest(
-                        stage_root=stage_root,
-                        probe_target=live_target,
-                        live_root=live_target.parent,
-                    )
+
+def _validate_dispatch_request(
+    campaign_id: str,
+    work_order_id: str,
+    *,
+    runner: DispatchRunner,
+    isolation_probe: IsolationProbe,
+    attempt: int,
+    created_at: str | None,
+) -> tuple[str, dict[str, Any]]:
+    if not callable(runner) or not callable(isolation_probe):
+        raise TypeError("runner and isolation_probe must be callable")
+    _component(campaign_id, "campaign_id")
+    _component(work_order_id, "work_order_id")
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+        raise ValueError("attempt must be a positive integer")
+    timestamp = created_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return timestamp, {
+        "operation_id": f"dispatch-{work_order_id}",
+        "attempt": attempt,
+    }
+
+
+def _prepare_dispatch(
+    state_root: Path,
+    campaign_id: str,
+    work_order_id: str,
+    *,
+    snapshot_id: str | None,
+    attempt: int,
+    created_at: str,
+    idempotency_key: Mapping[str, Any],
+) -> _PreparedDispatch:
+    contract = _load_dispatch_contract(
+        state_root,
+        campaign_id,
+        work_order_id,
+    )
+    order: SystemWorkOrder = contract["order"]
+    if order.manual_only or not order.dispatchable:
+        raise DispatchRejectedError(
+            f"work order {work_order_id} is manual-only and cannot be dispatched"
+        )
+    live_target, live_bytes, live_text = _load_live_work_order_input(
+        order,
+        work_order_id=work_order_id,
+    )
+    index = load_campaign_index(state_root, campaign_id)
+    bound_snapshot = _bind_snapshot(
+        state_root,
+        campaign_id,
+        order,
+        system_plan=contract["system_plan"],
+        index=index,
+        requested_snapshot_id=snapshot_id,
+        created_at=created_at,
+    )
+    index = load_campaign_index(state_root, campaign_id)
+    staged_text, redactions = _load_stage_input(
+        contract["root"],
+        order,
+        live_text=live_text,
+    )
+    return _PreparedDispatch(
+        state_root=state_root,
+        campaign_id=campaign_id,
+        work_order_id=work_order_id,
+        attempt=attempt,
+        created_at=created_at,
+        idempotency_key=idempotency_key,
+        contract=contract,
+        order=order,
+        live_target=live_target,
+        live_bytes=live_bytes,
+        snapshot_id=bound_snapshot,
+        expected_revision=index["revision"],
+        staged_text=staged_text,
+        redactions=redactions,
+    )
+
+
+def _load_live_work_order_input(
+    order: SystemWorkOrder,
+    *,
+    work_order_id: str,
+) -> tuple[Path, bytes, str]:
+    live_target = Path(order.target).expanduser().resolve(strict=True)
+    live_bytes = _read_stable_file(live_target)
+    expected_hashes = {finding.surface_content_sha256 for finding in order.findings}
+    if len(expected_hashes) != 1 or sha256_bytes(live_bytes) not in expected_hashes:
+        raise DispatchRejectedError(
+            f"work order target bytes no longer match {work_order_id}"
+        )
+    try:
+        live_text = live_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise DispatchRejectedError(
+            f"work order target is not UTF-8 text: {live_target}"
+        ) from error
+    return live_target, live_bytes, live_text
+
+
+def _execute_prepared_dispatch(
+    prepared: _PreparedDispatch,
+    *,
+    runner: DispatchRunner,
+    isolation_probe: IsolationProbe,
+) -> DispatchResult:
+    prefix = (
+        "apu-dispatch-"
+        + sha256_json({"work_order_id": prepared.work_order_id})[:12]
+        + f"-a{prepared.attempt}-"
+    )
+    with _temporary_dispatch_stage(prefix=prefix) as stage_root:
+        staged_file, stage_manifest, stage_before = _stage_dispatch_input(
+            prepared,
+            stage_root,
+        )
+        probe, live_before_probe = _probe_dispatch_isolation(
+            prepared,
+            stage_root=stage_root,
+            stage_before=stage_before,
+            isolation_probe=isolation_probe,
+        )
+        try:
+            returned = runner(
+                RunnerRequest(
+                    work_order=prepared.contract["rendered"],
+                    stage_root=stage_root,
+                    staged_files={str(prepared.live_target): staged_file},
+                    isolation_context_id=probe.context_id,
                 )
-            except Exception as error:
-                raise DispatchUnavailableError(
-                    f"isolation probe failed: {type(error).__name__}"
-                ) from error
-            live_after_probe = sha256_bytes(_read_stable_file(live_target))
-            _validate_probe(
-                probe,
-                before_sha256=live_before_probe,
-                after_sha256=live_after_probe,
             )
-            if _tree_identity(stage_root) != stage_before:
-                raise DispatchSecurityError(
-                    "isolation probe changed the dispatch stage"
-                )
-
-            try:
-                returned = runner(
-                    RunnerRequest(
-                        work_order=contract["rendered"],
-                        stage_root=stage_root,
-                        staged_files={str(live_target): staged_file},
-                        isolation_context_id=probe.context_id,
-                    )
-                )
-            except DispatchUnavailableError:
-                raise
-            # The injected runner is an external boundary; all of its failures
-            # become content-free quarantine records.
-            except Exception as error:  # noqa: BLE001
-                return _persist_quarantine(
-                    state_root,
-                    campaign_id,
-                    work_order_id,
-                    snapshot_id=bound_snapshot,
-                    idempotency_key=idempotency_key,
-                    expected_revision=index["revision"],
-                    created_at=timestamp,
-                    work_order_sha256=contract["work_order_sha256"],
-                    stage_manifest=stage_manifest,
-                    probe=probe,
-                    candidate_sha256=None,
-                    reasons=(f"runner-failed:{type(error).__name__}",),
-                )
-
-            reasons: list[str] = []
-            if sha256_bytes(_read_stable_file(live_target)) != live_before_probe:
-                reasons.append("live-root-mutated-during-runner")
-            if _tree_identity(stage_root) != stage_before:
-                reasons.append("stage-mutated-during-runner")
-            candidate_hash = _safe_json_hash(returned)
-            candidate_files = _candidate_files(
-                returned,
-                expected_files={str(live_target)},
-                reasons=reasons,
-            )
-            verification = None
-            if not reasons:
-                verification = verify_plan_candidate(candidate_files, redactions)
-                if not verification.accepted:
-                    reasons.extend(verification.reasons)
-            if (
-                reasons
-                or verification is None
-                or verification.materialized_files is None
-            ):
-                return _persist_quarantine(
-                    state_root,
-                    campaign_id,
-                    work_order_id,
-                    snapshot_id=bound_snapshot,
-                    idempotency_key=idempotency_key,
-                    expected_revision=index["revision"],
-                    created_at=timestamp,
-                    work_order_sha256=contract["work_order_sha256"],
-                    stage_manifest=stage_manifest,
-                    probe=probe,
-                    candidate_sha256=candidate_hash,
-                    reasons=tuple(reasons or ("candidate-verification-failed",)),
-                )
-
-            return _persist_accepted(
-                state_root,
-                campaign_id,
-                work_order_id,
-                snapshot_id=bound_snapshot,
-                idempotency_key=idempotency_key,
-                expected_revision=index["revision"],
-                created_at=timestamp,
-                work_order_sha256=contract["work_order_sha256"],
+        except DispatchUnavailableError:
+            raise
+        # The injected runner is an external boundary; all of its failures
+        # become content-free quarantine records.
+        except Exception as error:  # noqa: BLE001
+            return _persist_prepared_quarantine(
+                prepared,
                 stage_manifest=stage_manifest,
                 probe=probe,
-                system_plan=contract["system_plan"],
-                protected_roots=contract["protected_roots"],
-                order=order,
-                materialized_files=verification.materialized_files,
+                candidate_sha256=None,
+                reasons=(f"runner-failed:{type(error).__name__}",),
             )
+
+        evaluation = _evaluate_dispatch_candidate(
+            returned,
+            live_target=prepared.live_target,
+            live_before_probe=live_before_probe,
+            stage_root=stage_root,
+            stage_before=stage_before,
+            redactions=prepared.redactions,
+        )
+        if evaluation.materialized_files is None:
+            return _persist_prepared_quarantine(
+                prepared,
+                stage_manifest=stage_manifest,
+                probe=probe,
+                candidate_sha256=evaluation.candidate_sha256,
+                reasons=evaluation.reasons,
+            )
+        return _persist_accepted(
+            prepared.state_root,
+            prepared.campaign_id,
+            prepared.work_order_id,
+            snapshot_id=prepared.snapshot_id,
+            idempotency_key=prepared.idempotency_key,
+            expected_revision=prepared.expected_revision,
+            created_at=prepared.created_at,
+            work_order_sha256=prepared.contract["work_order_sha256"],
+            stage_manifest=stage_manifest,
+            probe=probe,
+            system_plan=prepared.contract["system_plan"],
+            protected_roots=prepared.contract["protected_roots"],
+            order=prepared.order,
+            materialized_files=evaluation.materialized_files,
+        )
+
+
+def _stage_dispatch_input(
+    prepared: _PreparedDispatch,
+    stage_root: Path,
+) -> tuple[Path, dict[str, Any], str]:
+    ensure_private_directory(stage_root)
+    staged_file = stage_root / "files" / "target.txt"
+    staged_bytes = prepared.staged_text.encode("utf-8")
+    _write_bytes_once(staged_file, staged_bytes)
+    stage_manifest = {
+        "schema_version": 1,
+        "work_order_id": prepared.work_order_id,
+        "files": [
+            {
+                "logical_path": str(prepared.live_target),
+                "stage_path": "files/target.txt",
+                "source_sha256": sha256_bytes(prepared.live_bytes),
+                "staged_sha256": sha256_bytes(staged_bytes),
+                "sanitized": prepared.order.requires_sanitized_staging,
+            }
+        ],
+    }
+    write_json_atomic(stage_root / "manifest.json", stage_manifest)
+    return staged_file, stage_manifest, _tree_identity(stage_root)
+
+
+def _probe_dispatch_isolation(
+    prepared: _PreparedDispatch,
+    *,
+    stage_root: Path,
+    stage_before: str,
+    isolation_probe: IsolationProbe,
+) -> tuple[IsolationProbeResult, str]:
+    live_before_probe = sha256_bytes(_read_stable_file(prepared.live_target))
+    try:
+        probe = isolation_probe(
+            IsolationProbeRequest(
+                stage_root=stage_root,
+                probe_target=prepared.live_target,
+                live_root=prepared.live_target.parent,
+            )
+        )
+    except Exception as error:
+        raise DispatchUnavailableError(
+            f"isolation probe failed: {type(error).__name__}"
+        ) from error
+    live_after_probe = sha256_bytes(_read_stable_file(prepared.live_target))
+    _validate_probe(
+        probe,
+        before_sha256=live_before_probe,
+        after_sha256=live_after_probe,
+    )
+    if _tree_identity(stage_root) != stage_before:
+        raise DispatchSecurityError("isolation probe changed the dispatch stage")
+    return probe, live_before_probe
+
+
+def _evaluate_dispatch_candidate(
+    returned: Any,
+    *,
+    live_target: Path,
+    live_before_probe: str,
+    stage_root: Path,
+    stage_before: str,
+    redactions: RedactionMap,
+) -> _CandidateEvaluation:
+    reasons: list[str] = []
+    if sha256_bytes(_read_stable_file(live_target)) != live_before_probe:
+        reasons.append("live-root-mutated-during-runner")
+    if _tree_identity(stage_root) != stage_before:
+        reasons.append("stage-mutated-during-runner")
+    candidate_hash = _safe_json_hash(returned)
+    candidate_files = _candidate_files(
+        returned,
+        expected_files={str(live_target)},
+        reasons=reasons,
+    )
+    materialized_files = None
+    if not reasons:
+        verification = verify_plan_candidate(candidate_files, redactions)
+        if verification.accepted:
+            materialized_files = verification.materialized_files
+        else:
+            reasons.extend(verification.reasons)
+    if reasons or materialized_files is None:
+        return _CandidateEvaluation(
+            candidate_sha256=candidate_hash,
+            reasons=tuple(reasons or ("candidate-verification-failed",)),
+            materialized_files=None,
+        )
+    return _CandidateEvaluation(
+        candidate_sha256=candidate_hash,
+        reasons=(),
+        materialized_files=materialized_files,
+    )
+
+
+def _persist_prepared_quarantine(
+    prepared: _PreparedDispatch,
+    *,
+    stage_manifest: Mapping[str, Any],
+    probe: IsolationProbeResult,
+    candidate_sha256: str | None,
+    reasons: tuple[str, ...],
+) -> DispatchResult:
+    return _persist_quarantine(
+        prepared.state_root,
+        prepared.campaign_id,
+        prepared.work_order_id,
+        snapshot_id=prepared.snapshot_id,
+        idempotency_key=prepared.idempotency_key,
+        expected_revision=prepared.expected_revision,
+        created_at=prepared.created_at,
+        work_order_sha256=prepared.contract["work_order_sha256"],
+        stage_manifest=stage_manifest,
+        probe=probe,
+        candidate_sha256=candidate_sha256,
+        reasons=reasons,
+    )
 
 
 def _load_dispatch_contract(
@@ -813,12 +975,15 @@ def _read_stable_file(path: Path) -> bytes:
         raise DispatchRejectedError(
             f"dispatch input is unavailable: {candidate}"
         ) from error
-    identity = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_size,
-        item.st_mtime_ns,
-    )
+
+    def identity(item: os.stat_result) -> tuple[int, int, int, int]:
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_size,
+            item.st_mtime_ns,
+        )
+
     if identity(before) != identity(after):
         raise DispatchRejectedError(
             f"dispatch input changed while reading: {candidate}"

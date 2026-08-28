@@ -19,11 +19,7 @@ def _receipt(state_home: Path) -> dict:
                 "original_sha256": "a" * 64,
                 "installed_sha256": "b" * 64,
                 "backup_path": str(
-                    state_home
-                    / "installations"
-                    / "install-123"
-                    / "backups"
-                    / "op-1"
+                    state_home / "installations" / "install-123" / "backups" / "op-1"
                 ),
             }
         ],

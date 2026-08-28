@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -65,12 +65,8 @@ def test_append_and_read_outcomes_with_partial_metrics(tmp_path: Path) -> None:
 
 def test_outcomes_are_isolated_by_installation(tmp_path: Path) -> None:
     state_home = tmp_path / "state"
-    one = _outcome(
-        task_id="one", recorded_at="2026-07-01T00:00:00Z", material=True
-    )
-    two = _outcome(
-        task_id="two", recorded_at="2026-07-01T00:00:00Z", material=True
-    )
+    one = _outcome(task_id="one", recorded_at="2026-07-01T00:00:00Z", material=True)
+    two = _outcome(task_id="two", recorded_at="2026-07-01T00:00:00Z", material=True)
     two["installation_id"] = "install-456"
 
     append_outcome(state_home, one)
@@ -106,8 +102,7 @@ def test_summary_requires_both_30_days_and_10_material_tasks() -> None:
     }
 
     complete = summarize_outcomes(
-        nine_material
-        + [_outcome(task_id="task-10", recorded_at=start, material=True)],
+        nine_material + [_outcome(task_id="task-10", recorded_at=start, material=True)],
         now=now,
     )
     assert complete["days_complete"] is True

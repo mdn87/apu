@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import jsonschema
@@ -15,7 +15,6 @@ from apu.behavior_evidence import (
     validate_behavior_registry_candidate_patch,
 )
 from apu.models import sha256_json
-
 
 ROOT = Path(__file__).parents[1]
 HASH_A = "a" * 64
@@ -47,11 +46,20 @@ def _receipt(*, tier: int = 2) -> dict[str, object]:
         },
         "compiled_envelope_sha256": HASH_B,
         "applied_artifacts": [
-            {"id": "instruction.plain-language", "kind": "instruction", "content_sha256": HASH_C},
+            {
+                "id": "instruction.plain-language",
+                "kind": "instruction",
+                "content_sha256": HASH_C,
+            },
             {"id": "skill.bounded-planner", "kind": "skill", "content_sha256": HASH_B},
         ],
         "narrowings": [
-            {"field": "tools", "advised_sha256": HASH_A, "applied_sha256": HASH_B, "reason": "seat-policy"}
+            {
+                "field": "tools",
+                "advised_sha256": HASH_A,
+                "applied_sha256": HASH_B,
+                "reason": "seat-policy",
+            }
         ],
         "rejected_techniques": [
             {"technique_id": "hook.unsupported", "reason": "route-capability"}
@@ -103,10 +111,14 @@ def _operation() -> dict[str, object]:
 
 def test_checked_in_schemas_are_valid_and_accept_built_artifacts() -> None:
     evidence_schema = json.loads(
-        (ROOT / "schemas/behavior-evaluation-evidence.schema.json").read_text(encoding="utf-8")
+        (ROOT / "schemas/behavior-evaluation-evidence.schema.json").read_text(
+            encoding="utf-8"
+        )
     )
     patch_schema = json.loads(
-        (ROOT / "schemas/behavior-registry-candidate-patch.schema.json").read_text(encoding="utf-8")
+        (ROOT / "schemas/behavior-registry-candidate-patch.schema.json").read_text(
+            encoding="utf-8"
+        )
     )
     jsonschema.validators.validator_for(evidence_schema).check_schema(evidence_schema)
     jsonschema.validators.validator_for(patch_schema).check_schema(patch_schema)
@@ -230,7 +242,9 @@ def test_candidate_patch_is_review_only_and_canonical() -> None:
         "kind": "lugos.apu.behavior-evaluation-evidence-bundle",
         "evidence_ids": evidence_ids,
     }
-    assert candidate["evidence"]["evidence_bundle_sha256"] == sha256_json(expected_bundle)
+    assert candidate["evidence"]["evidence_bundle_sha256"] == sha256_json(
+        expected_bundle
+    )
 
 
 def test_candidate_requires_exact_base_revision() -> None:
@@ -265,7 +279,11 @@ def test_candidate_rejects_hash_drift_paths_overlap_and_secrets() -> None:
             operations=[operation],
         )
 
-    child = {"op": "remove", "path": operation["path"] + "/selector", "prior_value_sha256": HASH_A}
+    child = {
+        "op": "remove",
+        "path": operation["path"] + "/selector",
+        "prior_value_sha256": HASH_A,
+    }
     with pytest.raises(BehaviorEvidenceError, match="overlap"):
         build_behavior_registry_candidate_patch(
             base_registry_revision=evidence["registry_revision"],
@@ -309,7 +327,11 @@ def test_candidate_validator_rejects_authorization_and_noncanonical_order() -> N
     reversed_candidate = deepcopy(candidate)
     reversed_candidate["operations"].reverse()
     reversed_candidate["proposal_id"] = sha256_json(
-        {key: value for key, value in reversed_candidate.items() if key != "proposal_id"}
+        {
+            key: value
+            for key, value in reversed_candidate.items()
+            if key != "proposal_id"
+        }
     )
     with pytest.raises(BehaviorEvidenceError, match="unique sorted paths"):
         validate_behavior_registry_candidate_patch(reversed_candidate)

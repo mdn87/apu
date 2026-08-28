@@ -195,11 +195,14 @@ def test_reconcile_attaches_orphan_leaf_and_increments_revision(
         ],
     }
     assert load_campaign_index(tmp_path, "campaign-1") == after
-    assert reconcile_campaign(
-        tmp_path,
-        "campaign-1",
-        expected_revision=1,
-    ) == after
+    assert (
+        reconcile_campaign(
+            tmp_path,
+            "campaign-1",
+            expected_revision=1,
+        )
+        == after
+    )
 
 
 def test_stale_revision_aborts_without_overwriting_index(tmp_path: Path) -> None:

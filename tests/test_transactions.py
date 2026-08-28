@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import apu.apply as apply_module
 from apu.apply import ApplyError, _replace_with_retry, apply_plan
 from apu.filesystem import hash_object
 from apu.models import Approval, Plan, PlanOperation, sha256_bytes
@@ -201,9 +202,10 @@ def test_apply_then_rollback_restores_bytes_and_mode(tmp_path: Path) -> None:
     receipt = load_receipt(receipt_path)
     backup = Path(receipt["operations"][0]["backup_path"])
     assert backup.read_bytes() == b"original"
-    assert load_registry(tmp_path / "state")["installations"]["install-1"][
-        "status"
-    ] == "active"
+    assert (
+        load_registry(tmp_path / "state")["installations"]["install-1"]["status"]
+        == "active"
+    )
     if os.name != "nt":
         assert target.stat().st_mode & 0o777 == 0o640
         assert backup.stat().st_mode & 0o777 == 0o640
@@ -214,9 +216,10 @@ def test_apply_then_rollback_restores_bytes_and_mode(tmp_path: Path) -> None:
     assert target.read_bytes() == b"original"
     if os.name != "nt":
         assert target.stat().st_mode & 0o777 == 0o640
-    assert load_registry(tmp_path / "state")["installations"]["install-1"][
-        "status"
-    ] == "rolled_back"
+    assert (
+        load_registry(tmp_path / "state")["installations"]["install-1"]["status"]
+        == "rolled_back"
+    )
 
 
 def test_relocation_is_applied_and_rolled_back_as_one_transaction(
@@ -300,9 +303,7 @@ def test_relocation_failure_restores_source_and_destination(
     )
     real_replace = os.replace
 
-    def fail_destination(
-        staged: str | os.PathLike, target: str | os.PathLike
-    ) -> None:
+    def fail_destination(staged: str | os.PathLike, target: str | os.PathLike) -> None:
         if Path(target) == destination:
             raise OSError("simulated relocation failure")
         real_replace(staged, target)
@@ -526,6 +527,91 @@ def test_mid_transaction_failure_restores_prior_operations(
     assert second.read_bytes() == b"second-original"
 
 
+def test_apply_revalidates_each_target_immediately_before_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = tmp_path / "first"
+    first.write_bytes(b"first-original")
+    first_rendered = tmp_path / "first-rendered"
+    first_rendered.write_bytes(b"first-new")
+    second = tmp_path / "second"
+    second.write_bytes(b"second-original")
+    second_rendered = tmp_path / "second-rendered"
+    second_rendered.write_bytes(b"second-new")
+    real_preflight = apply_module._preflight_all
+
+    def mutate_after_preflight(*args: object, **kwargs: object):
+        prepared = real_preflight(*args, **kwargs)
+        second.write_bytes(b"external-change")
+        return prepared
+
+    monkeypatch.setattr(apply_module, "_preflight_all", mutate_after_preflight)
+
+    with pytest.raises(ApplyError, match="changed after preflight"):
+        apply_plan(
+            plan(
+                operation(
+                    "first",
+                    action="merge",
+                    target=first,
+                    source=first_rendered,
+                    precondition=sha256_bytes(b"first-original"),
+                    proposed=sha256_bytes(b"first-new"),
+                ),
+                operation(
+                    "second",
+                    action="merge",
+                    target=second,
+                    source=second_rendered,
+                    precondition=sha256_bytes(b"second-original"),
+                    proposed=sha256_bytes(b"second-new"),
+                ),
+            ),
+            state_home=tmp_path / "state",
+            installation_id="install-revalidate",
+        )
+
+    assert first.read_bytes() == b"first-original"
+    assert second.read_bytes() == b"external-change"
+
+
+def test_keyboard_interrupt_after_commit_fully_unwinds_transaction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "target"
+    target.write_bytes(b"original")
+    rendered = tmp_path / "rendered"
+    rendered.write_bytes(b"installed")
+    state_home = tmp_path / "state"
+    real_commit = apply_module._commit
+
+    def interrupt_after_commit(item: apply_module._PreparedOperation) -> None:
+        real_commit(item)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(apply_module, "_commit", interrupt_after_commit)
+
+    with pytest.raises(KeyboardInterrupt):
+        apply_plan(
+            plan(
+                operation(
+                    "update",
+                    action="merge",
+                    target=target,
+                    source=rendered,
+                    precondition=sha256_bytes(b"original"),
+                    proposed=sha256_bytes(b"installed"),
+                )
+            ),
+            state_home=state_home,
+            installation_id="install-interrupted",
+        )
+
+    assert target.read_bytes() == b"original"
+    assert "install-interrupted" not in load_registry(state_home)["installations"]
+    assert not (state_home / "installations" / "install-interrupted").exists()
+
+
 def test_directory_replacement_failure_restores_current_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -549,9 +635,7 @@ def test_directory_replacement_failure_restores_current_target(
 
     real_replace = os.replace
 
-    def fail_target(
-        staged: str | os.PathLike, destination: str | os.PathLike
-    ) -> None:
+    def fail_target(staged: str | os.PathLike, destination: str | os.PathLike) -> None:
         if Path(destination) == target:
             raise OSError("simulated directory replacement failure")
         real_replace(staged, destination)
@@ -783,9 +867,7 @@ def test_apply_rejects_reused_installation_id_without_orphaning_first_target(
 
     assert first_target.read_text(encoding="utf-8") == "first"
     assert not second_target.exists()
-    receipt = load_receipt(
-        state / "installations" / "same-id" / "receipt.json"
-    )
+    receipt = load_receipt(state / "installations" / "same-id" / "receipt.json")
     assert receipt["applied_operation_ids"] == ["first"]
 
 

@@ -48,9 +48,7 @@ def test_snapshot_scope_captures_whole_project_skill_tree(
     (repository / ".git").mkdir(parents=True)
     skill = repository / ".agents" / "skills" / "reviewer"
     skill.mkdir(parents=True)
-    (skill / "SKILL.md").write_text(
-        "---\nname: reviewer\n---\n", encoding="utf-8"
-    )
+    (skill / "SKILL.md").write_text("---\nname: reviewer\n---\n", encoding="utf-8")
     (skill / "script.py").write_text("print('review')\n", encoding="utf-8")
     profile = SystemProfile.from_dict(
         {

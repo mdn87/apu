@@ -16,9 +16,7 @@ from .state import ensure_private_directory, write_json_atomic
 CAMPAIGN_SCHEMA_VERSION = 1
 CAMPAIGN_MANIFEST_SCHEMA_VERSION = 2
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_EXECUTION_ARTIFACT_TYPES = frozenset(
-    {"receipt", "rollback", "work-order-result"}
-)
+_EXECUTION_ARTIFACT_TYPES = frozenset({"receipt", "rollback", "work-order-result"})
 
 
 class CampaignError(RuntimeError):
@@ -64,9 +62,8 @@ def build_campaign_manifest(
     baseline_version: str,
     model_generation: str,
     plan_binding: Mapping[str, Any] | str,
-    work_order_bindings: list[Mapping[str, Any] | str] | tuple[
-        Mapping[str, Any] | str, ...
-    ],
+    work_order_bindings: list[Mapping[str, Any] | str]
+    | tuple[Mapping[str, Any] | str, ...],
     evaluation_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a validated immutable campaign manifest."""
@@ -540,8 +537,7 @@ def _validate_manifest(value: Any) -> None:
         required.add("evaluation_context")
     if set(value) != required:
         raise ValueError(
-            "campaign manifest fields must be exactly: "
-            + ", ".join(sorted(required))
+            "campaign manifest fields must be exactly: " + ", ".join(sorted(required))
         )
     if schema_version not in {
         CAMPAIGN_SCHEMA_VERSION,
@@ -570,12 +566,8 @@ def _validate_manifest(value: Any) -> None:
         from .system_audit import EvaluationContext
 
         context = EvaluationContext.from_dict(value["evaluation_context"])
-        expected_baseline = (
-            context.baseline["version"] or "baseline-unconfigured"
-        )
-        expected_generation = (
-            context.models["generation"] or "model-unverified"
-        )
+        expected_baseline = context.baseline["version"] or "baseline-unconfigured"
+        expected_generation = context.models["generation"] or "model-unverified"
         if value["baseline_version"] != expected_baseline:
             raise ValueError(
                 "campaign baseline_version does not match evaluation_context"
@@ -599,9 +591,7 @@ def _validate_artifact(value: Any) -> None:
         _validate_component(snapshot_id, "snapshot_id")
     if value["artifact_type"] in _EXECUTION_ARTIFACT_TYPES:
         if snapshot_id is None:
-            raise ValueError(
-                f"{value['artifact_type']} artifact requires snapshot_id"
-            )
+            raise ValueError(f"{value['artifact_type']} artifact requires snapshot_id")
         key = value.get("idempotency_key")
         if not isinstance(key, dict):
             raise ValueError(
