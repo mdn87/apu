@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,31 @@ from apu.models import sha256_bytes
 from apu.outcomes import append_outcome
 from apu.receipts import write_receipt
 from apu.state import update_registry
+
+
+def _active_cli_trace(root: Path, cwd: Path) -> Path:
+    path = root / "rollout.jsonl"
+    path.parent.mkdir(parents=True)
+    base = datetime.now(UTC) - timedelta(seconds=2)
+    records = [
+        {
+            "timestamp": base.isoformat().replace("+00:00", "Z"),
+            "type": "session_meta",
+            "payload": {"id": "apply-session", "cwd": str(cwd)},
+        },
+        {
+            "timestamp": (base + timedelta(seconds=1))
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "type": "event_msg",
+            "payload": {"type": "task_started"},
+        },
+    ]
+    path.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_audit_and_propose_round_trip_without_creating_state(
@@ -51,6 +77,85 @@ def test_root_session_id_without_sessions_is_usage_error(
         main(["audit", str(tmp_path), "--root-session-id", "root"])
 
     assert error.value.code == 2
+
+
+def test_apply_refuses_before_mutation_without_exact_session_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    called = False
+
+    def forbidden_apply(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("apply must not run without attribution")
+
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setattr("apu.cli._load_plan", lambda _path: object())
+    monkeypatch.setattr("apu.apply.apply_plan", forbidden_apply)
+
+    assert (
+        main(
+            [
+                "apply",
+                str(tmp_path / "plan.json"),
+                "--yes",
+                "--trace-root",
+                str(tmp_path / "missing-sessions"),
+                "--cwd",
+                str(cwd),
+            ]
+        )
+        == 1
+    )
+    assert called is False
+    assert "no_attribution: trace_root_unavailable" in capsys.readouterr().err
+
+
+def test_apply_accepts_one_fresh_exact_session_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _active_cli_trace(traces, cwd)
+    plan = object()
+    receipt = tmp_path / "receipt.json"
+    calls: list[dict[str, object]] = []
+
+    def fake_apply(selected_plan, **kwargs):
+        assert selected_plan is plan
+        calls.append(kwargs)
+        return receipt
+
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setattr("apu.cli._load_plan", lambda _path: plan)
+    monkeypatch.setattr(
+        "apu.dispatch_apply.dispatch_plan_binding", lambda *_args: None
+    )
+    monkeypatch.setattr("apu.apply.apply_plan", fake_apply)
+
+    assert (
+        main(
+            [
+                "apply",
+                str(tmp_path / "plan.json"),
+                "--yes",
+                "--trace-root",
+                str(traces),
+                "--session-id",
+                "apply-session",
+                "--cwd",
+                str(cwd),
+            ]
+        )
+        == 0
+    )
+    assert len(calls) == 1
+    assert str(receipt) in capsys.readouterr().out
 
 
 def test_init_defaults_to_preview_and_saved_draft_plan(

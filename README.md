@@ -202,14 +202,21 @@ a visible APU-private demotion override without editing the profile.
 ## Behavioral pressure watch
 
 The first live watcher detects likely `primary-agent-autonomy-loss` in existing
-Codex JSONL sessions. The normal flow automatically selects the most recent
-active session for the current working directory:
+Codex JSONL sessions. Automatic attribution now requires exactly one active
+session whose normalized working directory matches the current directory and
+whose last event is no more than ten minutes old:
 
 ```console
 apu-event "asked me to approve a reversible filename choice"
 apu-wtf
 apu-intervene
 ```
+
+Use `--session-id` to resolve an ambiguity explicitly. If the supplied session
+belongs to another working directory, or if automatic selection finds zero or
+multiple fresh active matches, APU returns `no_attribution` with a bounded reason
+code and exits nonzero. It never falls back to a recent session from another
+project.
 
 `apu-wtf` can also analyze the most recent incomplete run when no event has
 been marked. `apu-intervene` resumes a non-interactive Codex session directly;
@@ -222,7 +229,17 @@ record the proposed action. After a manual continuation, record its outcome:
 apu-intervene --result completed
 ```
 
-Watcher state is explicit and never starts a background service:
+Before it constructs or launches a continuation, `apu-intervene` re-reads the
+exact trace and proves that its session ID and working directory still match the
+incident. It also rejects any diagnosis whose `durable_policy_mutation` value is
+not exactly `false`. The mutating `apu apply` command uses the same strict
+selection gate; `--session-id`, `--trace-root`, and `--cwd` are available when
+automatic selection is not sufficient.
+
+Watcher state is explicit and never starts a background service. Its health
+output includes strict-selector mode, the last successful attribution time,
+ambiguity count, heartbeat, package version, and build hash; it contains no
+session ID, trace path, cwd, or transcript content:
 
 ```console
 apu-watch
@@ -243,6 +260,15 @@ classes: invocation, result, and repository-state observation. Provider message
 bodies, reasoning, tool inputs, tool outputs, and command text are inspected only
 in memory and never enter APU state. Stored records contain safe labels, hashes,
 exit status, duration, correlation hashes, and optional Git state.
+
+Evidence schema v2 adds exact selector provenance: selector mode, candidate
+count, last-event age, and confidence. The v2 reader also accepts legacy v1
+records, but v2 records are written under a separate `behavior/evidence/v2`
+route so a 0.8.0 reader never encounters a v2 object in its v1 file. During a
+staged rollout or rollback, ingestion commands can write a complete v1 object
+with `--schema-version 1`; `apu-event` exposes the equivalent
+`--evidence-schema-version 1` option, as does `apu behavior audit` when it
+ingests a Codex trace. No version is silently coerced.
 
 Ingest the most recent Codex session for the current repository, then inspect its
 request/result reconciliation and verify that its source records still match the

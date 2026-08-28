@@ -443,7 +443,9 @@ apply → fixtures still catch the seeded defect.
 
 ### M10 — Live behavioral pressure watch
 Codex JSONL support for the single `primary-agent-autonomy-loss` watcher;
-automatic selection of the most recent active session; `apu-event` incident
+strict selection of one fresh active session at the exact normalized cwd;
+typed `no_attribution` results for missing, stale, ambiguous, unparsable, or
+cross-project traces; `apu-event` incident
 marking; `apu-wtf` compact diagnosis with active instruction and harness
 surface hashes; and `apu-intervene` ephemeral resume or continuation through
 the supported Codex resume interface. The command records whether an executed
@@ -451,6 +453,12 @@ non-interactive continuation completed, and accepts an operator result for an
 interactive continuation. `apu-watch` lists, enables, or disables the watcher
 without starting a daemon. Durable policy changes remain exclusively in the
 existing plan/review/apply path.
+
+Intervention revalidates the incident's exact session/cwd binding immediately
+before resume and checks `durable_policy_mutation: false`. The mutating
+`apu apply` command uses the same binding gate. Watcher health reports selector
+mode, successful-attribution time, ambiguity count, heartbeat, package version,
+and build revision without trace content.
 
 M10 artifacts are private and content-minimized: the operator's explicit event
 description may be retained after credential-shape rejection, but nearby
@@ -470,6 +478,11 @@ invalidate earlier evidence. Lifecycle-hook JSON can be projected through the
 same contract for providers such as Claude Code. Unknown fields and all message,
 reasoning, command, tool-input, tool-output, and environment bodies are discarded
 before persistence.
+
+Schema v2 records selector provenance and live under a version-specific route.
+The current reader accepts strict v1 and v2 objects, and the producer can emit a
+complete v1 object for staged deployment or rollback without putting v2 data in
+the legacy route.
 
 `apu evidence` ingests Codex sessions or hook events, records optional independent
 Git state, correlates tool requests and results through hashed identifiers,

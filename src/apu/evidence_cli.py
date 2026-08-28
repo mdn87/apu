@@ -32,6 +32,7 @@ def add_evidence_parser(commands: argparse._SubParsersAction) -> None:
     codex.add_argument("--session-id")
     codex.add_argument("--trace-root", type=Path)
     codex.add_argument("--cwd", type=Path)
+    codex.add_argument("--schema-version", type=int, choices=(1, 2), default=2)
     codex.add_argument("--json", action="store_true")
 
     hook = subcommands.add_parser(
@@ -42,6 +43,7 @@ def add_evidence_parser(commands: argparse._SubParsersAction) -> None:
     hook.add_argument("--event", required=True)
     hook.add_argument("--input", type=Path)
     hook.add_argument("--observe-state", action="store_true")
+    hook.add_argument("--schema-version", type=int, choices=(1, 2), default=2)
     hook.add_argument("--json", action="store_true")
 
     observe = subcommands.add_parser(
@@ -52,6 +54,7 @@ def add_evidence_parser(commands: argparse._SubParsersAction) -> None:
     observe.add_argument("--session-id", required=True)
     observe.add_argument("--cwd", type=Path, default=Path.cwd())
     observe.add_argument("--sequence", type=int, default=0)
+    observe.add_argument("--schema-version", type=int, choices=(1, 2), default=2)
     observe.add_argument("--json", action="store_true")
 
     show = subcommands.add_parser(
@@ -84,16 +87,36 @@ def _print(value: Any, *, as_json: bool, summary: str) -> None:
 def run_evidence(args: argparse.Namespace) -> int:
     state_home = resolve_state_home()
     if args.evidence_command == "ingest-codex":
-        from .behavior_watch import select_codex_session
+        from .behavior_watch import NoAttribution, select_codex_session
 
-        session = select_codex_session(
+        selection = select_codex_session(
             trace_root=args.trace_root,
             session_id=args.session_id,
             cwd=args.cwd,
+            state_home=state_home,
         )
-        path, events, boundary = ingest_codex_trace(state_home, session.path)
+        if isinstance(selection, NoAttribution):
+            result = {
+                "kind": selection.kind,
+                "reason_code": selection.reason_code,
+                "provenance": selection.provenance.to_dict(),
+            }
+            _print(
+                result,
+                as_json=args.json,
+                summary=f"Codex evidence: no attribution ({selection.reason_code})",
+            )
+            return 2
+        session = selection.session
+        path, events, boundary = ingest_codex_trace(
+            state_home,
+            session.path,
+            attribution=selection.provenance.to_dict(),
+            schema_version=args.schema_version,
+        )
         result = {
             "provider": "codex",
+            "schema_version": boundary["schema_version"],
             "session_id": boundary["session_id"],
             "evidence_path": str(path) if path is not None else None,
             "event_count": len(events),
@@ -122,6 +145,7 @@ def run_evidence(args: argparse.Namespace) -> int:
             args.provider,
             args.event,
             payload,
+            schema_version=args.schema_version,
         )
         state_event = None
         state_appended = False
@@ -137,9 +161,11 @@ def run_evidence(args: argparse.Namespace) -> int:
                 session_id=event["session_id"],
                 cwd=Path(cwd),
                 sequence=event["sequence"] + 1,
+                schema_version=args.schema_version,
             )
         result = {
             "provider": args.provider,
+            "schema_version": event["schema_version"],
             "session_id": event["session_id"],
             "event_id": event["event_id"],
             "event_type": event["event_type"],
@@ -162,6 +188,7 @@ def run_evidence(args: argparse.Namespace) -> int:
             session_id=args.session_id,
             cwd=args.cwd,
             sequence=args.sequence,
+            schema_version=args.schema_version,
         )
         result = {
             "event": event,

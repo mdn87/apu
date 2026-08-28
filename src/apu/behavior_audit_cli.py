@@ -97,6 +97,9 @@ def add_behavior_parser(commands: argparse._SubParsersAction) -> None:
         type=Path,
         help="override Codex trace discovery root for testing or recovery",
     )
+    audit.add_argument(
+        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+    )
     audit.add_argument("--json", action="store_true")
 
 
@@ -113,6 +116,7 @@ def run_behavior(args: argparse.Namespace) -> int:
         source_byte_limit=args.max_bytes,
         session_id=args.session_id,
         trace_root=args.trace_root,
+        evidence_schema_version=args.evidence_schema_version,
     )
     if args.json:
         print(canonical_json(report))

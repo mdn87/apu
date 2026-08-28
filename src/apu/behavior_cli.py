@@ -10,6 +10,7 @@ from typing import Any
 from .behavior_watch import (
     WATCHER_ALIASES,
     WATCHER_ID,
+    NoAttributionError,
     configure_watcher,
     diagnose_incident,
     intervene,
@@ -29,6 +30,17 @@ def _run(parser: argparse.ArgumentParser, function, argv: Sequence[str] | None) 
     args = parser.parse_args(argv)
     try:
         return function(args)
+    except NoAttributionError as error:
+        result = {
+            "kind": error.result.kind,
+            "reason_code": error.result.reason_code,
+            "provenance": error.result.provenance.to_dict(),
+        }
+        if getattr(args, "json", False):
+            _emit(result)
+        else:
+            print(f"{parser.prog}: no_attribution: {error.result.reason_code}", file=sys.stderr)
+        return 2
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         print(f"{parser.prog}: {error}", file=sys.stderr)
         return 1
@@ -40,6 +52,9 @@ def _event_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session-id")
     parser.add_argument("--trace-root", type=Path)
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+    )
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -52,6 +67,7 @@ def event_main(argv: Sequence[str] | None = None) -> int:
             trace_root=args.trace_root,
             session_id=args.session_id,
             cwd=args.cwd,
+            evidence_schema_version=args.evidence_schema_version,
         )
         if args.json:
             _emit(incident)
@@ -74,6 +90,9 @@ def _wtf_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session-id")
     parser.add_argument("--trace-root", type=Path)
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+    )
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -92,6 +111,7 @@ def wtf_main(argv: Sequence[str] | None = None) -> int:
                 trace_root=args.trace_root,
                 session_id=args.session_id,
                 cwd=args.cwd,
+                evidence_schema_version=args.evidence_schema_version,
             )
             incident_id = incident["incident_id"]
         path, diagnosis = diagnose_incident(

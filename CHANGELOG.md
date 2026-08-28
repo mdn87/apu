@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add typed, fail-closed Codex session attribution with exact cwd matching,
+  bounded freshness, unique-active automatic selection, and bounded
+  `no_attribution` reason codes.
+- Revalidate the exact session/cwd binding before intervention and before the
+  mutating `apu apply` command; enforce `durable_policy_mutation: false` in code.
+- Add content-free selector health with attribution time, ambiguity count,
+  heartbeat, package version, and build revision.
+- Add strict evidence schema v2 selector provenance, a dual-version reader,
+  version-separated storage routes, and an explicit complete-v1 writer for
+  staged rollout or rollback.
 - Add strict, content-addressed contracts for importing redacted Autowork
   behavior evaluation receipts and proposing review-only Lugos Orca behavior
   registry patches.

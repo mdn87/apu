@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ntpath
 import os
 import re
 import shutil
@@ -11,11 +12,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypeAlias
 from uuid import uuid4
 
+from . import __version__
 from .audit import build_inventory
-from .evidence import ingest_codex_trace, reconcile_evidence
+from .evidence import EVIDENCE_SCHEMA_VERSION, ingest_codex_trace, reconcile_evidence
 from .models import canonical_json, sha256_bytes
 from .state import ensure_state_home, write_json_atomic
 from .work_orders import find_secret_spans
@@ -26,6 +28,24 @@ _MAX_TRACE_BYTES = 256 * 1024 * 1024
 _MAX_DESCRIPTION_CHARS = 2_000
 _RECENT_EVENT_LIMIT = 80
 _SCHEMA_VERSION = 1
+_MAX_SESSION_AGE_SECONDS = 10 * 60
+_MAX_FUTURE_EVENT_SKEW_SECONDS = 5
+_MAX_SESSION_PATHS = 1_000
+_PEEK_MAX_LINES = 512
+_PEEK_MAX_BYTES = 1024 * 1024
+_NO_ATTRIBUTION_REASONS = frozenset(
+    {
+        "ambiguous_active_candidates",
+        "ambiguous_session_id",
+        "cwd_mismatch",
+        "no_active_candidate",
+        "no_exact_cwd_candidate",
+        "session_not_found",
+        "stale_trace",
+        "trace_root_unavailable",
+        "unparsable_trace",
+    }
+)
 
 _SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -216,8 +236,124 @@ class SessionTrace:
     dynamic_tools_sha256: str | None
 
 
+@dataclass(frozen=True)
+class SelectionProvenance:
+    selector_mode: Literal[
+        "exact_session_binding",
+        "explicit_session_id",
+        "unique_active_exact_cwd",
+    ]
+    candidate_count: int
+    last_event_age_seconds: int | None
+    confidence: Literal["exact"] = "exact"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "selector_mode": self.selector_mode,
+            "candidate_count": self.candidate_count,
+            "last_event_age_seconds": self.last_event_age_seconds,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True)
+class SelectedSession:
+    kind: Literal["selected"]
+    session: SessionTrace
+    provenance: SelectionProvenance
+
+
+@dataclass(frozen=True)
+class NoAttribution:
+    kind: Literal["no_attribution"]
+    reason_code: str
+    provenance: SelectionProvenance
+
+    def __post_init__(self) -> None:
+        if self.reason_code not in _NO_ATTRIBUTION_REASONS:
+            raise ValueError("unsupported no-attribution reason code")
+
+
+SessionSelection: TypeAlias = SelectedSession | NoAttribution
+
+
+class NoAttributionError(RuntimeError):
+    """Raised when an operation requires an exact session binding."""
+
+    def __init__(self, operation: str, result: NoAttribution) -> None:
+        self.operation = operation
+        self.result = result
+        super().__init__(f"no_attribution: {result.reason_code} ({operation})")
+
+
 def _timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _selection_clock(now: datetime | None) -> datetime:
+    selected = datetime.now(UTC) if now is None else now
+    if selected.tzinfo is None:
+        raise ValueError("selection clock must include a timezone")
+    return selected.astimezone(UTC)
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _event_age_seconds(value: str | None, now: datetime) -> int | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    delta = (now - parsed.astimezone(UTC)).total_seconds()
+    if delta < -_MAX_FUTURE_EVENT_SKEW_SECONDS:
+        return None
+    return max(0, int(delta))
+
+
+def _windows_path(value: str) -> bool:
+    return bool(re.match(r"^(?:[A-Za-z]:[\\/]|[\\/]{2})", value))
+
+
+def normalized_cwd_key(value: Path | str) -> str:
+    """Return a stable cwd identity, including Windows case folding."""
+
+    raw = str(value)
+    if os.name == "nt":
+        raw = os.path.realpath(raw)
+    if _windows_path(raw):
+        return ntpath.normcase(ntpath.normpath(raw.replace("/", "\\")))
+    return os.path.normcase(str(Path(raw).expanduser().resolve(strict=False)))
+
+
+def require_selected_session(
+    result: SessionSelection, *, operation: str
+) -> SelectedSession:
+    if isinstance(result, NoAttribution):
+        raise NoAttributionError(operation, result)
+    return result
+
+
+def _provenance(
+    mode: Literal[
+        "exact_session_binding",
+        "explicit_session_id",
+        "unique_active_exact_cwd",
+    ],
+    *,
+    candidate_count: int,
+    last_event_age_seconds: int | None = None,
+) -> SelectionProvenance:
+    return SelectionProvenance(
+        selector_mode=mode,
+        candidate_count=candidate_count,
+        last_event_age_seconds=last_event_age_seconds,
+    )
 
 
 def _safe_component(value: str, field: str) -> str:
@@ -432,11 +568,17 @@ def _parse_session(path: Path) -> SessionTrace:
 
 
 def _peek_session(path: Path) -> tuple[str | None, Path | None]:
+    found_session_id: str | None = None
+    found_cwd: Path | None = None
     try:
         with path.open(encoding="utf-8", errors="replace") as stream:
-            for _ in range(40):
+            consumed = 0
+            for _ in range(_PEEK_MAX_LINES):
                 line = stream.readline()
                 if not line:
+                    break
+                consumed += len(line.encode("utf-8", errors="replace"))
+                if consumed > _PEEK_MAX_BYTES:
                     break
                 try:
                     record = json.loads(line)
@@ -452,15 +594,109 @@ def _peek_session(path: Path) -> tuple[str | None, Path | None]:
                     continue
                 session_id = payload.get("id") or payload.get("session_id")
                 cwd = payload.get("cwd")
-                return (
-                    session_id if isinstance(session_id, str) else None,
-                    Path(cwd).resolve(strict=False)
-                    if isinstance(cwd, str) and Path(cwd).is_absolute()
-                    else None,
-                )
+                if isinstance(session_id, str) and session_id:
+                    found_session_id = session_id
+                if isinstance(cwd, str) and Path(cwd).is_absolute():
+                    found_cwd = Path(cwd).resolve(strict=False)
+                if found_session_id is not None and found_cwd is not None:
+                    return found_session_id, found_cwd
     except OSError:
         pass
-    return None, None
+    return found_session_id, found_cwd
+
+
+def _available_trace_paths(root: Path) -> list[Path]:
+    paths: list[tuple[int, Path]] = []
+    for path in root.rglob("*.jsonl"):
+        try:
+            modified = path.stat().st_mtime_ns
+        except OSError:
+            continue
+        paths.append((modified, path))
+    paths.sort(key=lambda item: item[0], reverse=True)
+    return [path for _, path in paths[:_MAX_SESSION_PATHS]]
+
+
+def _parse_fresh_session(
+    path: Path, now: datetime
+) -> tuple[SessionTrace | None, int | None]:
+    try:
+        session = _parse_session(path)
+    except (OSError, ValueError):
+        return None, None
+    age = _event_age_seconds(session.last_event_at, now)
+    if age is None:
+        return None, None
+    return session, age
+
+
+def _selector_health_path(state_home: Path) -> Path:
+    return Path(state_home) / "behavior" / "selector-health.json"
+
+
+def _read_selector_health(state_home: Path) -> dict[str, Any]:
+    path = _selector_health_path(state_home)
+    default = {
+        "schema_version": 1,
+        "selector_mode": "strict",
+        "last_successful_attribution": None,
+        "ambiguity_count": 0,
+        "service_heartbeat": None,
+    }
+    if not path.is_file():
+        return default
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"invalid selector health at {path}: {error}") from error
+    if not isinstance(value, Mapping) or set(value) != set(default):
+        raise ValueError("selector health fields do not match contract")
+    if value["schema_version"] != 1 or value["selector_mode"] != "strict":
+        raise ValueError("unsupported selector health schema or mode")
+    if not isinstance(value["ambiguity_count"], int) or isinstance(
+        value["ambiguity_count"], bool
+    ) or value["ambiguity_count"] < 0:
+        raise ValueError("selector health ambiguity_count is invalid")
+    for field in ("last_successful_attribution", "service_heartbeat"):
+        selected = value[field]
+        if (
+            selected is not None
+            and _event_age_seconds(selected, datetime.now(UTC)) is None
+        ):
+            raise ValueError(f"selector health {field} is invalid")
+    return dict(value)
+
+
+def _record_selector_health(
+    state_home: Path | None,
+    result: SessionSelection | None,
+    *,
+    now: datetime,
+) -> None:
+    if state_home is None:
+        return
+    value = _read_selector_health(state_home)
+    timestamp = _format_timestamp(now)
+    value["service_heartbeat"] = timestamp
+    if isinstance(result, SelectedSession):
+        value["last_successful_attribution"] = timestamp
+    elif isinstance(result, NoAttribution) and result.reason_code in {
+        "ambiguous_active_candidates",
+        "ambiguous_session_id",
+    }:
+        value["ambiguity_count"] += 1
+    ensure_state_home(state_home)
+    write_json_atomic(_selector_health_path(state_home), value)
+
+
+def _finish_selection(
+    result: SessionSelection,
+    *,
+    state_home: Path | None,
+    now: datetime,
+) -> SessionSelection:
+    _record_selector_health(state_home, result, now=now)
+    return result
 
 
 def select_codex_session(
@@ -468,41 +704,235 @@ def select_codex_session(
     trace_root: Path | None = None,
     session_id: str | None = None,
     cwd: Path | None = None,
-) -> SessionTrace:
+    state_home: Path | None = None,
+    now: datetime | None = None,
+) -> SessionSelection:
+    clock = _selection_clock(now)
     root = (trace_root or codex_trace_root()).expanduser().resolve()
     if not root.is_dir():
-        raise ValueError(f"Codex session directory is unavailable: {root}")
+        return _finish_selection(
+            NoAttribution(
+                kind="no_attribution",
+                reason_code="trace_root_unavailable",
+                provenance=_provenance(
+                    "explicit_session_id"
+                    if session_id is not None
+                    else "unique_active_exact_cwd",
+                    candidate_count=0,
+                ),
+            ),
+            state_home=state_home,
+            now=clock,
+        )
     requested_cwd = (cwd or Path.cwd()).expanduser().resolve(strict=False)
-    paths = sorted(
-        root.rglob("*.jsonl"),
-        key=lambda item: item.stat().st_mtime_ns,
-        reverse=True,
-    )
-    candidates: list[Path] = []
-    fallback: list[Path] = []
-    for path in paths[:1000]:
-        found_id, found_cwd = _peek_session(path)
-        if session_id is not None:
+    requested_key = normalized_cwd_key(requested_cwd)
+    paths = _available_trace_paths(root)
+
+    if session_id is not None:
+        matched_paths: list[Path] = []
+        for path in paths:
+            found_id, _ = _peek_session(path)
             if found_id == session_id:
-                candidates.append(path)
-                break
-            continue
-        if found_cwd is not None and os.path.normcase(found_cwd) == os.path.normcase(
-            requested_cwd
+                matched_paths.append(path)
+        if not matched_paths:
+            return _finish_selection(
+                NoAttribution(
+                    kind="no_attribution",
+                    reason_code="session_not_found",
+                    provenance=_provenance(
+                        "explicit_session_id", candidate_count=0
+                    ),
+                ),
+                state_home=state_home,
+                now=clock,
+            )
+
+        eligible: list[tuple[SessionTrace, int]] = []
+        saw_mismatch = False
+        saw_stale = False
+        saw_unparsable = False
+        for path in matched_paths:
+            parsed, age = _parse_fresh_session(path, clock)
+            if parsed is None or age is None:
+                saw_unparsable = True
+                continue
+            if cwd is not None and normalized_cwd_key(parsed.cwd) != requested_key:
+                saw_mismatch = True
+                continue
+            if age > _MAX_SESSION_AGE_SECONDS:
+                saw_stale = True
+                continue
+            eligible.append((parsed, age))
+        if len(eligible) == 1:
+            parsed, age = eligible[0]
+            return _finish_selection(
+                SelectedSession(
+                    kind="selected",
+                    session=parsed,
+                    provenance=_provenance(
+                        "explicit_session_id",
+                        candidate_count=1,
+                        last_event_age_seconds=age,
+                    ),
+                ),
+                state_home=state_home,
+                now=clock,
+            )
+        reason = (
+            "ambiguous_session_id"
+            if len(eligible) > 1
+            else "cwd_mismatch"
+            if saw_mismatch
+            else "stale_trace"
+            if saw_stale
+            else "unparsable_trace"
+            if saw_unparsable
+            else "session_not_found"
+        )
+        return _finish_selection(
+            NoAttribution(
+                kind="no_attribution",
+                reason_code=reason,
+                provenance=_provenance(
+                    "explicit_session_id", candidate_count=len(eligible)
+                ),
+            ),
+            state_home=state_home,
+            now=clock,
+        )
+
+    exact_paths: list[Path] = []
+    for path in paths:
+        found_id, found_cwd = _peek_session(path)
+        if (
+            found_id is not None
+            and found_cwd is not None
+            and normalized_cwd_key(found_cwd) == requested_key
         ):
-            candidates.append(path)
-        elif found_id is not None:
-            fallback.append(path)
-        if len(candidates) >= 8:
-            break
-    if not candidates and session_id is None:
-        candidates = fallback[:8]
-    if not candidates:
-        target = session_id or str(requested_cwd)
-        raise ValueError(f"no Codex session found for {target}")
-    parsed = tuple(_parse_session(path) for path in candidates)
-    active = tuple(item for item in parsed if item.active)
-    return (active or parsed)[0]
+            exact_paths.append(path)
+    if not exact_paths:
+        return _finish_selection(
+            NoAttribution(
+                kind="no_attribution",
+                reason_code="no_exact_cwd_candidate",
+                provenance=_provenance(
+                    "unique_active_exact_cwd", candidate_count=0
+                ),
+            ),
+            state_home=state_home,
+            now=clock,
+        )
+
+    active: list[tuple[SessionTrace, int]] = []
+    saw_stale = False
+    saw_unparsable = False
+    saw_completed = False
+    for path in exact_paths:
+        parsed, age = _parse_fresh_session(path, clock)
+        if parsed is None or age is None:
+            saw_unparsable = True
+            continue
+        if age > _MAX_SESSION_AGE_SECONDS:
+            saw_stale = True
+            continue
+        if parsed.active:
+            active.append((parsed, age))
+        else:
+            saw_completed = True
+    if len(active) == 1:
+        parsed, age = active[0]
+        return _finish_selection(
+            SelectedSession(
+                kind="selected",
+                session=parsed,
+                provenance=_provenance(
+                    "unique_active_exact_cwd",
+                    candidate_count=1,
+                    last_event_age_seconds=age,
+                ),
+            ),
+            state_home=state_home,
+            now=clock,
+        )
+    reason = (
+        "ambiguous_active_candidates"
+        if len(active) > 1
+        else "no_active_candidate"
+        if saw_completed
+        else "stale_trace"
+        if saw_stale
+        else "unparsable_trace"
+        if saw_unparsable
+        else "no_active_candidate"
+    )
+    return _finish_selection(
+        NoAttribution(
+            kind="no_attribution",
+            reason_code=reason,
+            provenance=_provenance(
+                "unique_active_exact_cwd", candidate_count=len(active)
+            ),
+        ),
+        state_home=state_home,
+        now=clock,
+    )
+
+
+def validate_session_binding(
+    trace_path: Path,
+    *,
+    session_id: str,
+    cwd: Path,
+    state_home: Path | None = None,
+    now: datetime | None = None,
+) -> SessionSelection:
+    clock = _selection_clock(now)
+    provenance = _provenance("exact_session_binding", candidate_count=0)
+    selected_path = Path(trace_path).expanduser().resolve(strict=False)
+    if not selected_path.is_file():
+        return _finish_selection(
+            NoAttribution("no_attribution", "session_not_found", provenance),
+            state_home=state_home,
+            now=clock,
+        )
+    parsed, age = _parse_fresh_session(selected_path, clock)
+    if parsed is None or age is None:
+        return _finish_selection(
+            NoAttribution("no_attribution", "unparsable_trace", provenance),
+            state_home=state_home,
+            now=clock,
+        )
+    if parsed.session_id != session_id:
+        return _finish_selection(
+            NoAttribution("no_attribution", "session_not_found", provenance),
+            state_home=state_home,
+            now=clock,
+        )
+    if normalized_cwd_key(parsed.cwd) != normalized_cwd_key(cwd):
+        return _finish_selection(
+            NoAttribution("no_attribution", "cwd_mismatch", provenance),
+            state_home=state_home,
+            now=clock,
+        )
+    if age > _MAX_SESSION_AGE_SECONDS:
+        return _finish_selection(
+            NoAttribution("no_attribution", "stale_trace", provenance),
+            state_home=state_home,
+            now=clock,
+        )
+    return _finish_selection(
+        SelectedSession(
+            "selected",
+            parsed,
+            _provenance(
+                "exact_session_binding",
+                candidate_count=1,
+                last_event_age_seconds=age,
+            ),
+        ),
+        state_home=state_home,
+        now=clock,
+    )
 
 
 def _effective_codex_surfaces(cwd: Path) -> tuple[dict[str, Any], ...]:
@@ -513,9 +943,9 @@ def _effective_codex_surfaces(cwd: Path) -> tuple[dict[str, Any], ...]:
     )
     selected_ids: set[str] = set()
     for stack in inventory.effective_stacks:
-        if stack.get("provider") == "codex" and os.path.normcase(
-            Path(str(stack.get("working_directory"))).resolve(strict=False)
-        ) == os.path.normcase(cwd):
+        if stack.get("provider") == "codex" and normalized_cwd_key(
+            Path(str(stack.get("working_directory")))
+        ) == normalized_cwd_key(cwd):
             selected_ids.update(str(item) for item in stack.get("surface_ids", ()))
     return tuple(
         {
@@ -531,6 +961,14 @@ def _effective_codex_surfaces(cwd: Path) -> tuple[dict[str, Any], ...]:
         for surface in inventory.surfaces
         if surface.id in selected_ids
     )
+
+
+def _build_revision() -> str:
+    try:
+        digest = sha256_bytes(Path(__file__).read_bytes())
+    except OSError:
+        return "unavailable"
+    return f"sha256:{digest}"
 
 
 def watcher_status(state_home: Path) -> dict[str, Any]:
@@ -549,12 +987,19 @@ def watcher_status(state_home: Path) -> dict[str, Any]:
             raise ValueError("watcher enabled state must be boolean")
         enabled = entry["enabled"]
         updated_at = entry.get("updated_at")
+    health = _read_selector_health(state_home)
     return {
         "watcher": WATCHER_ID,
         "enabled": enabled,
         "updated_at": updated_at,
         "provider": "codex",
         "background_service": False,
+        "selector_mode": health["selector_mode"],
+        "last_successful_attribution": health["last_successful_attribution"],
+        "ambiguity_count": health["ambiguity_count"],
+        "service_heartbeat": health["service_heartbeat"],
+        "package_version": __version__,
+        "build_revision": _build_revision(),
     }
 
 
@@ -565,12 +1010,21 @@ def configure_watcher(
     updated_at: str | None = None,
 ) -> dict[str, Any]:
     timestamp = updated_at or _timestamp()
+    try:
+        health_clock = _selection_clock(datetime.fromisoformat(timestamp))
+    except ValueError as error:
+        raise ValueError("watcher updated_at must be an RFC3339 timestamp") from error
     value = {
         "schema_version": _SCHEMA_VERSION,
         "watchers": {WATCHER_ID: {"enabled": enabled, "updated_at": timestamp}},
     }
     ensure_state_home(state_home)
     write_json_atomic(Path(state_home) / "behavior" / "watchers.json", value)
+    _record_selector_health(
+        state_home,
+        None,
+        now=health_clock,
+    )
     return watcher_status(state_home)
 
 
@@ -582,6 +1036,7 @@ def mark_incident(
     session_id: str | None = None,
     cwd: Path | None = None,
     recorded_at: str | None = None,
+    evidence_schema_version: int = EVIDENCE_SCHEMA_VERSION,
 ) -> tuple[Path, dict[str, Any]]:
     note = description.strip()
     if not note:
@@ -593,13 +1048,21 @@ def mark_incident(
     if not watcher_status(state_home)["enabled"]:
         raise ValueError(f"watcher is disabled: {WATCHER_ID}")
 
-    session = select_codex_session(
-        trace_root=trace_root,
-        session_id=session_id,
-        cwd=cwd,
+    selection = require_selected_session(
+        select_codex_session(
+            trace_root=trace_root,
+            session_id=session_id,
+            cwd=cwd,
+            state_home=state_home,
+        ),
+        operation="mark incident",
     )
+    session = selection.session
     evidence_path, normalized_events, source_boundary = ingest_codex_trace(
-        state_home, session.path
+        state_home,
+        session.path,
+        attribution=selection.provenance.to_dict(),
+        schema_version=evidence_schema_version,
     )
     evidence_reconciliation = reconcile_evidence(normalized_events)
     timestamp = recorded_at or _timestamp()
@@ -632,6 +1095,10 @@ def mark_incident(
         "claim": {
             "source": "operator-attestation",
             "verification_status": "asserted",
+        },
+        "attribution": {
+            "kind": selection.kind,
+            **selection.provenance.to_dict(),
         },
         "session": {
             "session_id": session.session_id,
@@ -667,7 +1134,7 @@ def mark_incident(
         },
         "surface_refs": [dict(item) for item in surfaces],
         "evidence_plane": {
-            "schema_version": 1,
+            "schema_version": source_boundary["schema_version"],
             "provider": "codex",
             "session_id": session.session_id,
             "verification_status": "observed",
@@ -924,14 +1391,36 @@ def intervene(
     diagnosis = load_diagnosis(state_home, diagnosis_id)
     if diagnosis["status"] == "possible-legitimate-barrier":
         raise ValueError("intervention refused because a legitimate barrier may exist")
+    recommendation = diagnosis.get("recommended_intervention")
+    if (
+        not isinstance(recommendation, Mapping)
+        or recommendation.get("durable_policy_mutation") is not False
+    ):
+        raise ValueError(
+            "intervention refused because durable_policy_mutation is not false"
+        )
     incident = load_incident(state_home, diagnosis["incident_id"])
-    session = incident["session"]
-    session_id = _safe_component(str(session["session_id"]), "session_id")
-    cwd = Path(str(session["cwd"])).resolve(strict=False)
+    attribution = incident.get("attribution")
+    if not isinstance(attribution, Mapping) or attribution.get("kind") != "selected":
+        raise ValueError("intervention incident has no selected attribution")
+    stored_session = incident["session"]
+    session_id = _safe_component(str(stored_session["session_id"]), "session_id")
+    stored_cwd = Path(str(stored_session["cwd"])).resolve(strict=False)
+    binding = require_selected_session(
+        validate_session_binding(
+            Path(str(stored_session["trace_path"])),
+            session_id=session_id,
+            cwd=stored_cwd,
+            state_home=state_home,
+        ),
+        operation="intervene",
+    )
+    session = binding.session
+    cwd = session.cwd
     codex = executable or shutil.which("codex")
     if not codex:
         raise ValueError("Codex CLI is unavailable")
-    non_interactive = bool(session.get("non_interactive"))
+    non_interactive = session.non_interactive
     if non_interactive:
         command = [codex, "exec", "resume", "--json", session_id, _RESUME_INSTRUCTION]
     else:

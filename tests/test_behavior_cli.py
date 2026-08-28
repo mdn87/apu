@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -11,9 +12,14 @@ from apu.behavior_cli import event_main, intervene_main, watch_main, wtf_main
 def _trace(root: Path, cwd: Path) -> Path:
     path = root / "rollout.jsonl"
     path.parent.mkdir(parents=True)
+    base = datetime.now(UTC) - timedelta(seconds=3)
+
+    def timestamp(offset: int) -> str:
+        return (base + timedelta(seconds=offset)).isoformat().replace("+00:00", "Z")
+
     records = [
         {
-            "timestamp": "2026-08-12T12:00:00Z",
+            "timestamp": timestamp(0),
             "type": "session_meta",
             "payload": {
                 "id": "cli-session",
@@ -23,12 +29,12 @@ def _trace(root: Path, cwd: Path) -> Path:
             },
         },
         {
-            "timestamp": "2026-08-12T12:00:01Z",
+            "timestamp": timestamp(1),
             "type": "event_msg",
             "payload": {"type": "task_started"},
         },
         {
-            "timestamp": "2026-08-12T12:00:02Z",
+            "timestamp": timestamp(2),
             "type": "event_msg",
             "payload": {
                 "type": "agent_message",
@@ -106,3 +112,33 @@ def test_wtf_can_select_recent_incomplete_run_without_an_event(
     diagnosis = json.loads(capsys.readouterr().out)
     assert diagnosis["status"] == "likely-autonomy-loss"
     assert (state / "behavior" / "latest-incident.json").is_file()
+
+
+def test_event_cli_returns_nonzero_for_no_attribution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    requested = tmp_path / "requested"
+    other = tmp_path / "other"
+    requested.mkdir()
+    other.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, other)
+    monkeypatch.setenv("APU_HOME", str(state))
+
+    assert (
+        event_main(
+            [
+                "stopped before completing the requested task",
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(requested),
+            ]
+        )
+        == 2
+    )
+    assert "no_attribution: no_exact_cwd_candidate" in capsys.readouterr().err
+    assert not (state / "behavior" / "latest-incident.json").exists()

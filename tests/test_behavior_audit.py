@@ -226,14 +226,68 @@ def test_source_byte_cap_stops_selection_before_ingestion(tmp_path: Path) -> Non
         item["session_id"] == "older" and item["reason"] == "source-byte-limit"
         for item in report["selection"]["skipped"]
     )
-    evidence_files = list((state / "behavior" / "evidence" / "codex").glob("*.jsonl"))
+    evidence_files = list(
+        (state / "behavior" / "evidence" / "v2" / "codex").glob("*.jsonl")
+    )
     assert len(evidence_files) == 1
+    assert not list(
+        (state / "behavior" / "evidence" / "codex").glob("*.jsonl")
+    )
     stored_session_ids = {
         json.loads(line)["session_id"]
         for line in evidence_files[0].read_text(encoding="utf-8").splitlines()
         if line
     }
     assert stored_session_ids == {"newer"}
+
+
+def test_audit_can_use_complete_v1_writer_during_rollback(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    traces = tmp_path / "sessions"
+    cwd.mkdir()
+    _write_trace(
+        traces / "legacy.jsonl",
+        cwd,
+        session_id="legacy-session",
+        timestamp=_NOW - timedelta(minutes=1),
+    )
+
+    audit_behavior(
+        state,
+        cwd=cwd,
+        providers=("codex",),
+        trace_root=traces,
+        now=_NOW,
+    )
+    assert len(
+        list(
+            (state / "behavior" / "evidence" / "v2" / "codex").glob("*.jsonl")
+        )
+    ) == 1
+
+    _, report = audit_behavior(
+        state,
+        cwd=cwd,
+        providers=("codex",),
+        trace_root=traces,
+        now=_NOW,
+        evidence_schema_version=1,
+    )
+
+    assert report["scope"]["evidence_writer_schema_version"] == 1
+    assert len(
+        list((state / "behavior" / "evidence" / "codex").glob("*.jsonl"))
+    ) == 1
+    _, repeated = audit_behavior(
+        state,
+        cwd=cwd,
+        providers=("codex",),
+        trace_root=traces,
+        now=_NOW,
+        evidence_schema_version=1,
+    )
+    assert repeated["sessions"][0]["ingest_status"] == "unchanged-reused"
 
 
 def test_metadata_discovery_cap_prioritizes_marked_source(
@@ -366,8 +420,14 @@ def test_hook_audit_detects_completion_after_stale_test(tmp_path: Path) -> None:
             },
         ),
     ]
-    for event_name, payload in hook_events:
-        ingest_hook_event(state, "claude-code", event_name, payload)
+    for index, (event_name, payload) in enumerate(hook_events):
+        ingest_hook_event(
+            state,
+            "claude-code",
+            event_name,
+            payload,
+            schema_version=1 if index < 2 else 2,
+        )
 
     path, report = audit_behavior(
         state,
@@ -379,6 +439,11 @@ def test_hook_audit_detects_completion_after_stale_test(tmp_path: Path) -> None:
     assert any(
         item["detector"] == "completion-after-stale-gate" for item in report["findings"]
     )
+    stored_bytes = sum(
+        path.stat().st_size
+        for path in (state / "behavior" / "evidence").rglob("*.jsonl")
+    )
+    assert report["sessions"][0]["source_bytes"] == stored_bytes
     assert "private-name.py" not in path.read_text(encoding="utf-8")
     assert "secret" not in path.read_text(encoding="utf-8")
 
@@ -457,6 +522,8 @@ def test_behavior_cli_exposes_caps_and_has_no_unbounded_mode(
             "3",
             "--max-bytes",
             "1MiB",
+            "--evidence-schema-version",
+            "1",
             "--json",
         ]
     )
@@ -466,6 +533,7 @@ def test_behavior_cli_exposes_caps_and_has_no_unbounded_mode(
     assert report["scope"]["lookback_seconds"] == 12 * 60 * 60
     assert report["scope"]["session_limit"] == 3
     assert report["scope"]["source_byte_limit"] == 1024 * 1024
+    assert report["scope"]["evidence_writer_schema_version"] == 1
 
     with pytest.raises(SystemExit):
         main(["behavior", "audit", "--all-history"])

@@ -239,6 +239,9 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("plan", type=Path)
     apply.add_argument("--yes", action="store_true")
     apply.add_argument("--installation-id")
+    apply.add_argument("--session-id")
+    apply.add_argument("--trace-root", type=Path)
+    apply.add_argument("--cwd", type=Path, default=Path.cwd())
 
     dispatch = commands.add_parser(
         "dispatch",
@@ -898,12 +901,23 @@ def _review(args: argparse.Namespace) -> int:
 
 def _apply(args: argparse.Namespace) -> int:
     from apu.apply import apply_plan
+    from apu.behavior_watch import require_selected_session, select_codex_session
     from apu.dispatch_apply import (
         apply_dispatched_plan,
         dispatch_plan_binding,
     )
 
     plan = _load_plan(args.plan)
+    state_home = resolve_state_home()
+    require_selected_session(
+        select_codex_session(
+            trace_root=args.trace_root,
+            session_id=args.session_id,
+            cwd=args.cwd,
+            state_home=state_home,
+        ),
+        operation="apu apply",
+    )
     if not args.yes:
         answer = input("Apply approved plan? [y/N] ").strip().lower()
         if answer not in {"y", "yes"}:
@@ -911,7 +925,6 @@ def _apply(args: argparse.Namespace) -> int:
     installation_id = args.installation_id or (
         "install-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     )
-    state_home = resolve_state_home()
     if dispatch_plan_binding(state_home, plan) is not None:
         receipt = apply_dispatched_plan(
             state_home,

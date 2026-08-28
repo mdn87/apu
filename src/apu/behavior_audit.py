@@ -13,10 +13,12 @@ from typing import Any
 from uuid import uuid4
 
 from .audit import build_inventory
-from .behavior_watch import codex_trace_root
+from .behavior_watch import codex_trace_root, normalized_cwd_key
 from .evidence import (
+    EVIDENCE_READER_VERSIONS,
     ingest_codex_trace,
     read_evidence,
+    read_evidence_version,
     reconcile_evidence,
     validate_evidence_event,
 )
@@ -97,9 +99,7 @@ def _event_sort_key(event: Mapping[str, Any]) -> tuple[datetime, int, str]:
 
 
 def _same_path(first: Path, second: Path) -> bool:
-    return os.path.normcase(first.resolve(strict=False)) == os.path.normcase(
-        second.resolve(strict=False)
-    )
+    return normalized_cwd_key(first) == normalized_cwd_key(second)
 
 
 def _within(root: Path, candidate: Path) -> bool:
@@ -263,7 +263,9 @@ def _discover_codex_candidates(
     return candidates, skipped
 
 
-def _read_evidence_file(path: Path) -> list[dict[str, Any]]:
+def _read_evidence_file(
+    path: Path, *, expected_schema_version: int
+) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, start=1):
@@ -276,16 +278,36 @@ def _read_evidence_file(path: Path) -> list[dict[str, Any]]:
                     f"invalid evidence at {path}:{line_number}: {error}"
                 ) from error
             validate_evidence_event(event)
+            if event["schema_version"] != expected_schema_version:
+                raise ValueError("evidence version does not match its storage route")
             events.append(event)
     return events
 
 
-def _event_cwd(events: Iterable[Mapping[str, Any]]) -> Path | None:
-    for event in events:
-        value = event.get("state", {}).get("cwd")
-        if isinstance(value, str) and Path(value).is_absolute():
-            return Path(value).resolve(strict=False)
-    return None
+def _evidence_file_identity(
+    events: list[dict[str, Any]],
+    *,
+    provider: str,
+    path: Path,
+) -> tuple[str, Path | None]:
+    if not events:
+        raise ValueError("evidence file is empty")
+    session_ids = {event["session_id"] for event in events}
+    if len(session_ids) != 1 or any(event["provider"] != provider for event in events):
+        raise ValueError("evidence file identity is inconsistent")
+    session_id = next(iter(session_ids))
+    expected_name = f"{sha256(session_id.encode('utf-8')).hexdigest()}.jsonl"
+    if path.name != expected_name:
+        raise ValueError("evidence filename does not match its session identity")
+    cwd_values = {
+        Path(value).resolve(strict=False)
+        for event in events
+        for value in [event["state"]["cwd"]]
+        if isinstance(value, str) and Path(value).is_absolute()
+    }
+    if len({normalized_cwd_key(value) for value in cwd_values}) > 1:
+        raise ValueError("evidence file contains multiple working directories")
+    return session_id, next(iter(cwd_values), None)
 
 
 def _latest_event_time(
@@ -313,8 +335,12 @@ def _discover_evidence_candidates(
         return [], []
     candidates: list[AuditCandidate] = []
     skipped: list[dict[str, Any]] = []
-    for provider_dir in sorted(root.iterdir()):
-        if not provider_dir.is_dir() or provider_dir.name not in providers:
+    for provider in sorted(providers):
+        versioned_provider_dirs = (
+            (1, root / provider),
+            (2, root / "v2" / provider),
+        )
+        if not any(directory.is_dir() for _, directory in versioned_provider_dirs):
             continue
         priority_names = {
             f"{sha256(value.encode('utf-8')).hexdigest()}.jsonl"
@@ -324,40 +350,52 @@ def _discover_evidence_candidates(
             priority_names.add(
                 f"{sha256(session_id.encode('utf-8')).hexdigest()}.jsonl"
             )
-        discovered: list[tuple[Path, os.stat_result]] = []
-        for path in provider_dir.glob("*.jsonl"):
-            try:
-                stat = path.stat()
-            except OSError:
+        discovered: list[tuple[int, Path, os.stat_result]] = []
+        for schema_version, provider_dir in versioned_provider_dirs:
+            if not provider_dir.is_dir():
                 continue
-            discovered.append((path, stat))
+            for path in provider_dir.glob("*.jsonl"):
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                discovered.append((schema_version, path, stat))
         discovered.sort(
             key=lambda item: (
-                item[0].name not in priority_names,
-                -item[1].st_mtime_ns,
-                str(item[0]),
+                item[1].name not in priority_names,
+                -item[2].st_mtime_ns,
+                item[0],
+                str(item[1]),
             )
         )
         if len(discovered) > _DISCOVERY_FILE_LIMIT:
             skipped.append(
                 {
-                    "provider": provider_dir.name,
+                    "provider": provider,
                     "session_id": None,
                     "reason": "discovery-file-limit",
                     "source_path_sha256": sha256_bytes(
-                        str(provider_dir.resolve()).encode("utf-8")
+                        str(root.resolve()).encode("utf-8")
                     ),
                     "source_bytes": 0,
                     "skipped_file_count": len(discovered) - _DISCOVERY_FILE_LIMIT,
                 }
             )
-        for path, stat in discovered[:_DISCOVERY_FILE_LIMIT]:
+        for schema_version, path, stat in discovered[:_DISCOVERY_FILE_LIMIT]:
             try:
-                events = _read_evidence_file(path)
+                events = _read_evidence_file(
+                    path,
+                    expected_schema_version=schema_version,
+                )
+                selected_id, selected_cwd = _evidence_file_identity(
+                    events,
+                    provider=provider,
+                    path=path,
+                )
             except (OSError, TypeError, ValueError) as error:
                 skipped.append(
                     {
-                        "provider": provider_dir.name,
+                        "provider": provider,
                         "session_id": None,
                         "reason": f"invalid-evidence:{type(error).__name__}",
                         "source_path_sha256": sha256_bytes(
@@ -367,10 +405,6 @@ def _discover_evidence_candidates(
                     }
                 )
                 continue
-            if not events:
-                continue
-            selected_id = events[0]["session_id"]
-            selected_cwd = _event_cwd(events)
             modified = _latest_event_time(
                 events, datetime.fromtimestamp(stat.st_mtime, UTC)
             )
@@ -385,7 +419,7 @@ def _discover_evidence_candidates(
             ):
                 skipped.append(
                     {
-                        "provider": provider_dir.name,
+                        "provider": provider,
                         "session_id": selected_id,
                         "reason": "outside-lookback",
                         "source_path_sha256": sha256_bytes(
@@ -397,7 +431,7 @@ def _discover_evidence_candidates(
                 continue
             candidates.append(
                 AuditCandidate(
-                    provider=provider_dir.name,
+                    provider=provider,
                     session_id=selected_id,
                     cwd=selected_cwd,
                     source_path=path.resolve(),
@@ -425,6 +459,26 @@ def _deduplicate_candidates(
             and current.source_kind != "transcript"
         ):
             selected[key] = candidate
+            continue
+        if (
+            candidate.source_kind == current.source_kind
+            and candidate.source_kind == "evidence"
+        ):
+            latest = (
+                candidate
+                if candidate.modified_at > current.modified_at
+                else current
+            )
+            selected[key] = AuditCandidate(
+                provider=latest.provider,
+                session_id=latest.session_id,
+                cwd=latest.cwd,
+                source_path=latest.source_path,
+                source_bytes=current.source_bytes + candidate.source_bytes,
+                modified_at=max(current.modified_at, candidate.modified_at),
+                source_kind="evidence",
+                marked=current.marked or candidate.marked,
+            )
             continue
         if (
             candidate.source_kind == current.source_kind
@@ -475,8 +529,18 @@ def _select_candidates(
     return selected, skipped, consumed
 
 
-def _already_ingested_unchanged(state_home: Path, candidate: AuditCandidate) -> bool:
-    events = read_evidence(state_home, candidate.provider, candidate.session_id)
+def _already_ingested_unchanged(
+    state_home: Path,
+    candidate: AuditCandidate,
+    *,
+    schema_version: int,
+) -> bool:
+    events = read_evidence_version(
+        state_home,
+        candidate.provider,
+        candidate.session_id,
+        schema_version=schema_version,
+    )
     boundaries = [
         event["source"]["snapshot_bytes"]
         for event in events
@@ -993,6 +1057,7 @@ def audit_behavior(
     session_id: str | None = None,
     trace_root: Path | None = None,
     now: datetime | None = None,
+    evidence_schema_version: int = 2,
 ) -> tuple[Path, dict[str, Any]]:
     if lookback <= timedelta(0):
         raise ValueError("behavior audit lookback must be positive")
@@ -1000,6 +1065,8 @@ def audit_behavior(
         raise ValueError("behavior audit session limit must be positive")
     if source_byte_limit < 1:
         raise ValueError("behavior audit source byte limit must be positive")
+    if evidence_schema_version not in EVIDENCE_READER_VERSIONS:
+        raise ValueError("behavior audit evidence schema version is unsupported")
     selected_providers = set(providers)
     if not selected_providers or not selected_providers <= {"codex", "claude-code"}:
         raise ValueError("behavior audit provider is unsupported")
@@ -1053,10 +1120,18 @@ def audit_behavior(
     for candidate in selected:
         ingest_status = "existing-evidence"
         if candidate.source_kind == "transcript":
-            if _already_ingested_unchanged(state_home, candidate):
+            if _already_ingested_unchanged(
+                state_home,
+                candidate,
+                schema_version=evidence_schema_version,
+            ):
                 ingest_status = "unchanged-reused"
             else:
-                ingest_codex_trace(state_home, candidate.source_path)
+                ingest_codex_trace(
+                    state_home,
+                    candidate.source_path,
+                    schema_version=evidence_schema_version,
+                )
                 ingest_status = "ingested"
         events = read_evidence(state_home, candidate.provider, candidate.session_id)
         verification = _verify_events(events)
@@ -1121,6 +1196,7 @@ def audit_behavior(
             "source_byte_limit": source_byte_limit,
             "discovery_file_limit_per_provider": _DISCOVERY_FILE_LIMIT,
             "requested_session_id": session_id,
+            "evidence_writer_schema_version": evidence_schema_version,
         },
         "selection": {
             "discovered_session_count": len(unique),

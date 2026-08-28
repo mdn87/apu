@@ -14,12 +14,24 @@ from typing import Any
 from .models import canonical_json, sha256_bytes
 from .state import ensure_private_directory, ensure_state_home
 
-EVIDENCE_SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA_VERSION = 2
+EVIDENCE_READER_VERSIONS = frozenset({1, 2})
 EVIDENCE_STATUSES = frozenset(
     {"asserted", "observed", "verified", "stale", "contradicted", "unverifiable"}
 )
 EVIDENCE_CLASSES = frozenset({"invocation", "result", "state"})
 SOURCE_KINDS = frozenset({"transcript", "hook", "state-observer"})
+ATTRIBUTION_MODES = frozenset(
+    {
+        "exact_session_binding",
+        "exact_trace_path",
+        "explicit_session_id",
+        "provider_hook",
+        "state_observer",
+        "unique_active_exact_cwd",
+    }
+)
+ATTRIBUTION_CONFIDENCE = frozenset({"exact", "source_attested"})
 _MAX_TRACE_BYTES = 256 * 1024 * 1024
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_LABEL = re.compile(r"^[A-Za-z0-9_.:/-]{1,128}$")
@@ -120,7 +132,7 @@ def _parse_timestamp(value: Any, field: str) -> str | None:
 
 
 def validate_evidence_event(event: Mapping[str, Any]) -> None:
-    expected = {
+    base_fields = {
         "schema_version",
         "event_id",
         "provider",
@@ -136,13 +148,21 @@ def validate_evidence_event(event: Mapping[str, Any]) -> None:
         "state",
         "source",
     }
+    if not isinstance(event, Mapping):
+        raise TypeError("evidence event must be an object")
+    schema_version = event.get("schema_version")
+    expected = (
+        base_fields | {"attribution"}
+        if schema_version == 2
+        else base_fields
+    )
     if not isinstance(event, Mapping) or set(event) != expected:
         missing = sorted(expected - set(event)) if isinstance(event, Mapping) else []
         extra = sorted(set(event) - expected) if isinstance(event, Mapping) else []
         raise ValueError(
             f"evidence fields do not match contract; missing={missing}, extra={extra}"
         )
-    if event["schema_version"] != EVIDENCE_SCHEMA_VERSION:
+    if event["schema_version"] not in EVIDENCE_READER_VERSIONS:
         raise ValueError("unsupported evidence schema_version")
     _required_string(event["event_id"], "event_id")
     _required_string(event["provider"], "provider", maximum=128)
@@ -162,6 +182,39 @@ def validate_evidence_event(event: Mapping[str, Any]) -> None:
     _validate_observation(event["observation"])
     _validate_state(event["state"])
     _validate_source(event["source"])
+    if schema_version == 2:
+        _validate_attribution(event["attribution"])
+
+
+def _validate_attribution(value: Any) -> None:
+    expected = {
+        "selector_mode",
+        "candidate_count",
+        "last_event_age_seconds",
+        "confidence",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("evidence attribution fields do not match contract")
+    if value["selector_mode"] not in ATTRIBUTION_MODES:
+        raise ValueError("evidence attribution.selector_mode is unsupported")
+    candidate_count = value["candidate_count"]
+    if (
+        not isinstance(candidate_count, int)
+        or isinstance(candidate_count, bool)
+        or candidate_count < 1
+    ):
+        raise ValueError(
+            "evidence attribution.candidate_count must be a positive integer"
+        )
+    age = value["last_event_age_seconds"]
+    if age is not None and (
+        not isinstance(age, int) or isinstance(age, bool) or age < 0
+    ):
+        raise ValueError(
+            "evidence attribution.last_event_age_seconds must be non-negative or null"
+        )
+    if value["confidence"] not in ATTRIBUTION_CONFIDENCE:
+        raise ValueError("evidence attribution.confidence is unsupported")
 
 
 def _validate_observation(value: Any) -> None:
@@ -278,6 +331,21 @@ def _empty_state(cwd: Path | None = None) -> dict[str, Any]:
     }
 
 
+def _attribution(
+    selector_mode: str,
+    *,
+    candidate_count: int = 1,
+    last_event_age_seconds: int | None = None,
+    confidence: str = "exact",
+) -> dict[str, Any]:
+    return {
+        "selector_mode": selector_mode,
+        "candidate_count": candidate_count,
+        "last_event_age_seconds": last_event_age_seconds,
+        "confidence": confidence,
+    }
+
+
 def _event(
     *,
     provider: str,
@@ -291,9 +359,13 @@ def _event(
     observation: Mapping[str, Any] | None,
     state: Mapping[str, Any] | None,
     source: Mapping[str, Any],
+    attribution: Mapping[str, Any],
+    schema_version: int = EVIDENCE_SCHEMA_VERSION,
 ) -> dict[str, Any]:
+    if schema_version not in EVIDENCE_READER_VERSIONS:
+        raise ValueError("unsupported evidence writer schema_version")
     body = {
-        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "provider": provider,
         "source_kind": source_kind,
         "session_id": session_id,
@@ -307,6 +379,8 @@ def _event(
         "state": dict(state or _empty_state()),
         "source": dict(source),
     }
+    if schema_version == 2:
+        body["attribution"] = dict(attribution)
     identity = {
         "schema_version": body["schema_version"],
         "provider": body["provider"],
@@ -321,6 +395,8 @@ def _event(
             "record_sha256": body["source"]["record_sha256"],
         },
     }
+    if schema_version == 2:
+        identity["attribution"] = body["attribution"]
     event_id = (
         f"evidence-{sha256(canonical_json(identity).encode('utf-8')).hexdigest()}"
     )
@@ -333,19 +409,46 @@ def _safe_provider(provider: str) -> str:
     return _required_string(provider, "provider", maximum=128)
 
 
-def evidence_path(state_home: Path, provider: str, session_id: str) -> Path:
+def evidence_path(
+    state_home: Path,
+    provider: str,
+    session_id: str,
+    *,
+    schema_version: int = EVIDENCE_SCHEMA_VERSION,
+) -> Path:
+    if schema_version not in EVIDENCE_READER_VERSIONS:
+        raise ValueError("unsupported evidence path schema_version")
     selected_provider = _safe_provider(provider)
     if not _SAFE_LABEL.fullmatch(selected_provider):
         raise ValueError("evidence provider is not a safe path label")
     selected_session = _required_string(session_id, "session_id")
     session_digest = sha256(selected_session.encode("utf-8")).hexdigest()
+    root = Path(state_home) / "behavior" / "evidence"
+    if schema_version == 2:
+        root = root / "v2"
+    return root / selected_provider / f"{session_digest}.jsonl"
+
+
+def _logical_event_key(event: Mapping[str, Any]) -> tuple[Any, ...]:
+    source = event["source"]
     return (
-        Path(state_home)
-        / "behavior"
-        / "evidence"
-        / selected_provider
-        / f"{session_digest}.jsonl"
+        event["provider"],
+        event["session_id"],
+        event["sequence"],
+        event["event_type"],
+        event["correlation_sha256"],
+        source["path"],
+        source["line"],
+        source["record_sha256"],
     )
+
+
+def _version_neutral_event(event: Mapping[str, Any]) -> dict[str, Any]:
+    selected = dict(event)
+    selected.pop("event_id", None)
+    selected.pop("schema_version", None)
+    selected.pop("attribution", None)
+    return selected
 
 
 def append_evidence_events(
@@ -360,12 +463,22 @@ def append_evidence_events(
     if len(identities) != 1:
         raise ValueError("one evidence append must target one provider session")
     provider, session_id = next(iter(identities))
-    path = evidence_path(state_home, provider, session_id)
-    existing = {
-        event["event_id"] for event in read_evidence(state_home, provider, session_id)
-    }
+    schema_versions = {event["schema_version"] for event in stored_events}
+    if len(schema_versions) != 1:
+        raise ValueError("one evidence append must contain one schema version")
+    schema_version = next(iter(schema_versions))
+    path = evidence_path(
+        state_home,
+        provider,
+        session_id,
+        schema_version=schema_version,
+    )
+    existing_events = _read_evidence_records(state_home, provider, session_id)
+    existing = {event["event_id"] for event in existing_events}
     pending = tuple(
-        event for event in stored_events if event["event_id"] not in existing
+        event
+        for event in stored_events
+        if event["event_id"] not in existing
     )
     if not pending:
         return path, ()
@@ -388,28 +501,97 @@ def append_evidence_events(
     return path, pending
 
 
+def _read_evidence_records(
+    state_home: Path, provider: str, session_id: str
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for schema_version in sorted(EVIDENCE_READER_VERSIONS):
+        path = evidence_path(
+            state_home,
+            provider,
+            session_id,
+            schema_version=schema_version,
+        )
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        f"invalid evidence at {path}:{line_number}: {error}"
+                    ) from error
+                validate_evidence_event(event)
+                if event["schema_version"] != schema_version:
+                    raise ValueError(
+                        f"evidence version/route mismatch at {path}:{line_number}"
+                    )
+                if event["provider"] != provider or event["session_id"] != session_id:
+                    raise ValueError(
+                        f"evidence identity mismatch at {path}:{line_number}"
+                    )
+                events.append(event)
+    cwd_keys = {
+        os.path.normcase(
+            os.path.realpath(str(Path(event["state"]["cwd"])))
+        )
+        for event in events
+        if event["state"]["cwd"] is not None
+    }
+    if len(cwd_keys) > 1:
+        raise ValueError("evidence session spans multiple working directories")
+    return sorted(
+        events,
+        key=lambda event: (
+            event["observed_at"] or "",
+            event["sequence"],
+            event["event_id"],
+        ),
+    )
+
+
 def read_evidence(
     state_home: Path, provider: str, session_id: str
 ) -> list[dict[str, Any]]:
-    path = evidence_path(state_home, provider, session_id)
-    if not path.is_file():
-        return []
-    events: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as stream:
-        for line_number, line in enumerate(stream, start=1):
-            if not line.strip():
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError as error:
-                raise ValueError(
-                    f"invalid evidence at {path}:{line_number}: {error}"
-                ) from error
-            validate_evidence_event(event)
-            if event["provider"] != provider or event["session_id"] != session_id:
-                raise ValueError(f"evidence identity mismatch at {path}:{line_number}")
-            events.append(event)
-    return events
+    """Read logical evidence, preferring v2 for a cross-version replay."""
+
+    selected: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for event in _read_evidence_records(state_home, provider, session_id):
+        key = _logical_event_key(event)
+        current = selected.get(key)
+        if current is not None and _version_neutral_event(
+            current
+        ) != _version_neutral_event(event):
+            raise ValueError("cross-version evidence projections disagree")
+        if current is None or event["schema_version"] > current["schema_version"]:
+            selected[key] = event
+    return sorted(
+        selected.values(),
+        key=lambda event: (
+            event["observed_at"] or "",
+            event["sequence"],
+            event["event_id"],
+        ),
+    )
+
+
+def read_evidence_version(
+    state_home: Path,
+    provider: str,
+    session_id: str,
+    *,
+    schema_version: int,
+) -> list[dict[str, Any]]:
+    if schema_version not in EVIDENCE_READER_VERSIONS:
+        raise ValueError("unsupported evidence reader schema_version")
+    return [
+        event
+        for event in _read_evidence_records(state_home, provider, session_id)
+        if event["schema_version"] == schema_version
+    ]
 
 
 def _codex_snapshot(path: Path) -> tuple[str, Path, int, str]:
@@ -494,6 +676,8 @@ def _codex_event(
     line_number: int,
     snapshot_bytes: int,
     snapshot_sha256: str,
+    attribution: Mapping[str, Any],
+    schema_version: int,
 ) -> dict[str, Any] | None:
     record_type = record.get("type")
     payload = record.get("payload")
@@ -575,13 +759,25 @@ def _codex_event(
         observation=observation,
         state=state,
         source=source,
+        attribution=attribution,
+        schema_version=schema_version,
     )
 
 
 def ingest_codex_trace(
-    state_home: Path, path: Path
+    state_home: Path,
+    path: Path,
+    *,
+    attribution: Mapping[str, Any] | None = None,
+    schema_version: int = EVIDENCE_SCHEMA_VERSION,
 ) -> tuple[Path | None, tuple[dict[str, Any], ...], dict[str, Any]]:
+    if schema_version not in EVIDENCE_READER_VERSIONS:
+        raise ValueError("unsupported evidence writer schema_version")
     selected = Path(path).expanduser().resolve()
+    selected_attribution = dict(
+        attribution or _attribution("exact_trace_path")
+    )
+    _validate_attribution(selected_attribution)
     session_id, cwd, snapshot_bytes, snapshot_sha256 = _codex_snapshot(selected)
     events: list[dict[str, Any]] = []
     consumed = 0
@@ -605,6 +801,8 @@ def ingest_codex_trace(
                 line_number=line_number,
                 snapshot_bytes=snapshot_bytes,
                 snapshot_sha256=snapshot_sha256,
+                attribution=selected_attribution,
+                schema_version=schema_version,
             )
             if event is not None:
                 events.append(event)
@@ -617,6 +815,7 @@ def ingest_codex_trace(
         "cwd": str(cwd),
         "event_count": len(events),
         "appended_count": len(appended),
+        "schema_version": schema_version,
     }
     return destination, tuple(events), boundary
 
@@ -627,6 +826,7 @@ def normalize_hook_event(
     payload: Mapping[str, Any],
     *,
     observed_at: str | None = None,
+    schema_version: int = EVIDENCE_SCHEMA_VERSION,
 ) -> dict[str, Any]:
     selected_provider = _safe_provider(provider)
     selected_hook = _required_string(hook_event, "hook_event", maximum=128)
@@ -703,6 +903,10 @@ def normalize_hook_event(
         observation=observation,
         state=_empty_state(cwd),
         source=source,
+        attribution=_attribution(
+            "provider_hook", confidence="source_attested"
+        ),
+        schema_version=schema_version,
     )
 
 
@@ -711,8 +915,15 @@ def ingest_hook_event(
     provider: str,
     hook_event: str,
     payload: Mapping[str, Any],
+    *,
+    schema_version: int = EVIDENCE_SCHEMA_VERSION,
 ) -> tuple[Path | None, dict[str, Any], bool]:
-    event = normalize_hook_event(provider, hook_event, payload)
+    event = normalize_hook_event(
+        provider,
+        hook_event,
+        payload,
+        schema_version=schema_version,
+    )
     path, appended = append_evidence_events(state_home, [event])
     return path, event, bool(appended)
 
@@ -736,6 +947,7 @@ def observe_repository_state(
     cwd: Path,
     sequence: int = 0,
     observed_at: str | None = None,
+    schema_version: int = EVIDENCE_SCHEMA_VERSION,
 ) -> tuple[Path | None, dict[str, Any], bool]:
     selected_cwd = Path(cwd).expanduser().resolve(strict=False)
     state = _empty_state(selected_cwd)
@@ -782,6 +994,8 @@ def observe_repository_state(
         observation=_empty_observation(),
         state=state,
         source=source,
+        attribution=_attribution("state_observer"),
+        schema_version=schema_version,
     )
     path, appended = append_evidence_events(state_home, [event])
     return path, event, bool(appended)

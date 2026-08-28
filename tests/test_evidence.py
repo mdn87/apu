@@ -8,10 +8,12 @@ import pytest
 
 from apu.cli import main
 from apu.evidence import (
+    append_evidence_events,
     ingest_codex_trace,
     ingest_hook_event,
     observe_repository_state,
     read_evidence,
+    read_evidence_version,
     reconcile_evidence,
     validate_evidence_event,
     verify_evidence_source,
@@ -92,6 +94,10 @@ def test_codex_ingestion_is_content_minimized_correlated_and_replayable(
     path, events, boundary = ingest_codex_trace(state, trace)
 
     assert path is not None and path.is_file()
+    assert {event["schema_version"] for event in events} == {2}
+    assert {event["attribution"]["selector_mode"] for event in events} == {
+        "exact_trace_path"
+    }
     assert boundary["event_count"] == 6
     assert boundary["appended_count"] == 6
     reconciliation = reconcile_evidence(events)
@@ -179,6 +185,122 @@ def test_hook_ingestion_projects_only_safe_metadata(tmp_path: Path) -> None:
         validate_evidence_event(invalid)
 
 
+def test_v2_reader_accepts_legacy_v1_and_rejects_partial_v2(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    trace = _codex_trace(tmp_path / "sessions" / "rollout.jsonl", cwd)
+    v2_path, events, _ = ingest_codex_trace(state, trace)
+    legacy = dict(events[0])
+    legacy["schema_version"] = 1
+    legacy["event_id"] = "legacy-" + legacy["event_id"]
+    legacy["sequence"] += 1_000
+    legacy.pop("attribution")
+
+    validate_evidence_event(legacy)
+    legacy_path, appended = append_evidence_events(state, [legacy])
+    assert appended == (legacy,)
+    assert legacy_path != v2_path
+    assert legacy_path is not None and "\"schema_version\":2" not in legacy_path.read_text(
+        encoding="utf-8"
+    )
+    assert v2_path is not None and "\"schema_version\":1" not in v2_path.read_text(
+        encoding="utf-8"
+    )
+    stored = read_evidence(state, "codex", "evidence-session")
+    assert {event["schema_version"] for event in stored} == {1, 2}
+
+    partial_v2 = dict(legacy)
+    partial_v2["schema_version"] = 2
+    with pytest.raises(ValueError, match=r"missing=\['attribution'\]"):
+        validate_evidence_event(partial_v2)
+
+    conflict_state = tmp_path / "conflict-state"
+    append_evidence_events(conflict_state, [events[0]])
+    conflicting_legacy = dict(events[0])
+    conflicting_legacy["schema_version"] = 1
+    conflicting_legacy["event_id"] = "conflict-legacy"
+    conflicting_legacy.pop("attribution")
+    conflicting_legacy["observation"] = dict(conflicting_legacy["observation"])
+    conflicting_legacy["observation"]["status"] = "completed"
+    append_evidence_events(conflict_state, [conflicting_legacy])
+    with pytest.raises(ValueError, match="cross-version evidence projections disagree"):
+        read_evidence(conflict_state, "codex", "evidence-session")
+
+    rollback_state = tmp_path / "rollback-state"
+    _, rollback_events, rollback_boundary = ingest_codex_trace(
+        rollback_state,
+        trace,
+        schema_version=1,
+    )
+    assert rollback_boundary["schema_version"] == 1
+    assert {event["schema_version"] for event in rollback_events} == {1}
+    assert all("attribution" not in event for event in rollback_events)
+
+
+def test_v1_to_v2_writer_transition_keeps_routes_complete_and_reads_logically(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    trace = _codex_trace(tmp_path / "sessions" / "rollout.jsonl", cwd)
+
+    _, legacy_events, legacy_boundary = ingest_codex_trace(
+        state,
+        trace,
+        schema_version=1,
+    )
+    _, replayed, replay_boundary = ingest_codex_trace(
+        state,
+        trace,
+        schema_version=2,
+    )
+    assert len(legacy_events) == len(replayed) == 6
+    assert legacy_boundary["appended_count"] == 6
+    assert replay_boundary["appended_count"] == 6
+    assert len(
+        read_evidence_version(
+            state,
+            "codex",
+            "evidence-session",
+            schema_version=1,
+        )
+    ) == 6
+    assert len(
+        read_evidence_version(
+            state,
+            "codex",
+            "evidence-session",
+            schema_version=2,
+        )
+    ) == 6
+
+    with trace.open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps(
+                {
+                    "timestamp": "2026-08-14T10:00:06Z",
+                    "type": "event_msg",
+                    "payload": {"type": "task_complete"},
+                }
+            )
+            + "\n"
+        )
+    _, _, advanced_boundary = ingest_codex_trace(
+        state,
+        trace,
+        schema_version=2,
+    )
+
+    stored = read_evidence(state, "codex", "evidence-session")
+    assert advanced_boundary["appended_count"] == 1
+    assert len(stored) == 7
+    assert {event["schema_version"] for event in stored} == {2}
+
+
 def test_repository_observation_hashes_changed_paths(tmp_path: Path) -> None:
     state = tmp_path / "state"
     repo = tmp_path / "repo"
@@ -246,11 +368,45 @@ def test_evidence_cli_ingests_hook_json(tmp_path: Path, monkeypatch, capsys) -> 
                 "PreToolUse",
                 "--input",
                 str(payload_path),
+                "--schema-version",
+                "1",
                 "--json",
             ]
         )
         == 0
     )
     result = json.loads(capsys.readouterr().out)
+    assert result["schema_version"] == 1
     assert result["event_type"] == "tool.requested"
     assert result["appended"] is True
+
+
+def test_evidence_cli_returns_nonzero_for_no_attribution(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    state = tmp_path / "state"
+    other = tmp_path / "other"
+    requested = tmp_path / "requested"
+    other.mkdir()
+    requested.mkdir()
+    trace_root = tmp_path / "sessions"
+    _codex_trace(trace_root / "rollout.jsonl", other)
+    monkeypatch.setenv("APU_HOME", str(state))
+
+    assert (
+        main(
+            [
+                "evidence",
+                "ingest-codex",
+                "--trace-root",
+                str(trace_root),
+                "--cwd",
+                str(requested),
+                "--json",
+            ]
+        )
+        == 2
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["kind"] == "no_attribution"
+    assert result["reason_code"] == "no_exact_cwd_candidate"

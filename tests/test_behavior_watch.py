@@ -1,20 +1,35 @@
 from __future__ import annotations
 
 import json
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from apu.behavior_watch import (
     WATCHER_ID,
+    NoAttribution,
+    SelectedSession,
+    _peek_session,
     configure_watcher,
     diagnose_incident,
     intervene,
     mark_incident,
+    normalized_cwd_key,
     record_intervention_result,
     select_codex_session,
     watcher_status,
 )
+
+_NOW = datetime.now(UTC).replace(microsecond=0)
+_TRACE_START = _NOW - timedelta(minutes=1)
+
+
+def _trace_timestamp(offset: int) -> str:
+    return (_TRACE_START + timedelta(seconds=offset)).isoformat().replace(
+        "+00:00", "Z"
+    )
 
 
 def _write_trace(
@@ -29,7 +44,7 @@ def _write_trace(
     path.parent.mkdir(parents=True, exist_ok=True)
     records = [
         {
-            "timestamp": "2026-08-12T10:00:00Z",
+            "timestamp": _trace_timestamp(0),
             "type": "session_meta",
             "payload": {
                 "id": session_id,
@@ -43,7 +58,7 @@ def _write_trace(
             },
         },
         {
-            "timestamp": "2026-08-12T10:00:01Z",
+            "timestamp": _trace_timestamp(1),
             "type": "turn_context",
             "payload": {
                 "collaboration_mode": {"kind": "default"},
@@ -53,7 +68,7 @@ def _write_trace(
             },
         },
         {
-            "timestamp": "2026-08-12T10:00:02Z",
+            "timestamp": _trace_timestamp(2),
             "type": "event_msg",
             "payload": {
                 "type": "task_started",
@@ -61,7 +76,7 @@ def _write_trace(
             },
         },
         {
-            "timestamp": "2026-08-12T10:00:03Z",
+            "timestamp": _trace_timestamp(3),
             "type": "event_msg",
             "payload": {
                 "type": "user_message",
@@ -69,7 +84,7 @@ def _write_trace(
             },
         },
         {
-            "timestamp": "2026-08-12T10:00:04Z",
+            "timestamp": _trace_timestamp(4),
             "type": "response_item",
             "payload": {
                 "type": "function_call",
@@ -78,7 +93,7 @@ def _write_trace(
             },
         },
         {
-            "timestamp": "2026-08-12T10:00:05Z",
+            "timestamp": _trace_timestamp(5),
             "type": "response_item",
             "payload": {
                 "type": "function_call_output",
@@ -86,7 +101,7 @@ def _write_trace(
             },
         },
         {
-            "timestamp": "2026-08-12T10:00:06Z",
+            "timestamp": _trace_timestamp(6),
             "type": "event_msg",
             "payload": {
                 "type": "agent_message",
@@ -97,7 +112,7 @@ def _write_trace(
     if not active:
         records.append(
             {
-                "timestamp": "2026-08-12T10:00:07Z",
+                "timestamp": _trace_timestamp(7),
                 "type": "event_msg",
                 "payload": {"type": "task_complete", "turn_id": "turn-1"},
             }
@@ -127,9 +142,12 @@ def test_selects_active_session_and_marks_content_free_evidence(tmp_path: Path) 
     completed.touch()
     active.touch()
 
-    selected = select_codex_session(trace_root=traces, cwd=cwd)
-    assert selected.session_id == "active-session"
-    assert selected.active is True
+    selected = select_codex_session(trace_root=traces, cwd=cwd, now=_NOW)
+    assert isinstance(selected, SelectedSession)
+    assert selected.session.session_id == "active-session"
+    assert selected.session.active is True
+    assert selected.provenance.selector_mode == "unique_active_exact_cwd"
+    assert selected.provenance.candidate_count == 1
 
     path, incident = mark_incident(
         tmp_path / "state",
@@ -307,13 +325,18 @@ def test_watcher_configuration_defaults_enabled_and_can_fail_closed(
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state"
-    assert watcher_status(state) == {
-        "watcher": WATCHER_ID,
-        "enabled": True,
-        "updated_at": None,
-        "provider": "codex",
-        "background_service": False,
-    }
+    initial = watcher_status(state)
+    assert initial["watcher"] == WATCHER_ID
+    assert initial["enabled"] is True
+    assert initial["updated_at"] is None
+    assert initial["provider"] == "codex"
+    assert initial["background_service"] is False
+    assert initial["selector_mode"] == "strict"
+    assert initial["last_successful_attribution"] is None
+    assert initial["ambiguity_count"] == 0
+    assert initial["service_heartbeat"] is None
+    assert initial["package_version"] == "0.9.0"
+    assert initial["build_revision"].startswith("sha256:")
     status = configure_watcher(
         state,
         enabled=False,
@@ -344,3 +367,213 @@ def test_incident_description_rejects_credentials_before_state_creation(
             trace_root=tmp_path / "missing",
         )
     assert not (tmp_path / "state").exists()
+
+
+def test_explicit_session_rejects_cwd_mismatch(tmp_path: Path) -> None:
+    expected = tmp_path / "expected"
+    other = tmp_path / "other"
+    expected.mkdir()
+    other.mkdir()
+    traces = tmp_path / "sessions"
+    _write_trace(traces, other, session_id="explicit-session")
+
+    result = select_codex_session(
+        trace_root=traces,
+        session_id="explicit-session",
+        cwd=expected,
+        now=_NOW,
+    )
+
+    assert isinstance(result, NoAttribution)
+    assert result.reason_code == "cwd_mismatch"
+    assert result.provenance.candidate_count == 0
+
+
+def test_cross_project_recency_never_becomes_a_candidate(tmp_path: Path) -> None:
+    expected = tmp_path / "expected"
+    other = tmp_path / "other"
+    expected.mkdir()
+    other.mkdir()
+    traces = tmp_path / "sessions"
+    _write_trace(traces, other, session_id="recent-other-project")
+
+    result = select_codex_session(trace_root=traces, cwd=expected, now=_NOW)
+
+    assert isinstance(result, NoAttribution)
+    assert result.reason_code == "no_exact_cwd_candidate"
+
+
+def test_automatic_selection_rejects_ambiguous_active_sessions(
+    tmp_path: Path,
+) -> None:
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _write_trace(traces, cwd, session_id="active-one")
+    _write_trace(traces, cwd, session_id="active-two")
+    state = tmp_path / "state"
+
+    result = select_codex_session(
+        trace_root=traces,
+        cwd=cwd,
+        state_home=state,
+        now=_NOW,
+    )
+
+    assert isinstance(result, NoAttribution)
+    assert result.reason_code == "ambiguous_active_candidates"
+    assert result.provenance.candidate_count == 2
+    health = watcher_status(state)
+    assert health["ambiguity_count"] == 1
+    assert health["service_heartbeat"] == _NOW.isoformat().replace("+00:00", "Z")
+    encoded = (state / "behavior" / "selector-health.json").read_text(
+        encoding="utf-8"
+    )
+    assert "active-one" not in encoded
+    assert str(cwd) not in encoded
+
+
+def test_stale_and_unparsable_traces_are_not_candidates(tmp_path: Path) -> None:
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _write_trace(traces, cwd, session_id="stale")
+
+    stale = select_codex_session(
+        trace_root=traces,
+        cwd=cwd,
+        now=_NOW + timedelta(minutes=20),
+    )
+    assert isinstance(stale, NoAttribution)
+    assert stale.reason_code == "stale_trace"
+
+    invalid_path = traces / "2026" / "08" / "12" / "rollout-invalid.jsonl"
+    invalid_path.write_text(
+        json.dumps(
+            {
+                "timestamp": "not-a-timestamp",
+                "type": "session_meta",
+                "payload": {"id": "invalid", "cwd": str(cwd)},
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "timestamp": "still-invalid",
+                "type": "event_msg",
+                "payload": {"type": "task_started"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (traces / "2026" / "08" / "12" / "rollout-stale.jsonl").unlink()
+
+    unparsable = select_codex_session(trace_root=traces, cwd=cwd, now=_NOW)
+    assert isinstance(unparsable, NoAttribution)
+    assert unparsable.reason_code == "unparsable_trace"
+
+
+def test_peek_handles_short_input_and_metadata_after_old_scan_limit(
+    tmp_path: Path,
+) -> None:
+    short = tmp_path / "short.jsonl"
+    short.write_text("{\n", encoding="utf-8")
+    assert _peek_session(short) == (None, None)
+
+    cwd = tmp_path.resolve()
+    delayed = tmp_path / "delayed.jsonl"
+    delayed.write_text(
+        "".join(json.dumps({"type": "noise"}) + "\n" for _ in range(45))
+        + json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": "delayed", "cwd": str(cwd)},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert _peek_session(delayed) == ("delayed", cwd)
+
+
+def test_windows_cwd_normalization_is_case_separator_and_alias_insensitive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows cwd alias semantics")
+    realpath = os.path.realpath
+
+    def resolve_alias(value: str) -> str:
+        if str(value).casefold() == r"c:\work\longre~1".casefold():
+            return r"C:\Work\Long Repository"
+        return realpath(value)
+
+    monkeypatch.setattr("apu.behavior_watch.os.path.realpath", resolve_alias)
+    assert normalized_cwd_key(r"C:\Work\Repo\.") == normalized_cwd_key(
+        "c:/work/repo"
+    )
+    assert normalized_cwd_key(r"C:\WORK\LONGRE~1") == normalized_cwd_key(
+        r"c:\work\long repository"
+    )
+
+
+def test_intervention_revalidates_exact_trace_binding(tmp_path: Path) -> None:
+    cwd = tmp_path / "repo"
+    other = tmp_path / "other"
+    cwd.mkdir()
+    other.mkdir()
+    traces = tmp_path / "sessions"
+    trace = _write_trace(traces, cwd)
+    state = tmp_path / "state"
+    _, incident = mark_incident(
+        state,
+        "stopped before completing the requested task",
+        trace_root=traces,
+        cwd=cwd,
+    )
+    _, diagnosis = diagnose_incident(state, incident_id=incident["incident_id"])
+    records = [
+        json.loads(line)
+        for line in trace.read_text(encoding="utf-8").splitlines()
+    ]
+    records[0]["payload"]["cwd"] = str(other)
+    trace.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="no_attribution: cwd_mismatch"):
+        intervene(
+            state,
+            diagnosis_id=diagnosis["diagnosis_id"],
+            dry_run=True,
+            executable="codex",
+        )
+
+
+def test_intervention_asserts_non_mutating_policy_invariant(tmp_path: Path) -> None:
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _write_trace(traces, cwd)
+    state = tmp_path / "state"
+    _, incident = mark_incident(
+        state,
+        "stopped before completing the requested task",
+        trace_root=traces,
+        cwd=cwd,
+    )
+    diagnosis_path, diagnosis = diagnose_incident(
+        state, incident_id=incident["incident_id"]
+    )
+    diagnosis["recommended_intervention"]["durable_policy_mutation"] = True
+    diagnosis_path.write_text(json.dumps(diagnosis), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="durable_policy_mutation"):
+        intervene(
+            state,
+            diagnosis_id=diagnosis["diagnosis_id"],
+            dry_run=True,
+            executable="codex",
+        )
