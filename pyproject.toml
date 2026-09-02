@@ -32,6 +32,8 @@ where = ["src"]
 
 [tool.setuptools.data-files]
 "share/apu/schemas" = [
+  "schemas/aeta-apu-policy-delta-proposal.schema.json",
+  "schemas/apu-policy-delta-intake-receipt.schema.json",
   "schemas/behavior-evaluation-evidence.schema.json",
   "schemas/behavior-registry-candidate-patch.schema.json",
 ]
