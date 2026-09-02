@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lugos.dev/schemas/apu/policy-delta-intake-receipt-v1.json",
+  "title": "APU policy-delta intake receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "proposal_ref",
+    "candidate_ref",
+    "target_surface",
+    "status",
+    "requires_review",
+    "promotion_authorized",
+    "received_at",
+    "receipt_id"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "record_type": { "const": "apu_policy_delta_intake_receipt" },
+    "proposal_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "hash"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "candidate_ref": {
+      "type": "string",
+      "pattern": "^apu:policy-delta-candidate:[0-9a-f]{64}$"
+    },
+    "target_surface": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,127}$"
+    },
+    "status": { "const": "pending_review" },
+    "requires_review": { "const": true },
+    "promotion_authorized": { "const": false },
+    "received_at": { "type": "string", "format": "date-time" },
+    "receipt_id": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

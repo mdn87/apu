@@ -24,6 +24,7 @@ STATE_DIRECTORIES = (
     "guidance",
     "models",
     "behavior",
+    "policy-delta-intake",
 )
 
 

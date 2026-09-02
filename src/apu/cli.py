@@ -329,6 +329,15 @@ def build_parser() -> argparse.ArgumentParser:
     clear_override.add_argument("--reviewed-by")
     clear_override.add_argument("--yes", action="store_true")
 
+    intake = commands.add_parser(
+        "intake", help="accept immutable external proposals for human review"
+    )
+    intake_commands = intake.add_subparsers(dest="intake_command", required=True)
+    policy_delta = intake_commands.add_parser(
+        "policy-delta", help="store an AETA policy-delta proposal without promoting it"
+    )
+    policy_delta.add_argument("proposal", type=Path)
+
     add_evidence_parser(commands)
     add_behavior_parser(commands)
 
@@ -366,6 +375,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _refresh(args)
     if args.command == "guidance":
         return _guidance(args)
+    if args.command == "intake":
+        return _intake(args)
     if args.command == "research":
         return _research(args)
     if args.command == "snapshot":
@@ -570,6 +581,21 @@ def _system(args: argparse.Namespace) -> int:
         )
         return 0
     raise ValueError(f"unsupported system command: {args.system_command}")
+
+
+def _intake(args: argparse.Namespace) -> int:
+    if args.intake_command == "policy-delta":
+        from apu.policy_delta import ingest_policy_delta
+
+        state_home = ensure_state_home(resolve_state_home())
+        receipt = ingest_policy_delta(
+            state_home,
+            _read_object(args.proposal),
+            received_at=_timestamp(),
+        )
+        _emit(receipt)
+        return 0
+    raise ValueError(f"unsupported intake command: {args.intake_command}")
 
 
 def _refresh(args: argparse.Namespace) -> int:
