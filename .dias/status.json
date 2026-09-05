@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "projectId": "apu",
+  "projectLabel": "APU",
+  "assessmentState": "scored",
+  "assessmentScope": "current-milestone",
+  "percentComplete": 94,
+  "milestonePhase": "operational-proof",
+  "portfolioGroup": "agent-platform",
+  "displayPriority": 500,
+  "assessedAt": "2026-09-05T02:18:32.000Z",
+  "confidence": "reported",
+  "currentMilestone": "Bounded behavior audits, provider-neutral execution evidence, CI, and an Orca behavior-evidence boundary.",
+  "remainingSummary": "Prove that its findings improve a real intervention rather than only reporting behavior.",
+  "nextChipId": "apu:select-intervention-case",
+  "source": {
+    "label": "Seed report 2026-08-27; reassessed from repo git log through 2026-09-01 (attribution fail-closed fix, incident-record docs).",
+    "updatedAt": "2026-09-05"
+  }
+}

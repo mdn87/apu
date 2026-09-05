@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "projectId": "apu",
+  "projectLabel": "APU",
+  "chips": [
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:deterministic-core",
+      "projectId": "apu",
+      "title": "Deterministic core released",
+      "summary": "Audit, propose, review, apply, validate and rollback of Codex and Claude instruction surfaces with transactional receipts; released as 0.5.0.",
+      "stage": "done",
+      "sequence": 10,
+      "prereqs": [],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-08-07T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:deterministic-core:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Release 0.5.0 tagged 2026-08-07; CLI flow documented in the README."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:behavior-watch",
+      "projectId": "apu",
+      "title": "Live behavioral pressure watcher",
+      "summary": "M10: watches live agent sessions for behavioral pressure instead of only auditing static instruction files.",
+      "stage": "done",
+      "sequence": 20,
+      "prereqs": [
+        "apu:deterministic-core"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-08-12T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:behavior-watch:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Landed 2026-08-12 (PR #8, m10-behavior-watch)."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:evidence-plane",
+      "projectId": "apu",
+      "title": "Provider-neutral execution evidence",
+      "summary": "M11: execution evidence captured in a provider-neutral shape so Codex and Claude runs are comparable.",
+      "stage": "done",
+      "sequence": 30,
+      "prereqs": [
+        "apu:behavior-watch"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-08-14T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:evidence-plane:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Landed 2026-08-14 (PR #9, m11-evidence-plane)."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:behavior-audits",
+      "projectId": "apu",
+      "title": "Bounded behavior audits",
+      "summary": "M12: behavior audits with byte caps and portable assertions, so an audit cannot grow without bound.",
+      "stage": "done",
+      "sequence": 40,
+      "prereqs": [
+        "apu:evidence-plane"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-08-14T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:behavior-audits:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Landed 2026-08-14 (PR #10, m12-behavior-audit); byte-cap test made portable."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:consolidation-campaigns",
+      "projectId": "apu",
+      "title": "Instruction consolidation campaigns",
+      "summary": "Campaign-grade consolidation of instruction surfaces; system profile exclusions enforced during discovery; global surfaces get root excludes.",
+      "stage": "done",
+      "sequence": 50,
+      "prereqs": [
+        "apu:behavior-audits"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-08-16T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:consolidation-campaigns:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Landed 2026-08-16 (PR #11) and 2026-08-23 (PR #14 excludes fix)."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:orca-evidence-boundary",
+      "projectId": "apu",
+      "title": "Orca behavior-evidence boundary and CI",
+      "summary": "Orca behavior evidence boundary, pytest on push and pull request, and session attribution that fails closed.",
+      "stage": "done",
+      "sequence": 60,
+      "prereqs": [
+        "apu:consolidation-campaigns"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-08-23T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:orca-evidence-boundary:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Boundary 2026-08-23, CI workflow PR #13, fail-closed attribution 2026-08-28, incident record 2026-09-01."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:select-intervention-case",
+      "projectId": "apu",
+      "title": "Select a real intervention case",
+      "summary": "Pick one repository where an audit finding should change agent behavior, record the before state, and define what an improvement would look like.",
+      "stage": "ready",
+      "sequence": 70,
+      "prereqs": [
+        "apu:orca-evidence-boundary"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-09-05T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:select-intervention-case:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Named as the next step by the 2026-09-05 status reassessment; nothing started yet."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:prove-intervention-effect",
+      "projectId": "apu",
+      "title": "Prove the intervention changed behavior",
+      "summary": "Show the applied change moved the measured behavior, not only the report; decide whether findings need a stronger effect signal.",
+      "stage": "vague",
+      "sequence": 80,
+      "prereqs": [
+        "apu:select-intervention-case"
+      ],
+      "linkedRunIds": [],
+      "confidence": "unknown",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-09-05T12:00:00.000Z",
+        "updatedAt": "2026-09-05T03:40:00.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:prove-intervention-effect:authored-2026-09-05",
+          "at": "2026-09-05T03:40:00.000Z",
+          "kind": "created",
+          "message": "Follows the intervention case; shape depends on what that case shows."
+        }
+      ]
+    }
+  ]
+}
