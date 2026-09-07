@@ -172,7 +172,7 @@ state.
 
 ## Diagnose a live autonomy-loss incident
 
-Run these commands from the repository associated with the Codex session:
+Run these commands from the repository associated with the agent session:
 
 ```console
 apu-event "asked me to approve a reversible filename choice"
@@ -180,16 +180,20 @@ apu-wtf
 apu-intervene
 ```
 
-The event command selects the most recent active Codex JSONL session in the
-current working directory. Use `--session-id` or `--trace-root` only when the
-automatic selection is not the intended session. If no event was marked,
-`apu-wtf` selects the most recent incomplete run itself.
+The event command selects one fresh, incomplete Codex or Claude Code JSONL
+session in the current working directory. Use `--provider codex|claude-code`,
+`--session-id`, or `--trace-root` when automatic selection is ambiguous or is
+not the intended session. If no event was marked, `apu-wtf` selects the most
+recent incomplete run itself.
 
 For non-interactive Codex sessions, `apu-intervene` sends the temporary resume
 instruction through `codex exec resume`. For Codex Desktop sessions it prints
-and records a `codex resume` continuation; pass `--execute` to launch it. Use
-`--dry-run` to verify selection without resuming anything. When an interactive
-continuation finishes, attest the observed result with one of:
+and records a `codex resume` continuation. For Claude Code it prints and records
+`claude --resume`; because the persisted entrypoint does not reliably identify
+`--print`, APU never launches that continuation without `--execute`. Use
+`--dry-run` to verify provider, session, and cwd binding without resuming
+anything. When an interactive continuation finishes, attest the observed result
+with one of:
 
 ```console
 apu-intervene --result completed

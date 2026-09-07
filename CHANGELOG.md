@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add provider-neutral live incident attribution for Codex and Claude Code,
+  including strict cross-provider ambiguity handling and `--provider` CLI
+  overrides.
+- Normalize bounded Claude Code transcript snapshots into content-minimized
+  evidence, bind provider/session/cwd before resume, and emit fail-closed
+  `claude --resume` continuations.
+- Detect request substitution and treat configured permission or hook denials
+  as operator-designed barriers rather than invented gates.
+- Report content-free selector health per provider while retaining the 0.9
+  aggregate status fields.
 - Add typed, fail-closed Codex session attribution with exact cwd matching,
   bounded freshness, unique-active automatic selection, and bounded
   `no_attribution` reason codes.

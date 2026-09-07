@@ -201,10 +201,11 @@ a visible APU-private demotion override without editing the profile.
 
 ## Behavioral pressure watch
 
-The first live watcher detects likely `primary-agent-autonomy-loss` in existing
-Codex JSONL sessions. Automatic attribution now requires exactly one active
-session whose normalized working directory matches the current directory and
-whose last event is no more than ten minutes old:
+The live watcher detects likely `primary-agent-autonomy-loss` in existing Codex
+and Claude Code JSONL sessions. Automatic attribution requires exactly one
+provider to have exactly one incomplete session whose normalized working
+directory matches the current directory and whose last event is no more than
+ten minutes old:
 
 ```console
 apu-event "asked me to approve a reversible filename choice"
@@ -212,34 +213,38 @@ apu-wtf
 apu-intervene
 ```
 
-Use `--session-id` to resolve an ambiguity explicitly. If the supplied session
-belongs to another working directory, or if automatic selection finds zero or
-multiple fresh active matches, APU returns `no_attribution` with a bounded reason
-code and exits nonzero. It never falls back to a recent session from another
-project.
+Use `--provider codex|claude-code` and `--session-id` to resolve an ambiguity
+explicitly. If the supplied session belongs to another working directory, if
+multiple providers qualify, or if selection finds zero or multiple fresh
+incomplete matches, APU returns `no_attribution` with a bounded reason code and
+exits nonzero. It never falls back to a recent session from another project or
+provider.
 
 `apu-wtf` can also analyze the most recent incomplete run when no event has
 been marked. `apu-intervene` resumes a non-interactive Codex session directly;
-for a Codex Desktop session it records and prints the exact `codex resume`
-continuation because APU cannot inject into the desktop process. Add
-`--execute` to launch that interactive continuation or `--dry-run` to only
-record the proposed action. After a manual continuation, record its outcome:
+for Codex Desktop and Claude Code sessions it records and prints the exact
+provider continuation because APU cannot inject into the desktop process.
+Claude Code transcripts do not reliably distinguish interactive CLI runs from
+`--print`, so their continuations always require `--execute`. Add `--dry-run`
+to only record the proposed action. After a manual continuation, record its
+outcome:
 
 ```console
 apu-intervene --result completed
 ```
 
 Before it constructs or launches a continuation, `apu-intervene` re-reads the
-exact trace and proves that its session ID and working directory still match the
-incident. It also rejects any diagnosis whose `durable_policy_mutation` value is
-not exactly `false`. The mutating `apu apply` command uses the same strict
-selection gate; `--session-id`, `--trace-root`, and `--cwd` are available when
+exact trace and proves that its provider, session ID, and working directory
+still match the incident. It also rejects any diagnosis whose
+`durable_policy_mutation` value is not exactly `false`. The mutating `apu apply`
+command retains its strict Codex session gate; `--provider`, `--session-id`,
+`--trace-root`, and `--cwd` are available on the incident commands when
 automatic selection is not sufficient.
 
 Watcher state is explicit and never starts a background service. Its health
-output includes strict-selector mode, the last successful attribution time,
-ambiguity count, heartbeat, package version, and build hash; it contains no
-session ID, trace path, cwd, or transcript content:
+output names both supported providers and includes per-provider attribution
+time, ambiguity count, and heartbeat plus package version and build hash; it
+contains no session ID, trace path, cwd, or transcript content:
 
 ```console
 apu-watch
@@ -247,11 +252,14 @@ apu-watch autonomy-loss --disable
 apu-watch autonomy-loss --enable
 ```
 
-Incident artifacts keep the operator's short description, session identity,
-nearby record hashes/types, runtime-setting labels, and active surface hashes.
-They do not persist nearby messages, reasoning, tool inputs or outputs, base
-instructions, or environment content. Interventions are temporary session
-instructions and never rewrite durable policy.
+Incident artifacts keep the provider, operator's short description, session
+identity, nearby record hashes/types, runtime-setting labels, and active surface
+hashes. They do not persist nearby messages, reasoning, tool inputs or outputs,
+base instructions, or environment content. `request-substitution` identifies a
+different task being substituted for the requested one. A denial produced by
+provider permissions or a user-authored hook is an `operator-designed-gate`
+barrier and suppresses automatic intervention. Interventions are temporary
+session instructions and never rewrite durable policy.
 
 ## Execution evidence plane
 
@@ -290,9 +298,9 @@ apu evidence ingest-hook --provider claude-code --event TaskCompleted --observe-
 
 `--observe-state` adds an independent Git observation after the hook event. It
 stores the current commit/tree IDs, dirty state, and hashes of changed paths—not
-the path names. Hooks remain lightweight; APU does not archive transcripts or run
-a background worker. The autonomy-loss intervention adapter remains Codex-first,
-while the evidence contract is provider-neutral.
+the path names. Hooks remain lightweight; APU does not archive transcripts or
+run a background worker. Incident attribution and the evidence contract both
+support Codex and Claude Code.
 
 ## Bounded behavior audits
 

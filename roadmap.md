@@ -516,6 +516,27 @@ codes. It neither archives nor deletes provider logs. Thirty days or closure of
 a linked monitoring window is recorded as the detailed-event retention target;
 automated pruning requires its own reviewed implementation.
 
+### M13 — Provider-neutral incident attribution
+
+Move live incident selection, marking, diagnosis, and resume construction
+behind a provider adapter contract. Preserve the existing Codex behavior and
+add Claude Code JSONL attribution using record-level `sessionId` and `cwd`
+bindings rather than project slugs. Automatic selection fails closed with
+`ambiguous_provider` when more than one provider qualifies, while `--provider`
+provides an explicit override.
+
+Claude Code completion uses observed `message.stop_reason: end_turn`; unmatched
+tool calls and turns without a later completed assistant response remain
+incomplete. Because one primary desktop transcript can move among working
+directories, its latest explicit `cwd` is the current binding and only records
+from that normalized `cwd` contribute incident evidence. Nested
+`<session-id>/subagents/` logs are excluded as candidate sessions. Incidents,
+diagnoses, evidence, selector health, and intervention artifacts retain the
+provider identity without retaining message or tool bodies. Add
+`request-substitution` as a behavioral signal and classify denials from
+provider permission rules or operator-authored hooks as the
+`operator-designed-gate` barrier.
+
 Each milestone ships behind the existing gates: full test suite, structural
 validation, byte-for-byte reversibility, and no secret content in any emitted
 artifact — for work orders specifically, the redaction rules above are part
