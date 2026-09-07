@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lugos.dev/schemas/aeta/apu-policy-delta-proposal-v1.json",
+  "title": "AETA review-only APU policy-delta proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "thread_ref",
+    "source",
+    "aeta_run_ref",
+    "target",
+    "evidence_refs",
+    "rule_operations",
+    "requires_review",
+    "promotion_authorized",
+    "proposal_id"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "record_type": { "const": "aeta_apu_policy_delta_proposal" },
+    "thread_ref": { "$ref": "#/$defs/threadRef" },
+    "source": { "$ref": "#/$defs/source" },
+    "aeta_run_ref": {
+      "type": "string",
+      "pattern": "^aeta:run:[0-9a-f]{64}$"
+    },
+    "target": { "$ref": "#/$defs/target" },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "rule_operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/ruleOperation" }
+    },
+    "requires_review": { "const": true },
+    "promotion_authorized": { "const": false },
+    "proposal_id": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "threadRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thread_id", "checkpoint_ref"],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "pattern": "^plir:thread:[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "checkpoint_ref": {
+          "type": "string",
+          "pattern": "^thread-checkpoint:[0-9A-HJKMNP-TV-Z]{26}$"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_ref",
+        "revision",
+        "path",
+        "content_sha256",
+        "snapshot_ref",
+        "freshness"
+      ],
+      "properties": {
+        "repository_ref": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "path": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "content_sha256": { "$ref": "#/$defs/hash" },
+        "snapshot_ref": {
+          "type": "string",
+          "pattern": "^aeta:snapshot:[0-9a-f]{64}$"
+        },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "status"],
+          "properties": {
+            "kind": { "const": "immutable_git" },
+            "status": { "const": "fresh" }
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "surface", "expected_base_version"],
+      "properties": {
+        "owner": { "const": "apu" },
+        "surface": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9._-]{0,127}$"
+        },
+        "expected_base_version": {
+          "type": ["string", "null"],
+          "maxLength": 128
+        }
+      }
+    },
+    "ruleOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "action", "summary", "evidence_refs"],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9._-]{0,127}$"
+        },
+        "action": { "enum": ["add", "replace", "remove"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      }
+    }
+  }
+}

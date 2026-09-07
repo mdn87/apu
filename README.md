@@ -130,6 +130,21 @@ campaigns verify its immutable private artifacts and freeze it in the campaign
 manifest; older M6 campaigns remain readable, while v1 inventories must be
 regenerated before creating a new campaign.
 
+## Review-only AETA policy intake
+
+APU accepts a content-addressed policy-delta proposal produced from a pinned
+Git source by AETA. Intake validates the complete proposal, its content-derived
+identity, and its declared source-hash binding; rejects credential-shaped
+material; and stores one immutable candidate plus a `pending_review` receipt in
+private APU state:
+
+```console
+apu intake policy-delta proposal.json
+```
+
+This command does not apply, adopt, or promote the proposal. A later APU-owned
+review and approval flow must make any policy change.
+
 ## Package research
 
 M8 observes tracked Claude packages from authoritative installed metadata,
