@@ -151,11 +151,7 @@ def validate_evidence_event(event: Mapping[str, Any]) -> None:
     if not isinstance(event, Mapping):
         raise TypeError("evidence event must be an object")
     schema_version = event.get("schema_version")
-    expected = (
-        base_fields | {"attribution"}
-        if schema_version == 2
-        else base_fields
-    )
+    expected = base_fields | {"attribution"} if schema_version == 2 else base_fields
     if not isinstance(event, Mapping) or set(event) != expected:
         missing = sorted(expected - set(event)) if isinstance(event, Mapping) else []
         extra = sorted(set(event) - expected) if isinstance(event, Mapping) else []
@@ -476,9 +472,7 @@ def append_evidence_events(
     existing_events = _read_evidence_records(state_home, provider, session_id)
     existing = {event["event_id"] for event in existing_events}
     pending = tuple(
-        event
-        for event in stored_events
-        if event["event_id"] not in existing
+        event for event in stored_events if event["event_id"] not in existing
     )
     if not pending:
         return path, ()
@@ -534,15 +528,6 @@ def _read_evidence_records(
                         f"evidence identity mismatch at {path}:{line_number}"
                     )
                 events.append(event)
-    cwd_keys = {
-        os.path.normcase(
-            os.path.realpath(str(Path(event["state"]["cwd"])))
-        )
-        for event in events
-        if event["state"]["cwd"] is not None
-    }
-    if len(cwd_keys) > 1:
-        raise ValueError("evidence session spans multiple working directories")
     return sorted(
         events,
         key=lambda event: (
@@ -553,13 +538,35 @@ def _read_evidence_records(
     )
 
 
+def _events_for_cwd(
+    events: Iterable[dict[str, Any]], cwd: Path | None
+) -> list[dict[str, Any]]:
+    stored = list(events)
+    if cwd is None:
+        return stored
+    selected_key = os.path.normcase(os.path.realpath(str(cwd)))
+    return [
+        event
+        for event in stored
+        if isinstance(event["state"]["cwd"], str)
+        and os.path.normcase(os.path.realpath(event["state"]["cwd"])) == selected_key
+    ]
+
+
 def read_evidence(
-    state_home: Path, provider: str, session_id: str
+    state_home: Path,
+    provider: str,
+    session_id: str,
+    *,
+    cwd: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Read logical evidence, preferring v2 for a cross-version replay."""
 
     selected: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for event in _read_evidence_records(state_home, provider, session_id):
+    records = _events_for_cwd(
+        _read_evidence_records(state_home, provider, session_id), cwd
+    )
+    for event in records:
         key = _logical_event_key(event)
         current = selected.get(key)
         if current is not None and _version_neutral_event(
@@ -584,14 +591,14 @@ def read_evidence_version(
     session_id: str,
     *,
     schema_version: int,
+    cwd: Path | None = None,
 ) -> list[dict[str, Any]]:
     if schema_version not in EVIDENCE_READER_VERSIONS:
         raise ValueError("unsupported evidence reader schema_version")
-    return [
-        event
-        for event in _read_evidence_records(state_home, provider, session_id)
-        if event["schema_version"] == schema_version
-    ]
+    records = _events_for_cwd(
+        _read_evidence_records(state_home, provider, session_id), cwd
+    )
+    return [event for event in records if event["schema_version"] == schema_version]
 
 
 def _codex_snapshot(path: Path) -> tuple[str, Path, int, str]:
@@ -774,9 +781,7 @@ def ingest_codex_trace(
     if schema_version not in EVIDENCE_READER_VERSIONS:
         raise ValueError("unsupported evidence writer schema_version")
     selected = Path(path).expanduser().resolve()
-    selected_attribution = dict(
-        attribution or _attribution("exact_trace_path")
-    )
+    selected_attribution = dict(attribution or _attribution("exact_trace_path"))
     _validate_attribution(selected_attribution)
     session_id, cwd, snapshot_bytes, snapshot_sha256 = _codex_snapshot(selected)
     events: list[dict[str, Any]] = []
@@ -806,6 +811,259 @@ def ingest_codex_trace(
             )
             if event is not None:
                 events.append(event)
+    destination, appended = append_evidence_events(state_home, events)
+    boundary = {
+        "path": str(selected),
+        "snapshot_bytes": snapshot_bytes,
+        "snapshot_sha256": snapshot_sha256,
+        "session_id": session_id,
+        "cwd": str(cwd),
+        "event_count": len(events),
+        "appended_count": len(appended),
+        "schema_version": schema_version,
+    }
+    return destination, tuple(events), boundary
+
+
+def _claude_code_snapshot(path: Path) -> tuple[str, Path, int, str]:
+    if path.stat().st_size > _MAX_TRACE_BYTES:
+        raise ValueError(f"Claude Code trace exceeds {_MAX_TRACE_BYTES} bytes: {path}")
+    digest = sha256()
+    snapshot_bytes = 0
+    session_id: str | None = None
+    cwd: Path | None = None
+    with path.open("rb") as stream:
+        for raw in stream:
+            snapshot_bytes += len(raw)
+            digest.update(raw)
+            try:
+                record = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(record, Mapping):
+                continue
+            selected_id = record.get("sessionId")
+            selected_cwd = record.get("cwd")
+            if isinstance(selected_id, str) and selected_id:
+                if session_id is not None and session_id != selected_id:
+                    raise ValueError(f"Claude Code trace changes session id: {path}")
+                session_id = selected_id
+            if isinstance(selected_cwd, str) and Path(selected_cwd).is_absolute():
+                normalized = Path(selected_cwd).resolve(strict=False)
+                cwd = normalized
+    if session_id is None:
+        raise ValueError(f"Claude Code trace has no session id: {path}")
+    if cwd is None:
+        raise ValueError(f"Claude Code trace has no absolute cwd: {path}")
+    return session_id, cwd, snapshot_bytes, digest.hexdigest()
+
+
+def _claude_code_events(
+    record: Mapping[str, Any],
+    raw: bytes,
+    *,
+    path: Path,
+    session_id: str,
+    cwd: Path,
+    line_number: int,
+    snapshot_bytes: int,
+    snapshot_sha256: str,
+    attribution: Mapping[str, Any],
+    schema_version: int,
+) -> tuple[dict[str, Any], ...]:
+    message = record.get("message")
+    if not isinstance(message, Mapping):
+        return ()
+    content = message.get("content")
+    blocks = content if isinstance(content, list) else ()
+    timestamp = record.get("timestamp")
+    observed_at = timestamp if isinstance(timestamp, str) else None
+    source = {
+        "path": str(path.resolve()),
+        "line": line_number,
+        "record_sha256": sha256_bytes(raw.rstrip(b"\r\n")),
+        "snapshot_bytes": snapshot_bytes,
+        "snapshot_sha256": snapshot_sha256,
+    }
+    state = _empty_state(cwd)
+    events: list[dict[str, Any]] = []
+
+    def append(
+        *,
+        offset: int,
+        event_type: str,
+        evidence_class: str,
+        correlation: str | None,
+        observation: Mapping[str, Any],
+    ) -> None:
+        events.append(
+            _event(
+                provider="claude-code",
+                source_kind="transcript",
+                session_id=session_id,
+                sequence=(line_number * 1_000) + offset,
+                observed_at=observed_at,
+                event_type=event_type,
+                evidence_class=evidence_class,
+                correlation_sha256=_correlation(correlation),
+                observation=observation,
+                state=state,
+                source=source,
+                attribution=attribution,
+                schema_version=schema_version,
+            )
+        )
+
+    record_type = record.get("type")
+    role = message.get("role")
+    if record_type == "user" and role == "user" and isinstance(content, str):
+        observation = _empty_observation()
+        observation.update({"status": "requested", "input_sha256": _digest(content)})
+        append(
+            offset=0,
+            event_type="turn.started",
+            evidence_class="invocation",
+            correlation=_first_string(record, "promptId", "uuid"),
+            observation=observation,
+        )
+
+    for index, block in enumerate(blocks, start=1):
+        if not isinstance(block, Mapping):
+            continue
+        block_type = block.get("type")
+        if record_type == "assistant" and block_type == "tool_use":
+            tool_name = _first_string(block, "name", "tool_name")
+            tool_input = block.get("input")
+            observation = _empty_observation()
+            observation.update(
+                {
+                    "tool_name": (
+                        tool_name
+                        if tool_name and _SAFE_LABEL.fullmatch(tool_name)
+                        else None
+                    ),
+                    "command_class": _command_class(tool_name, tool_input),
+                    "status": "requested",
+                    "input_sha256": _digest(tool_input),
+                }
+            )
+            append(
+                offset=index,
+                event_type="tool.requested",
+                evidence_class="invocation",
+                correlation=_first_string(block, "id", "tool_use_id"),
+                observation=observation,
+            )
+        elif record_type == "user" and block_type == "tool_result":
+            result = block.get("content", record.get("toolUseResult"))
+            denied = record.get("toolDenialKind") == "permission-rule"
+            failed = block.get("is_error") is True
+            observation = _empty_observation()
+            observation.update(
+                {
+                    "status": "denied"
+                    if denied
+                    else "failed"
+                    if failed
+                    else "completed",
+                    "result_sha256": _digest(result),
+                }
+            )
+            append(
+                offset=index,
+                event_type=(
+                    "permission.denied"
+                    if denied
+                    else "tool.failed"
+                    if failed
+                    else "tool.completed"
+                ),
+                evidence_class="result",
+                correlation=_first_string(block, "tool_use_id", "id"),
+                observation=observation,
+            )
+
+    if record_type == "assistant" and role == "assistant":
+        text = "\n".join(
+            str(block["text"])
+            for block in blocks
+            if isinstance(block, Mapping)
+            and block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+        )
+        if message.get("stop_reason") == "end_turn" and text:
+            observation = _empty_observation()
+            observation.update({"status": "completed", "result_sha256": _digest(text)})
+            append(
+                offset=999,
+                event_type="turn.completed",
+                evidence_class="result",
+                correlation=_first_string(record, "requestId", "uuid"),
+                observation=observation,
+            )
+    return tuple(events)
+
+
+def ingest_claude_code_trace(
+    state_home: Path,
+    path: Path,
+    *,
+    attribution: Mapping[str, Any] | None = None,
+    schema_version: int = EVIDENCE_SCHEMA_VERSION,
+    expected_session_id: str | None = None,
+    expected_cwd: Path | None = None,
+) -> tuple[Path | None, tuple[dict[str, Any], ...], dict[str, Any]]:
+    """Normalize a bounded Claude Code JSONL snapshot into evidence events."""
+
+    if schema_version not in EVIDENCE_READER_VERSIONS:
+        raise ValueError("unsupported evidence writer schema_version")
+    selected = Path(path).expanduser().resolve()
+    selected_attribution = dict(attribution or _attribution("exact_trace_path"))
+    _validate_attribution(selected_attribution)
+    session_id, cwd, snapshot_bytes, snapshot_sha256 = _claude_code_snapshot(selected)
+    if expected_session_id is not None and session_id != expected_session_id:
+        raise ValueError("Claude Code trace session changed before evidence ingestion")
+    if expected_cwd is not None and (
+        os.path.normcase(os.path.realpath(str(cwd)))
+        != os.path.normcase(os.path.realpath(str(expected_cwd)))
+    ):
+        raise ValueError("Claude Code trace cwd changed before evidence ingestion")
+    selected_cwd_key = os.path.normcase(os.path.realpath(str(cwd)))
+    events: list[dict[str, Any]] = []
+    consumed = 0
+    with selected.open("rb") as stream:
+        for line_number, raw in enumerate(stream, start=1):
+            if consumed + len(raw) > snapshot_bytes:
+                break
+            consumed += len(raw)
+            try:
+                record = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(record, Mapping):
+                continue
+            record_cwd = record.get("cwd")
+            if not isinstance(record_cwd, str) or not Path(record_cwd).is_absolute():
+                continue
+            if (
+                os.path.normcase(os.path.realpath(str(Path(record_cwd))))
+                != selected_cwd_key
+            ):
+                continue
+            events.extend(
+                _claude_code_events(
+                    record,
+                    raw,
+                    path=selected,
+                    session_id=session_id,
+                    cwd=cwd,
+                    line_number=line_number,
+                    snapshot_bytes=snapshot_bytes,
+                    snapshot_sha256=snapshot_sha256,
+                    attribution=selected_attribution,
+                    schema_version=schema_version,
+                )
+            )
     destination, appended = append_evidence_events(state_home, events)
     boundary = {
         "path": str(selected),
@@ -903,9 +1161,7 @@ def normalize_hook_event(
         observation=observation,
         state=_empty_state(cwd),
         source=source,
-        attribution=_attribution(
-            "provider_hook", confidence="source_attested"
-        ),
+        attribution=_attribution("provider_hook", confidence="source_attested"),
         schema_version=schema_version,
     )
 

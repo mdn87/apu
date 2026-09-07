@@ -289,6 +289,7 @@ def _evidence_file_identity(
     *,
     provider: str,
     path: Path,
+    expected_cwd: Path | None = None,
 ) -> tuple[str, Path | None]:
     if not events:
         raise ValueError("evidence file is empty")
@@ -305,7 +306,10 @@ def _evidence_file_identity(
         for value in [event["state"]["cwd"]]
         if isinstance(value, str) and Path(value).is_absolute()
     }
-    if len({normalized_cwd_key(value) for value in cwd_values}) > 1:
+    cwd_by_key = {normalized_cwd_key(value): value for value in cwd_values}
+    if expected_cwd is not None:
+        return session_id, cwd_by_key.get(normalized_cwd_key(expected_cwd))
+    if len(cwd_by_key) > 1:
         raise ValueError("evidence file contains multiple working directories")
     return session_id, next(iter(cwd_values), None)
 
@@ -391,6 +395,7 @@ def _discover_evidence_candidates(
                     events,
                     provider=provider,
                     path=path,
+                    expected_cwd=cwd,
                 )
             except (OSError, TypeError, ValueError) as error:
                 skipped.append(
@@ -405,13 +410,21 @@ def _discover_evidence_candidates(
                     }
                 )
                 continue
-            modified = _latest_event_time(
-                events, datetime.fromtimestamp(stat.st_mtime, UTC)
-            )
             if session_id is not None and selected_id != session_id:
                 continue
             if selected_cwd is None or not _same_path(selected_cwd, cwd):
                 continue
+            scoped_events = [
+                event
+                for event in events
+                for event_cwd in [event["state"]["cwd"]]
+                if isinstance(event_cwd, str)
+                and Path(event_cwd).is_absolute()
+                and _same_path(Path(event_cwd), cwd)
+            ]
+            modified = _latest_event_time(
+                scoped_events, datetime.fromtimestamp(stat.st_mtime, UTC)
+            )
             if (
                 session_id is None
                 and selected_id not in marked_sessions
@@ -465,9 +478,7 @@ def _deduplicate_candidates(
             and candidate.source_kind == "evidence"
         ):
             latest = (
-                candidate
-                if candidate.modified_at > current.modified_at
-                else current
+                candidate if candidate.modified_at > current.modified_at else current
             )
             selected[key] = AuditCandidate(
                 provider=latest.provider,
@@ -540,6 +551,7 @@ def _already_ingested_unchanged(
         candidate.provider,
         candidate.session_id,
         schema_version=schema_version,
+        cwd=candidate.cwd,
     )
     boundaries = [
         event["source"]["snapshot_bytes"]
@@ -1133,7 +1145,12 @@ def audit_behavior(
                     schema_version=evidence_schema_version,
                 )
                 ingest_status = "ingested"
-        events = read_evidence(state_home, candidate.provider, candidate.session_id)
+        events = read_evidence(
+            state_home,
+            candidate.provider,
+            candidate.session_id,
+            cwd=candidate.cwd,
+        )
         verification = _verify_events(events)
         reconciliation = reconcile_evidence(events)
         findings = _evidence_findings(

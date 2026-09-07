@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .behavior_watch import (
+    SESSION_PROVIDER_NAMES,
     WATCHER_ALIASES,
     WATCHER_ID,
     NoAttributionError,
@@ -39,7 +40,10 @@ def _run(parser: argparse.ArgumentParser, function, argv: Sequence[str] | None) 
         if getattr(args, "json", False):
             _emit(result)
         else:
-            print(f"{parser.prog}: no_attribution: {error.result.reason_code}", file=sys.stderr)
+            print(
+                f"{parser.prog}: no_attribution: {error.result.reason_code}",
+                file=sys.stderr,
+            )
         return 2
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         print(f"{parser.prog}: {error}", file=sys.stderr)
@@ -49,6 +53,7 @@ def _run(parser: argparse.ArgumentParser, function, argv: Sequence[str] | None) 
 def _event_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="apu-event")
     parser.add_argument("description")
+    parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
     parser.add_argument("--session-id")
     parser.add_argument("--trace-root", type=Path)
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
@@ -64,6 +69,7 @@ def event_main(argv: Sequence[str] | None = None) -> int:
         path, incident = mark_incident(
             resolve_state_home(),
             args.description,
+            provider=args.provider,
             trace_root=args.trace_root,
             session_id=args.session_id,
             cwd=args.cwd,
@@ -74,6 +80,7 @@ def event_main(argv: Sequence[str] | None = None) -> int:
         else:
             print(f"Marked {incident['incident_id']}")
             print(f"Session: {incident['session']['session_id']}")
+            print(f"Provider: {incident['provider']}")
             print(
                 f"Evidence: {incident['nearby_evidence']['line_start']}-{incident['nearby_evidence']['line_end']}"
             )
@@ -87,6 +94,7 @@ def event_main(argv: Sequence[str] | None = None) -> int:
 def _wtf_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="apu-wtf")
     parser.add_argument("--incident")
+    parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
     parser.add_argument("--session-id")
     parser.add_argument("--trace-root", type=Path)
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
@@ -107,7 +115,8 @@ def wtf_main(argv: Sequence[str] | None = None) -> int:
         ):
             _, incident = mark_incident(
                 state_home,
-                "most recent incomplete Codex run selected automatically",
+                "most recent incomplete provider run selected automatically",
+                provider=args.provider,
                 trace_root=args.trace_root,
                 session_id=args.session_id,
                 cwd=args.cwd,
@@ -117,6 +126,7 @@ def wtf_main(argv: Sequence[str] | None = None) -> int:
         path, diagnosis = diagnose_incident(
             state_home,
             incident_id=incident_id,
+            provider=args.provider,
         )
         if args.json:
             _emit(diagnosis)
@@ -143,6 +153,7 @@ def wtf_main(argv: Sequence[str] | None = None) -> int:
 def _intervene_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="apu-intervene")
     parser.add_argument("--diagnosis")
+    parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--timeout", type=int, default=900)
@@ -160,6 +171,7 @@ def intervene_main(argv: Sequence[str] | None = None) -> int:
                 state_home,
                 args.result,
                 intervention_id=args.intervention,
+                provider=args.provider,
             )
             if args.json:
                 _emit(result)
@@ -170,6 +182,7 @@ def intervene_main(argv: Sequence[str] | None = None) -> int:
         path, result = intervene(
             state_home,
             diagnosis_id=args.diagnosis,
+            provider=args.provider,
             dry_run=args.dry_run,
             force_execute=args.execute,
             timeout_seconds=args.timeout,
@@ -190,6 +203,7 @@ def intervene_main(argv: Sequence[str] | None = None) -> int:
 def _watch_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="apu-watch")
     parser.add_argument("watcher", nargs="?", default=WATCHER_ID)
+    parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--enable", action="store_true")
     group.add_argument("--disable", action="store_true")
@@ -206,11 +220,22 @@ def watch_main(argv: Sequence[str] | None = None) -> int:
             status = configure_watcher(state_home, enabled=args.enable)
         else:
             status = watcher_status(state_home)
+        if args.provider:
+            status = dict(status)
+            status["providers"] = [args.provider]
+            status["provider_health"] = {
+                args.provider: status["provider_health"][args.provider]
+            }
         if args.json:
             _emit({"watchers": [status]})
         else:
             state = "enabled" if status["enabled"] else "disabled"
-            print(f"{WATCHER_ID}: {state} (Codex JSONL, no background service)")
+            labels = {
+                "codex": "Codex JSONL",
+                "claude-code": "Claude Code JSONL",
+            }
+            sources = ", ".join(labels[item] for item in status["providers"])
+            print(f"{WATCHER_ID}: {state} ({sources}, no background service)")
         return 0
 
     return _run(_watch_parser(), command, argv)

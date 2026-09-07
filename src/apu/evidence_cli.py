@@ -111,7 +111,7 @@ def run_evidence(args: argparse.Namespace) -> int:
         path, events, boundary = ingest_codex_trace(
             state_home,
             session.path,
-            attribution=selection.provenance.to_dict(),
+            attribution=selection.provenance.evidence_dict(),
             schema_version=args.schema_version,
         )
         result = {
