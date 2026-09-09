@@ -8,10 +8,10 @@
   "milestonePhase": "operational-proof",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-09-09T09:52:14Z",
+  "assessedAt": "2026-09-09T10:02:09Z",
   "confidence": "reported",
   "currentMilestone": "Bounded behavior audits, provider-neutral execution evidence, CI, and an Orca behavior-evidence boundary.",
-  "remainingSummary": "Intervention proven at the hook level. Remaining: make the gate cost measurable from decisions, and decide the carry-forward boundary before narrowing gate rules.",
+  "remainingSummary": "Reapply the narrowed gate rules and decision log to the live hook, then build the audit detector that turns gate decisions into the I3 measure.",
   "nextChipId": "apu:gate-decision-evidence",
   "source": {
     "label": "Reassessed 2026-09-09 after proof run 3; follow-up chips added.",

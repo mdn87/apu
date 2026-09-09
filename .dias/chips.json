@@ -277,7 +277,7 @@
       "projectId": "apu",
       "title": "Measure gate cost from decisions, not reports",
       "summary": "Make I3 measurable: a content-free gate decision log per prompt, and a bounded-audit detector joining read-only turns to those decisions.",
-      "stage": "ready",
+      "stage": "active",
       "sequence": 90,
       "prereqs": [
         "apu:prove-intervention-effect"
@@ -287,7 +287,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-09T09:52:14Z"
+        "updatedAt": "2026-09-09T10:02:09Z"
       },
       "evidence": [
         {
@@ -295,6 +295,12 @@
           "at": "2026-09-09T09:52:14Z",
           "kind": "created",
           "message": "Scoped by the case record decision on the effect signal. The hook-side log needs operator authorization; the APU detector can be built against a fixed format."
+        },
+        {
+          "entryId": "apu:gate-decision-evidence:producer-2026-09-09",
+          "at": "2026-09-09T10:02:09Z",
+          "kind": "note",
+          "message": "Producer packaged: the hook logs one content-free gate line per state write. Reapply needed; the audit detector that reads it is still to build."
         }
       ]
     },
@@ -304,7 +310,7 @@
       "projectId": "apu",
       "title": "Resolve the gate rule gaps",
       "summary": "Decide and, if authorized, narrow the steer-word carry-forward and the mid-sentence halt over-match; apply the note-write exemption for I4.",
-      "stage": "blocked",
+      "stage": "active",
       "sequence": 100,
       "prereqs": [
         "apu:prove-intervention-effect"
@@ -314,7 +320,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-09T09:52:14Z"
+        "updatedAt": "2026-09-09T10:02:09Z"
       },
       "evidence": [
         {
@@ -322,6 +328,12 @@
           "at": "2026-09-09T09:52:14Z",
           "kind": "created",
           "message": "Blocked on an operator decision: whether a steer-led new objective may inherit approval. Halt over-match predates the change; I4 exemption never applied."
+        },
+        {
+          "entryId": "apu:gate-rule-gaps:decision-2026-09-09",
+          "at": "2026-09-09T10:02:09Z",
+          "kind": "stage-change",
+          "message": "Operator decided 2026-09-09: steer-led new objectives do not inherit approval. Packaged and tested; reapply pending. Halt over-match and I4 still open."
         }
       ]
     }
