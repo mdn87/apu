@@ -155,12 +155,92 @@ def apply(text: str) -> str:
     return text
 
 
+def render_plan(hook: Path, out_dir: Path) -> tuple[Path, Path]:
+    """Write the patched hook and an APU plan that installs it transactionally.
+
+    The plan is a single ``merge``/``full_file`` operation with the live hook's
+    hash as precondition and the rendered hash as the proposed output, so
+    ``apu review`` shows exactly what changes and ``apu apply`` records a receipt
+    that ``apu rollback`` can reverse byte for byte. Nothing is written to the
+    hook here.
+    """
+
+    import hashlib
+    import json
+    from datetime import UTC, datetime
+
+    text = hook.read_text(encoding="utf-8")
+    if MARKER in text:
+        # Already carrying an earlier version of the change: render from the
+        # backup so the plan moves from the current live state to the current
+        # version of the change in one reviewed step.
+        backup = hook.with_name(BACKUP.name) if hook != HOOK else BACKUP
+        if not backup.is_file():
+            raise SystemExit("hook already patched and no backup to render from")
+        base = backup.read_text(encoding="utf-8")
+    else:
+        base = text
+    applied, notes = check(base)
+    if not applied and notes:
+        raise SystemExit("; ".join(notes))
+    rendered = apply(base) if not applied else base
+    out_dir.mkdir(parents=True, exist_ok=True)
+    source = out_dir / "speak-response.rendered.mjs"
+    source.write_text(rendered, encoding="utf-8", newline="\n")
+    current_sha = hashlib.sha256(hook.read_bytes()).hexdigest()
+    proposed_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    plan = {
+        "schema_version": 1,
+        "apu_version": "0.9.0",
+        "created_at": now,
+        "inventory_sha256": current_sha,
+        "status": "approved",
+        "operations": [
+            {
+                "id": "gate-intervention-2026-09-09",
+                "action": "merge",
+                "target": str(hook),
+                "source": str(source),
+                "ownership": "user",
+                "strategy": "full_file",
+                "precondition_sha256": current_sha,
+                "proposed_sha256": proposed_sha,
+                "backup_required": True,
+                "requires_confirmation": True,
+                "approval": {
+                    "status": "approved",
+                    "recorded_at": now,
+                    "method": "operator-decision-2026-09-09",
+                },
+                "reason": "Start-of-turn gate intervention: wider approvals, "
+                "objective-bound approval without imperative-led carry-forward, "
+                "content-free gate decision log. Case record "
+                "docs/cases/2026-09-09-start-of-turn-gate.md.",
+                "evidence": [
+                    "docs/cases/2026-09-09-start-of-turn-gate.md",
+                    "scripts/gate_proof_session_2026_09_09.mjs",
+                ],
+            }
+        ],
+        "validation": {"commands": [], "fixtures": [], "required": []},
+    }
+    plan_path = out_dir / "gate-intervention-plan.json"
+    plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return source, plan_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--revert", action="store_true")
+    mode.add_argument(
+        "--plan",
+        metavar="OUT_DIR",
+        help="render the patched hook and an APU plan into OUT_DIR; touch nothing else",
+    )
     mode.add_argument(
         "--reapply",
         action="store_true",
@@ -170,6 +250,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     hook: Path = args.hook
     backup = hook.with_name(BACKUP.name) if hook != HOOK else BACKUP
+
+    if args.plan:
+        source, plan_path = render_plan(hook, Path(args.plan))
+        print(f"rendered hook: {source}")
+        print(f"plan: {plan_path}")
+        print(f"review: apu review {plan_path}")
+        print(f"apply:  apu apply {plan_path} --provider claude-code")
+        return 0
 
     if args.revert or args.reapply:
         if not backup.is_file():

@@ -239,6 +239,12 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("plan", type=Path)
     apply.add_argument("--yes", action="store_true")
     apply.add_argument("--installation-id")
+    apply.add_argument(
+        "--provider",
+        choices=("claude-code", "codex"),
+        help="provider whose fresh session must be bound to this directory "
+        "(default: automatic; fails closed on ambiguity)",
+    )
     apply.add_argument("--session-id")
     apply.add_argument("--trace-root", type=Path)
     apply.add_argument("--cwd", type=Path, default=Path.cwd())
@@ -927,7 +933,7 @@ def _review(args: argparse.Namespace) -> int:
 
 def _apply(args: argparse.Namespace) -> int:
     from apu.apply import apply_plan
-    from apu.behavior_watch import require_selected_session, select_codex_session
+    from apu.behavior_watch import require_selected_session, select_session
     from apu.dispatch_apply import (
         apply_dispatched_plan,
         dispatch_plan_binding,
@@ -935,8 +941,12 @@ def _apply(args: argparse.Namespace) -> int:
 
     plan = _load_plan(args.plan)
     state_home = resolve_state_home()
+    # The mutating apply is bound to one fresh, incomplete session in this
+    # exact directory. Codex and Claude Code both qualify; automatic selection
+    # fails closed when more than one provider or session matches.
     require_selected_session(
-        select_codex_session(
+        select_session(
+            provider=args.provider,
             trace_root=args.trace_root,
             session_id=args.session_id,
             cwd=args.cwd,

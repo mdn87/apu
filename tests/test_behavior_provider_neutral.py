@@ -829,3 +829,72 @@ def test_wtf_explicit_provider_does_not_diagnose_a_stale_incident_of_another_pro
         )
         == 2
     )
+
+
+def test_apply_accepts_a_fresh_claude_code_session_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The mutating apply is provider-neutral: a Claude Code session can bind it."""
+
+    from apu.cli import main
+
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "projects"
+    _write_claude_trace(traces, cwd)
+    state = tmp_path / "state"
+    monkeypatch.setenv("APU_HOME", str(state))
+    plan = object()
+    receipt = tmp_path / "receipt.json"
+    calls: list[dict[str, object]] = []
+
+    def fake_apply(selected_plan, **kwargs):
+        assert selected_plan is plan
+        calls.append(kwargs)
+        return receipt
+
+    monkeypatch.setattr("apu.cli._load_plan", lambda _path: plan)
+    monkeypatch.setattr("apu.dispatch_apply.dispatch_plan_binding", lambda *_args: None)
+    monkeypatch.setattr("apu.apply.apply_plan", fake_apply)
+
+    assert (
+        main(
+            [
+                "apply",
+                str(tmp_path / "plan.json"),
+                "--yes",
+                "--provider",
+                "claude-code",
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(cwd),
+            ]
+        )
+        == 0
+    )
+    assert len(calls) == 1
+    assert str(receipt) in capsys.readouterr().out
+
+    # A completed Claude session no longer binds the apply.
+    _write_claude_trace(traces, cwd, completed=True)
+    assert (
+        main(
+            [
+                "apply",
+                str(tmp_path / "plan.json"),
+                "--yes",
+                "--provider",
+                "claude-code",
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(cwd),
+            ]
+        )
+        == 1
+    )
+    assert len(calls) == 1
+    assert "no_attribution" in capsys.readouterr().err

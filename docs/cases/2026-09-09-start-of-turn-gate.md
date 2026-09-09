@@ -420,6 +420,35 @@ The board tracks the first three under `apu:gate-rule-gaps` (blocked on the
 carry-forward decision) and the fourth under `apu:gate-decision-evidence`.
 The completed proof task stays closed on runs 2 and 3.
 
+### Durable path, 2026-09-09
+
+The operator decided the steer-word gap (a steer-led new objective must not
+inherit approval) and asked for the change to be durable. Durable here means
+APU's own plan path, not a hand-run patch with a `.bak` beside it:
+
+1. `scripts/gate_intervention_2026_09_09.py --plan build/gate-intervention`
+   renders the patched hook and an approved plan: one `merge` operation with
+   `full_file` strategy, the live hook's SHA-256 as precondition, the rendered
+   hash as proposed output, backup required. Rendering touches nothing.
+2. `apu apply … --provider claude-code` installs it transactionally with a
+   receipt; `apu rollback RECEIPT` restores the prior bytes. A drifted live
+   file fails the precondition instead of being overwritten. The test suite
+   exercises apply, the proof sequence on the installed result, rollback, and
+   the precondition refusal on a fixture.
+3. `apu apply` was Codex-only by its session gate. It is now provider-neutral
+   with the same fail-closed selection, so a Claude Code session can own the
+   apply of a change to its own gate. This was the last incident-path command
+   that could not be driven from Claude Code.
+
+What the plan carries: the wider approval vocabulary, the early-phrase rule,
+objective-bound approval with imperative verbs removed from the steer list,
+and the content-free gate decision log.
+
+Status at the end of this session: plan rendered and reviewed by syntax
+check; `apu apply` was denied to this session by the harness classifier, so
+the operator runs it. Until then the live hook carries attempt 2's rules
+without the narrowing or the decision log.
+
 ### Gaps recorded by this attempt
 
 - The halt vocabulary matches "don't" and "wait" anywhere in a message, so a

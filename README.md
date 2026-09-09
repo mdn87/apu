@@ -256,9 +256,10 @@ Before it constructs or launches a continuation, `apu-intervene` re-reads the
 exact trace and proves that its provider, session ID, and working directory
 still match the incident. It also rejects any diagnosis whose
 `durable_policy_mutation` value is not exactly `false`. The mutating `apu apply`
-command retains its strict Codex session gate; `--provider`, `--session-id`,
-`--trace-root`, and `--cwd` are available on the incident commands when
-automatic selection is not sufficient.
+command keeps its strict session gate and is provider-neutral: it binds to one
+fresh, incomplete Codex or Claude Code session in the exact working directory,
+fails closed on ambiguity, and accepts `--provider`, `--session-id`,
+`--trace-root`, and `--cwd` like the incident commands.
 
 Watcher state is explicit and never starts a background service. Its health
 output names both supported providers and includes per-provider attribution
@@ -385,6 +386,17 @@ live under `docs/cases/`. Each record names the measured repository, the
 intervention surface, the before state as content-free counts, and the
 definition of improvement the next step must prove against. The first case is
 `docs/cases/2026-09-09-start-of-turn-gate.md`.
+
+A proven intervention becomes durable through the ordinary plan path rather
+than a hand-run patch. The case's script renders the changed surface and a
+reviewed plan whose precondition is the live file's hash:
+
+```console
+python scripts/gate_intervention_2026_09_09.py --plan build/gate-intervention
+apu review build/gate-intervention/gate-intervention-plan.json
+apu apply build/gate-intervention/gate-intervention-plan.json --provider claude-code
+apu rollback RECEIPT
+```
 
 ## Development
 

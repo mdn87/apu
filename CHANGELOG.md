@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Make the mutating `apu apply` session gate provider-neutral: `--provider
+  claude-code` binds the apply to a fresh Claude Code session in the exact
+  working directory; automatic selection still fails closed on ambiguity.
+- The gate intervention script gains `--plan OUT_DIR`, rendering the patched
+  hook and an approved APU plan (merge, full file, precondition hash) so the
+  change installs through `apu apply` with a receipt and rolls back through
+  `apu rollback`.
 - Fix `apu-wtf` so explicit `--provider`, `--session-id`, `--cwd`, and
   `--trace-root` selectors are honored when a latest incident already exists:
   the latest incident is reused only when it matches every selector, otherwise

@@ -233,3 +233,54 @@ def test_revert_and_reapply_round_trip(tmp_path: Path) -> None:
     assert module.MARKER in hook.read_text(encoding="utf-8")
     assert module.main(["--revert", "--hook", str(hook)]) == 0
     assert hook.read_text(encoding="utf-8") == FIXTURE
+
+
+def test_plan_mode_installs_through_apu_apply_and_rolls_back(tmp_path: Path) -> None:
+    """The durable path: the script renders an APU plan; apply and rollback own the mutation."""
+
+    import json
+    import os
+
+    from apu.apply import apply_plan
+    from apu.models import Plan
+    from apu.rollback import rollback_receipt
+
+    home = tmp_path / "home"
+    hook = home / "hooks" / "speak-response.mjs"
+    hook.parent.mkdir(parents=True)
+    hook.write_text(FIXTURE, encoding="utf-8")
+    module = _load_script()
+    assert module.main(["--plan", str(tmp_path / "out"), "--hook", str(hook)]) == 0
+    assert hook.read_text(encoding="utf-8") == FIXTURE  # rendering touches nothing
+
+    plan_path = tmp_path / "out" / "gate-intervention-plan.json"
+    plan = Plan.from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
+    plan.validate()
+    assert plan.status == "approved"
+    (operation,) = plan.operations
+    assert operation.action == "merge" and operation.strategy == "full_file"
+    assert operation.target == str(hook)
+
+    state = tmp_path / "state"
+    receipt = apply_plan(plan, state_home=state, installation_id="install-gate-test")
+    patched = hook.read_text(encoding="utf-8")
+    assert module.MARKER in patched
+    assert patched == (tmp_path / "out" / "speak-response.rendered.mjs").read_text(encoding="utf-8")
+
+    # The rendered hook still runs the proof sequence.
+    node = _node()
+    prompt, tool = _drive(node, hook, tmp_path / "gate")
+    assert prompt("Select the intervention case and write the record") == "pending"
+    assert prompt("sounds OK for this task") == "approved"
+    assert prompt("hold on, do not proceed") == "pending"
+    assert tool("Bash") == "deny"
+
+    # Byte-for-byte reversible through APU's own receipt.
+    rollback_receipt(receipt)
+    assert hook.read_text(encoding="utf-8") == FIXTURE
+
+    # A stale precondition is refused: the plan binds to the exact live bytes.
+    hook.write_text(FIXTURE + "\n// drift\n", encoding="utf-8")
+    with pytest.raises(Exception):
+        apply_plan(plan, state_home=state, installation_id="install-gate-test-2")
+    assert os.path.exists(hook)
