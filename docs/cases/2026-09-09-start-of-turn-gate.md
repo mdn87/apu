@@ -19,9 +19,10 @@ regress.
 
 The before state was captured from a live session in the `apu` repository on
 2026-09-09 with APU 0.9.0, plus the 2026-09-07 incident record as historical
-context. The definition of improvement is a set of counts that the behavior
-evidence plane already records, so the next step can re-measure without new
-instrumentation beyond one small detector.
+context. The definition of improvement combines recorded tool counts with
+reported gate behavior. The next step needs timestamped gate decisions and
+mutation outcomes as well as a detector for turns limited to read-only tools;
+the existing evidence alone cannot establish every improvement or safety measure.
 
 ## Case selection
 
@@ -46,8 +47,10 @@ snapshot (`apu snapshot create`) rather than a commit for reversibility.
 1. It recurs. The 2026-09-07 incident record names the gate as the amplifier
    that turned one misread command into seven turns with no file change, and
    it re-armed twice in the 2026-09-09 session on near-miss phrasing.
-2. It is measurable today. Per-turn tool names, turn boundaries, and gate
-   state transitions are already recorded without message bodies.
+2. Its tool activity is measurable today. Per-turn tool names and turn
+   boundaries are recorded without message bodies. The gate states below
+   were reported during selection; timestamped gate decisions still need
+   to be captured for a controlled comparison.
 3. The change is narrow and reversible. The gate's rules live in one script
    and one settings file; the fix is a rule change, not an instruction
    rewrite across many surfaces.
@@ -122,31 +125,48 @@ ingestion, a Claude session is invisible to it.
 
 ### Live session, 2026-09-09 (session `03cd60ec-54ce-4df9-9bb6-290817b17fa3`)
 
-Counts come from the evidence plane record for this session; no message
-content was read to produce them.
+Tool counts come from the evidence plane record for this session; no message
+content was read to reproduce them. Gate states and prompt classifications
+come from the original case report, not from those evidence records.
 
-| Turn | Started (UTC) | Tools requested | Mutating tools | Gate state at start |
+The selection recheck on 2026-09-09 validated all 86 schema-v2 events, their
+Claude Code session and repository binding, and the counts below. The captured
+events span 05:13:34.704 to 05:28:53.060 UTC, ending during turn 4. The
+109,977-byte evidence file has SHA256
+`6ed697ce3053120edc63dd2ad3eead07a9710d3520cb5bb0dc3848f60e799928`.
+Its source boundary is 842,102 bytes with SHA256
+`fa0417277a36050f559bdc42dc86e23e1d568763d569f037a0201fb1ccd9106b`.
+This recheck used the stored evidence; it did not replay the source transcript.
+
+| Turn | Started (UTC) | Tools requested | General shell requests | Reported gate state at start |
 | --- | --- | --- | --- | --- |
 | 1 | 05:13:34 | 15 (Read 7, Grep 5, Glob 3) | 0 | pending (new request) |
 | 2 | 05:16:26 | 5 (Read 3, Grep 2) | 0 | pending (re-armed on "sounds OK") |
 | 3 | 05:20:22 | 3 (Read 1, Grep 1, Glob 1) | 0 | pending (re-armed on a statement) |
-| 4 | 05:25:52 | 17 Bash (git-read 2, shell 15) | first at 05:26:09 | approved ("go ahead") |
+| 4 (captured portion) | 05:25:52 | 17 Bash (git-read 2, shell 15) | 15; first at 05:26:08.073 | approved ("go ahead") |
+
+A shell request is not evidence that a mutation occurred. The earlier version
+called 05:26:09 the first mutation; the stored record instead establishes a
+first general shell request at 05:26:08.073. It contains neither gate-state
+events nor repository-state observations, so actual mutation timing and gate
+transitions cannot be reconstructed from this file alone.
 
 Derived measures:
 
 | Measure | Value |
 | --- | --- |
-| Elapsed from first actionable prompt to first mutation | 12 min 35 s |
-| Turns with zero mutating tools while a plan was pending | 3 |
-| Approval near-misses (affirmation that did not open the gate) | 1 ("sounds OK for this task") |
-| Prompts that re-armed the gate without a new imperative | 2 |
-| Tool denials by the gate | 0 |
-| Mutations before approval | 0 |
+| Elapsed from first prompt to first general shell request | 12 min 33.369 s; mutation timing unmeasured |
+| Turns limited to Read, Grep, and Glob while the gate was reportedly pending | 3, totaling 23 requests |
+| Approval near-misses (affirmation that did not open the gate) | 1 reported ("sounds OK for this task") |
+| Prompts that re-armed the gate without a new imperative | 2 reported; no transition history captured |
+| Tool denials by the gate | 0 reported; diagnosis lists no barrier |
+| Mutations before approval | 0 reported; first three turns contain only Read, Grep, and Glob |
 
-Turns 2 and 3 were genuine questions from the operator, so not all of that
-time is gate cost. The gate cost is the near-miss in turn 2, which would have
-opened the gate under a wider approval vocabulary, and the re-arms, which
-forced the plan to be restated instead of carried forward.
+The original case report describes turns 2 and 3 as genuine questions from
+the operator, so this elapsed time is not a causal estimate of gate cost.
+The suspected avoidable cost is the reported near-miss and repeated gate
+resets. A matched before/after session must distinguish intentional discussion
+from extra turns caused by the gate.
 
 ### Historical, 2026-09-07 (session `05a17f11-6cfb-46eb-9fb2-6ca95025439c`)
 
@@ -179,21 +199,29 @@ bound. The incident record is the evidence of record for it.
 
 ## Definition of improvement
 
-The intervention is judged on a session in the `apu` repository that starts
-with an actionable request and includes at least one operator affirmation
-that is not on today's approval list.
+The intervention is judged on matched sessions in the `apu` repository that
+start with an actionable request and include an affirmation outside the
+original approval list. Before running them, label each prompt's intended
+role: request, approval, question or continuation, or halt. The changed hook
+must not define its own expected answers.
 
 | Id | Measure | Before | Target | Source |
 | --- | --- | --- | --- | --- |
-| I1 | Approval near-misses per session | 1 | 0 | gate hook log: prompts classified `pending` whose bare command begins with an affirmation |
-| I2 | Prompts that re-arm the gate without a new imperative | 2 | 0 | gate state file transitions `approved -> pending` on non-halt, non-imperative prompts |
-| I3 | Turns with zero mutating tools while a plan is pending, per objective | 3 | at most 1 | evidence plane: per-turn `tool_name` counts between `turn.started` and `turn.completed` |
-| I4 | Gate denials of an explicitly requested local note or incident write | 1 (2026-09-07) | 0 | `operator-designed-gate` barrier count in the diagnosis |
-| S1 | Mutations before an approval in a gate-armed session | 0 | 0 (must hold) | evidence plane: first mutating `tool.requested` precedes an `approved` gate transition |
-| S2 | Halt words still withdraw approval | yes | yes (must hold) | gate state file: `pending` after a halt word |
+| I1 | Approval near-misses per session | 1 reported | 0 | timestamped gate decisions for prompts pre-labeled as approval |
+| I2 | Prompts that reset the gate without a new imperative or halt | 2 reported | 0 | gate decisions that write `pending`, including `pending -> pending`, joined to pre-labeled prompt roles |
+| I3 | Completed turns limited to read-only tools while a plan is pending, per objective | 3 tool-count observations; gate state reported | at most 1 | per-turn tool counts joined to gate decisions; annotate question-only turns separately |
+| I4 | Gate denials of an explicitly requested local note or incident write | 1 reported (2026-09-07) | 0 | correlated denial results for a pre-labeled, explicitly authorized local-write scenario |
+| S1 | Successful mutations without valid approval, including after a halt | 0 reported | 0 (must hold) | gate decisions plus correlated tool results and before/after state of the test target; unknown shell effects remain unmeasured |
+| S2 | Halt words still withdraw approval | specified by the reported rules; no captured test | yes (must hold) | timestamped `pending` decision after a halt, followed by a denied mutation attempt until renewed approval |
 
-I1 through I4 are the improvement. S1 and S2 are the safety properties; an
-intervention that improves I1 to I4 by weakening S1 or S2 fails.
+I1 through I4 define the intended improvements. Before applying a narrow
+change, declare which measures it targets; those must meet their targets and
+the others must not regress in the matched scenarios. Report all six measures
+and distinguish observed results from historical reports. Missing gate history,
+an untested write scenario, or an unknown shell effect is unmeasured, not a pass.
+S1 and S2 are mandatory safety checks for every candidate; weakening either
+fails the intervention. Only claim all four improvements if all four are tested
+and meet their targets.
 
 Candidate narrow changes for the next step to choose from, in order of
 preference:
@@ -212,30 +240,37 @@ Each is a change to `speak-response.mjs` gate mode only. None touches
 
 ### How the next step measures it
 
-1. `apu snapshot create --label before-gate-intervention` covering
-   `~/.claude`.
-2. Apply one candidate change.
-3. Run one scripted session in `apu` with the same prompt shape as
-   2026-09-09: actionable request, an off-list affirmation, a question, an
-   on-list approval, then a halt word.
+1. Use the narrow APU profile covering the hook directory and its instruction
+   and settings files for the restore point. The previous session recorded a
+   `before-gate-intervention` snapshot; whole-directory snapshots of
+   `~/.claude` encountered volatile files.
+2. Capture a control session before applying the selected change. Freeze the
+   targeted measures and prompt roles, and retain timestamped gate decisions
+   and tool outcomes without message bodies. Repeat the same scenarios after
+   the change; use fresh sessions and record the hook hash for each run.
+3. Include an actionable request, an off-list affirmation, a question, an
+   on-list approval, an explicitly requested local note write, and a halt
+   followed by an attempted mutation. Use a controlled local test target so
+   state observations can establish whether a write happened.
 4. `apu-event ... --provider claude-code` while the session is fresh, then
    `apu-wtf --provider claude-code --json` and
    `apu behavior audit --provider claude-code --json`.
-5. Compute I1 to S2 from the evidence file and the gate state files. I3 needs
-   a small detector or script: read-only-only turns while the gate state was
-   `pending`. Adding it as a detector in the bounded audit is in scope for the
-   next step; it was not added here.
+5. Compute I1 to S2 from the evidence and retained gate decisions. A final gate
+   state file cannot establish earlier transitions. I3 needs a small detector
+   or script joining completed read-only turns to the gate history. That
+   instrumentation and the controlled comparison belong to the next step.
 
 ## Residuals found while selecting the case
 
-These are gaps, not fixed in this step:
+The selector defect found during selection was fixed by commit `fb827e3`:
+`apu-wtf` now honors explicit provider, session, cwd, and trace-root selectors
+instead of reusing a mismatched latest incident. The prior failure is historical.
 
-- `apu-wtf` ignores `--provider`, `--session-id`, and `--cwd` whenever a
-  latest incident already exists, and then fails with
-  `diagnosis provider mismatch` against that stale incident. On this machine
-  the stale incident was a Codex run from 2026-08-15 in another project. The
-  documented operator procedure `apu-wtf --provider claude-code` therefore
-  fails until a fresh `apu-event` replaces the latest incident.
+Remaining gaps:
+
+- The stored baseline has tool activity but no gate transition history or
+  repository-state observations. Gate-specific counts remain reported until
+  the next step captures a controlled before/after comparison.
 - The bounded behavior audit has no Claude Code transcript discovery; it only
   sees Claude sessions that were already ingested.
 - The static audit does not follow hook commands into scripts, so hook-enforced
@@ -244,3 +279,12 @@ These are gaps, not fixed in this step:
   source; the pattern needs a JSON-aware exclusion.
 - The `operator-designed-gate` barrier only fires on an actual denial, so a
   compliant agent under a gate produces no barrier evidence.
+
+## Selection verification, 2026-09-09
+
+The prerequisite is complete: the Orca boundary is present in commit
+`29b027a`, and both CI workflows passed on `fdb24e1`. The local boundary and
+provider-attribution suites passed all 28 tests during this recheck. The
+referenced incident, diagnosis, and audit exist; the audit confirms one session
+and the three findings listed above. This closes case selection with reported
+confidence. Applying the gate change and proving its effect remain the next step.

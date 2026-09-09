@@ -185,7 +185,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-05T12:00:00.000Z",
-        "updatedAt": "2026-09-09T05:32:33Z"
+        "updatedAt": "2026-09-09T06:16:06Z"
       },
       "evidence": [
         {
@@ -205,6 +205,12 @@
           "at": "2026-09-09T05:32:33Z",
           "kind": "stage-change",
           "message": "Done 2026-09-09: chose the start-of-turn approval gate; before state and improvement measures recorded in the case record."
+        },
+        {
+          "entryId": "apu:select-intervention-case:verified-2026-09-09",
+          "at": "2026-09-09T06:16:06Z",
+          "kind": "note",
+          "message": "Verified the prerequisite and stored tool counts; corrected the baseline timing and evidence limits; clarified improvement and safety measures."
         }
       ]
     },
