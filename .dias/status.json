@@ -4,17 +4,17 @@
   "projectLabel": "APU",
   "assessmentState": "scored",
   "assessmentScope": "current-milestone",
-  "percentComplete": 96,
+  "percentComplete": 100,
   "milestonePhase": "operational-proof",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-09-09T06:19:53Z",
+  "assessedAt": "2026-09-09T06:36:41Z",
   "confidence": "reported",
   "currentMilestone": "Bounded behavior audits, provider-neutral execution evidence, CI, and an Orca behavior-evidence boundary.",
-  "remainingSummary": "Reapply the corrected gate change, rerun the proof driver, then score I1-I4 and S1-S2 against the case record.",
-  "nextChipId": "apu:prove-intervention-effect",
+  "remainingSummary": "Board complete. Next candidate work: gate-decision log plus an audit detector so I3 becomes measured, then the halt over-match and the note-write exemption.",
+  "nextChipId": null,
   "source": {
-    "label": "Reassessed 2026-09-09 after selecting the start-of-turn gate intervention case.",
+    "label": "Reassessed 2026-09-09 after the gate intervention proof.",
     "updatedAt": "2026-09-09"
   }
 }

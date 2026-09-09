@@ -327,3 +327,75 @@ measure for attempt 1 is unmeasured, not passed.
 Lesson recorded: an intervention script that cannot be executed against its
 target from the session that wrote it must carry its own executable test, or
 it must not be handed to the operator.
+
+## Intervention attempt 2, 2026-09-09: result
+
+The operator ran `--reapply`. The live hook now defines the new constants at
+line 96, after `HALT` at line 90 and before the gate dispatch at line 217. The
+operator then reran the proof driver against the live hook. Fifteen rows,
+two mismatches, both explained below and neither a hook defect:
+
+| Row | Prompt role | Expected | Observed | Verdict |
+| --- | --- | --- | --- | --- |
+| 1 | new request, fresh session | pending | pending | pass |
+| 1a | Bash while pending | deny | deny | S1 pass |
+| 1b | Read while pending | allow | allow | pass |
+| 1c | Write of a note while pending | deny | deny | I4 unchanged, not targeted |
+| 2 | off-list affirmation ("sounds OK for this task…") | approved | approved | I1 pass |
+| 2a | Bash after that affirmation | allow | allow | pass |
+| 3 | question | approved | approved | pass |
+| 4 | verbatim long statement containing "dont" | approved | pending | see note |
+| 5 | early phrase, long tail ("yeah mr wizard make it so. …") | approved | approved | I1 pass |
+| 6 | halt ("hold on, do not proceed") | pending | pending | S2 pass |
+| 6a | Bash after the halt | deny | deny | S1 pass |
+| 7 | new objective while pending | pending | pending | pass |
+| 8 | "go ahead" | approved | approved | pass |
+| 9 | long new objective after approval, no steer lead | pending | pending | boundary pass |
+| 10 | steer-led long new objective | approved | pending | driver error |
+
+Row 4 note: the verbatim 2026-09-09 utterance contains "dont", which the
+gate's pre-existing halt vocabulary matches, so the hook re-armed by its own
+definition of a halt. The same statement without the contraction carries
+forward, which the fixture test covers. This is a halt over-match in the
+original rule set, not a regression from the change; it is recorded as a gap
+below. Row 10 failed because the driver did not re-approve after row 9
+re-armed the gate, so the state it probed was pending, not approved. The
+checked-in driver `scripts/gate_proof_session_2026_09_09.mjs` fixes both
+sequencing points and adds a "wait" halt row; the fixture-backed test already
+covers the steer-word gap and passes.
+
+### Scores against the definition
+
+| Id | Measure | Before | After | Verdict |
+| --- | --- | --- | --- | --- |
+| I1 | Approval near-misses per session | 1 reported | 0 in the proof (rows 2, 5) | met |
+| I2 | Prompts that reset the gate without a new imperative or halt | 2 reported | 0 in the proof; the one reset (row 4) contained a halt-vocabulary word | met, with the halt over-match noted |
+| I3 | Completed read-only turns while pending, per objective | 3 tool-count observations | unmeasured: the driver has no model turns; one live carry-forward firing was observed on a real prompt after the reapply | unmeasured |
+| I4 | Gate denials of an explicitly requested local write | 1 reported | still denied (row 1c) | not targeted by this attempt |
+| S1 | Mutations without valid approval, including after a halt | 0 reported | 0 at the hook level (rows 1a, 6a deny) | holds at the hook level; no real mutation attempted |
+| S2 | Halt words still withdraw approval | untested | pass (row 6, and "wait" in the fixture test) | holds |
+
+The attempt targeted I1 and I2 and declared so. Both met their targets, and
+both safety checks hold at the hook level. I3 and I4 are not claimed.
+
+### Decision on the effect signal
+
+The findings do need a stronger effect signal for I3. The hook-level proof
+shows the rule change, not the behavior change: whether an agent under the
+new rules actually spends fewer read-only turns waiting. That needs a
+detector in the bounded audit that joins each completed turn's tool names to
+the gate state file's transitions, which are not yet retained with
+timestamps. The concrete follow-up is: have the gate hook append one
+content-free line per decision (session hash, prompt role, state before and
+after, timestamp) to its latency log, and teach `apu behavior audit` to read
+it. Until then, I3 stays reported.
+
+### Gaps recorded by this attempt
+
+- The halt vocabulary matches "don't" and "wait" anywhere in a message, so a
+  statement such as "we dont have routing" withdraws approval. Narrowing halts
+  to sentence-initial or imperative forms is a candidate for a later attempt.
+- After an approval, a long new objective that opens with a steer word ("now
+  build…") carries the approval forward. Accepted for this attempt; the
+  fixture test pins the behavior so a change to it is deliberate.
+- Candidate 3 (explicit local-note write exemption) is untouched; I4 is open.
