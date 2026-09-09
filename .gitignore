@@ -9,3 +9,5 @@ dist/
 *.egg-info/
 .Codex/handoff.md
 .Codex/handoff-history/
+.claude/handoff.md
+.claude/handoff-history/

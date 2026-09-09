@@ -25,6 +25,12 @@
           "at": "2026-09-05T03:40:00.000Z",
           "kind": "created",
           "message": "Release 0.5.0 tagged 2026-08-07; CLI flow documented in the README."
+        },
+        {
+          "entryId": "apu:deterministic-core:policy-intake-2026-09-02",
+          "at": "2026-09-02T14:55:02.000Z",
+          "kind": "note",
+          "message": "Review-only policy intake landed 2026-09-02: AETA policy-delta proposals are validated and stored as pending-review candidates with a receipt, never applied."
         }
       ]
     },
@@ -169,7 +175,7 @@
       "projectId": "apu",
       "title": "Select a real intervention case",
       "summary": "Pick one repository where an audit finding should change agent behavior, record the before state, and define what an improvement would look like.",
-      "stage": "ready",
+      "stage": "done",
       "sequence": 70,
       "prereqs": [
         "apu:orca-evidence-boundary"
@@ -179,7 +185,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-05T12:00:00.000Z",
-        "updatedAt": "2026-09-05T03:40:00.000Z"
+        "updatedAt": "2026-09-09T05:32:33Z"
       },
       "evidence": [
         {
@@ -187,6 +193,18 @@
           "at": "2026-09-05T03:40:00.000Z",
           "kind": "created",
           "message": "Named as the next step by the 2026-09-05 status reassessment; nothing started yet."
+        },
+        {
+          "entryId": "apu:select-intervention-case:started-2026-09-09",
+          "at": "2026-09-09T05:26:09Z",
+          "kind": "stage-change",
+          "message": "Started 2026-09-09: running static and behavior audits to pick the case."
+        },
+        {
+          "entryId": "apu:select-intervention-case:done-2026-09-09",
+          "at": "2026-09-09T05:32:33Z",
+          "kind": "stage-change",
+          "message": "Done 2026-09-09: chose the start-of-turn approval gate; before state and improvement measures recorded in the case record."
         }
       ]
     },
@@ -196,17 +214,17 @@
       "projectId": "apu",
       "title": "Prove the intervention changed behavior",
       "summary": "Show the applied change moved the measured behavior, not only the report; decide whether findings need a stronger effect signal.",
-      "stage": "vague",
+      "stage": "ready",
       "sequence": 80,
       "prereqs": [
         "apu:select-intervention-case"
       ],
       "linkedRunIds": [],
-      "confidence": "unknown",
+      "confidence": "reported",
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-05T12:00:00.000Z",
-        "updatedAt": "2026-09-05T03:40:00.000Z"
+        "updatedAt": "2026-09-09T05:32:33Z"
       },
       "evidence": [
         {
@@ -214,6 +232,12 @@
           "at": "2026-09-05T03:40:00.000Z",
           "kind": "created",
           "message": "Follows the intervention case; shape depends on what that case shows."
+        },
+        {
+          "entryId": "apu:prove-intervention-effect:ready-2026-09-09",
+          "at": "2026-09-09T05:32:33Z",
+          "kind": "note",
+          "message": "Unblocked 2026-09-09: apply one narrow gate rule change, then re-measure I1-I4 and safety S1-S2 from the case record."
         }
       ]
     }

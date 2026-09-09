@@ -374,6 +374,14 @@ The strict version-1 JSON schemas are installed under `share/apu/schemas` and
 are also checked in at `schemas/behavior-evaluation-evidence.schema.json` and
 `schemas/behavior-registry-candidate-patch.schema.json`.
 
+## Intervention cases
+
+Selected real-world cases where an audit finding should change agent behavior
+live under `docs/cases/`. Each record names the measured repository, the
+intervention surface, the before state as content-free counts, and the
+definition of improvement the next step must prove against. The first case is
+`docs/cases/2026-09-09-start-of-turn-gate.md`.
+
 ## Development
 
 ```console
