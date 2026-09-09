@@ -401,6 +401,25 @@ row 10 confirmed the steer-word carry-forward with the new hook message, and
 row 11 confirmed that "wait" withdraws approval. No hook behavior changed
 between runs 2 and 3; the scores above stand.
 
+### Classification of the recorded gaps, 2026-09-09
+
+Assessed against the case's own definition (S1: no mutation without valid
+approval; I2: no reset without a new imperative or halt) and APU's stated
+role of supporting bounded interventions while preserving useful autonomous
+continuation. A fixture that pins current behavior is a regression guard, not
+a product decision; none of the items below was accepted by the operator.
+
+| Gap | Classification | Basis |
+| --- | --- | --- |
+| Steer-led new objective inherits approval (run 3 row 10) | Unresolved defect in the intervention's boundary, pending an operator decision | Introduced by candidate 1's steer-lead list, which includes imperative verbs ("build", "make", "add"). Whether a steer-led new objective is "valid approval" under S1 is a product question the records do not answer. The attempt note calling it "accepted" was the implementer's, not the operator's. |
+| Mid-sentence halt tokens re-arm the gate (runs 2 and 3 row 4) | Pre-existing limitation of the operator's gate; separately scoped improvement | The halt rule and its comment ("Only a halt word does") exist unchanged in the pre-intervention backup at lines 90 and 692. It fails safe, costing autonomy (an I2-style reset) but never safety. Not introduced by the change. |
+| Explicit note write still denied (I4) | Separately scoped, never attempted | Candidate 3 was listed and not applied; no decision was taken either way. |
+| I3 unmeasured | Separately scoped measurement work | The case record's "Decision on the effect signal" names the concrete instrumentation. |
+
+The board tracks the first three under `apu:gate-rule-gaps` (blocked on the
+carry-forward decision) and the fourth under `apu:gate-decision-evidence`.
+The completed proof task stays closed on runs 2 and 3.
+
 ### Gaps recorded by this attempt
 
 - The halt vocabulary matches "don't" and "wait" anywhere in a message, so a

@@ -4,17 +4,17 @@
   "projectLabel": "APU",
   "assessmentState": "scored",
   "assessmentScope": "current-milestone",
-  "percentComplete": 100,
+  "percentComplete": 92,
   "milestonePhase": "operational-proof",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-09-09T06:36:41Z",
+  "assessedAt": "2026-09-09T09:52:14Z",
   "confidence": "reported",
   "currentMilestone": "Bounded behavior audits, provider-neutral execution evidence, CI, and an Orca behavior-evidence boundary.",
-  "remainingSummary": "Board complete. Next candidate work: gate-decision log plus an audit detector so I3 becomes measured, then the halt over-match and the note-write exemption.",
-  "nextChipId": null,
+  "remainingSummary": "Intervention proven at the hook level. Remaining: make the gate cost measurable from decisions, and decide the carry-forward boundary before narrowing gate rules.",
+  "nextChipId": "apu:gate-decision-evidence",
   "source": {
-    "label": "Reassessed 2026-09-09 after the gate intervention proof.",
+    "label": "Reassessed 2026-09-09 after proof run 3; follow-up chips added.",
     "updatedAt": "2026-09-09"
   }
 }
