@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Fix `apu-wtf` so explicit `--provider`, `--session-id`, `--cwd`, and
+  `--trace-root` selectors are honored when a latest incident already exists:
+  the latest incident is reused only when it matches every selector, otherwise
+  a fresh incident is marked instead of failing with a provider mismatch
+  against a stale incident from another provider or project. Text output now
+  names the diagnosed incident and provider.
+- Add `docs/cases/` with the first intervention case: the start-of-turn
+  approval gate, its before state, and the definition of improvement.
 - Add provider-neutral live incident attribution for Codex and Claude Code,
   including strict cross-provider ambiguity handling and `--provider` CLI
   overrides.

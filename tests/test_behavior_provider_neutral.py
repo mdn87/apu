@@ -704,3 +704,128 @@ def test_claude_cli_provider_override_runs_the_short_command_flow(
     assert intervention["provider"] == "claude-code"
     assert watch_main(["--provider", "claude-code"]) == 0
     assert "Claude Code JSONL" in capsys.readouterr().out
+
+
+def test_wtf_explicit_provider_does_not_diagnose_a_stale_incident_of_another_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A latest incident for Codex must not hijack ``apu-wtf --provider claude-code``.
+
+    Before the fix, the latest incident was diagnosed whenever it existed and the
+    explicit selectors were ignored, so the command failed with a provider
+    mismatch against an unrelated, stale incident.
+    """
+
+    state = tmp_path / "state"
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setattr(
+        "apu.behavior_watch.shutil.which",
+        lambda name: name if name in {"claude", "codex"} else None,
+    )
+    codex_cwd = tmp_path / "codex-repo"
+    codex_cwd.mkdir()
+    codex_traces = tmp_path / "sessions"
+    codex_trace = codex_traces / "rollout.jsonl"
+    codex_trace.parent.mkdir(parents=True)
+    codex_trace.write_text(
+        "\n".join(
+            json.dumps(record)
+            for record in [
+                {
+                    "timestamp": _timestamp(0),
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "codex-session",
+                        "cwd": str(codex_cwd),
+                        "source": "vscode",
+                        "originator": "Codex Desktop",
+                    },
+                },
+                {
+                    "timestamp": _timestamp(1),
+                    "type": "event_msg",
+                    "payload": {"type": "task_started"},
+                },
+                {
+                    "timestamp": _timestamp(2),
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "message": "Would you prefer that I choose which file?",
+                    },
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert (
+        event_main(
+            [
+                "codex asked me to pick a file name",
+                "--provider",
+                "codex",
+                "--trace-root",
+                str(codex_traces),
+                "--cwd",
+                str(codex_cwd),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    claude_cwd = tmp_path / "claude-repo"
+    claude_cwd.mkdir()
+    claude_traces = tmp_path / "projects"
+    _write_claude_trace(claude_traces, claude_cwd)
+
+    assert (
+        wtf_main(
+            [
+                "--provider",
+                "claude-code",
+                "--trace-root",
+                str(claude_traces),
+                "--cwd",
+                str(claude_cwd),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert diagnosis["provider"] == "claude-code"
+    latest = json.loads(
+        (state / "behavior" / "latest-incident.json").read_text(encoding="utf-8")
+    )
+    assert latest["incident_id"] == diagnosis["incident_id"]
+
+    # Without selectors the latest (now Claude) incident is reused, and the text
+    # output says which incident and provider it diagnosed.
+    assert wtf_main([]) == 0
+    output = capsys.readouterr().out
+    assert f"Incident: {diagnosis['incident_id']} (claude-code, previously marked)" in output
+
+    # A matching explicit provider reuses it too instead of marking again.
+    assert wtf_main(["--provider", "claude-code", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["incident_id"] == diagnosis["incident_id"]
+
+    # A session id that the latest incident does not carry fails closed on
+    # attribution rather than diagnosing the wrong incident.
+    assert (
+        wtf_main(
+            [
+                "--provider",
+                "claude-code",
+                "--session-id",
+                "00000000-0000-0000-0000-000000000000",
+                "--trace-root",
+                str(claude_traces),
+                "--cwd",
+                str(claude_cwd),
+            ]
+        )
+        == 2
+    )

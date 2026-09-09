@@ -15,7 +15,9 @@ from .behavior_watch import (
     configure_watcher,
     diagnose_incident,
     intervene,
+    load_incident,
     mark_incident,
+    normalized_cwd_key,
     record_intervention_result,
     watcher_status,
 )
@@ -97,7 +99,7 @@ def _wtf_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
     parser.add_argument("--session-id")
     parser.add_argument("--trace-root", type=Path)
-    parser.add_argument("--cwd", type=Path, default=Path.cwd())
+    parser.add_argument("--cwd", type=Path)
     parser.add_argument(
         "--evidence-schema-version", type=int, choices=(1, 2), default=2
     )
@@ -105,24 +107,66 @@ def _wtf_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _latest_incident_matches(
+    state_home: Path,
+    *,
+    provider: str | None,
+    session_id: str | None,
+    cwd: Path | None,
+) -> str | None:
+    """Return the latest incident id only when it matches every explicit selector."""
+
+    pointer = state_home / "behavior" / "latest-incident.json"
+    if not pointer.is_file():
+        return None
+    try:
+        incident = load_incident(state_home)
+    except ValueError:
+        return None
+    if provider is not None and incident.get("provider", "codex") != provider:
+        return None
+    session = incident.get("session")
+    session = session if isinstance(session, dict) else {}
+    if session_id is not None and session.get("session_id") != session_id:
+        return None
+    if cwd is not None:
+        recorded = session.get("cwd")
+        if not isinstance(recorded, str) or normalized_cwd_key(
+            Path(recorded)
+        ) != normalized_cwd_key(cwd):
+            return None
+    return str(incident["incident_id"])
+
+
 def wtf_main(argv: Sequence[str] | None = None) -> int:
     def command(args: argparse.Namespace) -> int:
         state_home = resolve_state_home()
         incident_id = args.incident
-        if (
-            incident_id is None
-            and not (state_home / "behavior" / "latest-incident.json").is_file()
-        ):
-            _, incident = mark_incident(
+        marked = False
+        if incident_id is None:
+            # Explicit selectors describe the run the operator means. The latest
+            # incident is reused only when it satisfies all of them; otherwise a
+            # fresh incident is marked from that selection instead of silently
+            # diagnosing whatever was marked last, possibly for another provider
+            # or project.
+            incident_id = _latest_incident_matches(
                 state_home,
-                "most recent incomplete provider run selected automatically",
                 provider=args.provider,
-                trace_root=args.trace_root,
                 session_id=args.session_id,
                 cwd=args.cwd,
-                evidence_schema_version=args.evidence_schema_version,
             )
-            incident_id = incident["incident_id"]
+            if incident_id is None or args.trace_root is not None:
+                _, incident = mark_incident(
+                    state_home,
+                    "most recent incomplete provider run selected automatically",
+                    provider=args.provider,
+                    trace_root=args.trace_root,
+                    session_id=args.session_id,
+                    cwd=args.cwd if args.cwd is not None else Path.cwd(),
+                    evidence_schema_version=args.evidence_schema_version,
+                )
+                incident_id = incident["incident_id"]
+                marked = True
         path, diagnosis = diagnose_incident(
             state_home,
             incident_id=incident_id,
@@ -131,6 +175,10 @@ def wtf_main(argv: Sequence[str] | None = None) -> int:
         if args.json:
             _emit(diagnosis)
         else:
+            print(
+                f"Incident: {diagnosis['incident_id']} "
+                f"({diagnosis['provider']}, {'marked now' if marked else 'previously marked'})"
+            )
             print(
                 f"{diagnosis['status']}: {', '.join(diagnosis['observed_signals']) or 'no matched signal'}"
             )

@@ -236,7 +236,11 @@ exits nonzero. It never falls back to a recent session from another project or
 provider.
 
 `apu-wtf` can also analyze the most recent incomplete run when no event has
-been marked. `apu-intervene` resumes a non-interactive Codex session directly;
+been marked. Explicit `--provider`, `--session-id`, `--cwd`, or `--trace-root`
+selectors always describe the run you mean: the latest marked incident is
+reused only when it satisfies every selector, otherwise a fresh incident is
+marked from that selection. A stale incident from another provider or project
+is never diagnosed in its place. `apu-intervene` resumes a non-interactive Codex session directly;
 for Codex Desktop and Claude Code sessions it records and prints the exact
 provider continuation because APU cannot inject into the desktop process.
 Claude Code transcripts do not reliably distinguish interactive CLI runs from
