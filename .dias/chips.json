@@ -230,7 +230,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-05T12:00:00.000Z",
-        "updatedAt": "2026-09-09T05:49:43Z"
+        "updatedAt": "2026-09-09T06:19:53Z"
       },
       "evidence": [
         {
@@ -250,6 +250,18 @@
           "at": "2026-09-09T05:49:43Z",
           "kind": "stage-change",
           "message": "Blocked 2026-09-09: apu-wtf selector fix landed and a restore point exists, but the harness classifier denies edits to the gate hook; operator must apply the packaged script."
+        },
+        {
+          "entryId": "apu:prove-intervention-effect:attempt1-2026-09-09",
+          "at": "2026-09-09T06:19:53Z",
+          "kind": "note",
+          "message": "Attempt 1 failed: the applied gate change crashed after approvals, so halts no longer withdrew approval. Script fixed and tested; operator must reapply and rerun the proof."
+        },
+        {
+          "entryId": "apu:prove-intervention-effect:voice-bang-2026-09-09",
+          "at": "2026-09-09T06:19:53Z",
+          "kind": "note",
+          "message": "Voice listener side note: it pastes a leading space, which defeats the CLI bang prefix for shell commands. Fix later in the listener."
         }
       ]
     }

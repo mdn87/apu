@@ -8,10 +8,10 @@
   "milestonePhase": "operational-proof",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-09-09T05:49:43Z",
+  "assessedAt": "2026-09-09T06:19:53Z",
   "confidence": "reported",
   "currentMilestone": "Bounded behavior audits, provider-neutral execution evidence, CI, and an Orca behavior-evidence boundary.",
-  "remainingSummary": "Apply the packaged gate change to the Claude hook, then re-measure I1-I4 and S1-S2 against the case record.",
+  "remainingSummary": "Reapply the corrected gate change, rerun the proof driver, then score I1-I4 and S1-S2 against the case record.",
   "nextChipId": "apu:prove-intervention-effect",
   "source": {
     "label": "Reassessed 2026-09-09 after selecting the start-of-turn gate intervention case.",
