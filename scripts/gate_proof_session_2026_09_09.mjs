@@ -74,9 +74,12 @@ prompt('7 new objective while pending', 'Now build a completely new voice routin
 // 8. Plain approval, then a long new objective without a steer lead re-arms.
 prompt('8 go ahead', 'go ahead', 'approved');
 prompt('9 long new objective after approval (boundary probe)', 'Build a completely new voice routing service with codenames for every session across all my machines and deploy it to production tonight', 'pending');
-// 10. Known gap: after an approval, a steer-led long new objective carries forward.
+// 10. Operator decision 2026-09-09: a steer-led long new objective must NOT inherit approval.
 prompt('10a go ahead', 'go ahead', 'approved');
-prompt('10 steer-led long new objective (known gap)', 'Now build a completely new voice routing service with codenames for every session across all my machines and deploy it', 'approved');
+prompt('10 steer-led long new objective re-arms', 'Now build a completely new voice routing service with codenames for every session across all my machines and deploy it', 'pending');
+// 10b. A long steering message on the same objective still carries forward.
+prompt('10b go ahead', 'go ahead', 'approved');
+prompt('10c long steer on the same objective', 'Keep this session on APU using its existing project directory and carry the completed proof forward without reopening it', 'approved');
 // 11. "wait" is both a steer trap and a halt: it must withdraw (S2).
 prompt('11 wait as halt', 'wait, also do the codename thing', 'pending');
 

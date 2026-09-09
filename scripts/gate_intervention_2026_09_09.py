@@ -73,11 +73,12 @@ REPLACEMENTS: list[tuple[str, str]] = [
         "// objective keeps it open; a halt word (checked by the caller) or a fresh\n"
         "// request that reads like a new objective arms it again. Approvals expire.\n"
         "const APPROVAL_TTL_MS = 2 * 60 * 60 * 1000;\n"
+        "// Affirmations, continuations, and short steers only. Imperative verbs were\n"
+        "// removed on 2026-09-09 (operator decision): a message that opens a new\n"
+        "// objective (\"now build ...\", \"make a ...\") must not inherit an approval.\n"
         "const STEER_LEAD = /^(ok|okay|yes|yep|yeah|yup|sure|fine|right|good|great|cool|also|and|"
-        "then|now|next|plus|keep|continue|just|actually|instead|but|oh|hmm|no|nope|not that|the|"
-        "that|this|it|use|try|make|change|update|fix|add|remove|drop|skip|include|check|run|rerun|"
-        "retry|again|same|more|less|put|move|rename|swap|switch|start|finish|wrap|land|commit|push|"
-        "test)\\b/;\n"
+        "plus|keep|continue|just|actually|instead|but|oh|hmm|no|nope|not that|the|"
+        "that|this|it|same|again|more|less)\\b/;\n"
         "function continuesObjective(cmd) {\n"
         "  const t = cmd.toLowerCase().replace(/^[\\s,.!?:;-]+/, '')"
         ".replace(/^(hey |ok |okay |alright |all right )?claude[,.!? ]+/, '').trim();\n"
@@ -85,6 +86,22 @@ REPLACEMENTS: list[tuple[str, str]] = [
         "  const words = t.split(/\\s+/).length;\n"
         "  if (words <= 12) return true;\n"
         "  return STEER_LEAD.test(t);\n"
+        "}",
+    ),
+    (
+        # Content-free gate decision log: one line per state write in the hook's
+        # existing latency log ("gate <8-char session prefix> <before>-><after>").
+        # No prompt text. This is the producer for the I3 measurement.
+        "function writeGate(sessionId, state, extra = {}) {\n"
+        "  mkdirSync(STATE_DIR, { recursive: true });\n"
+        "  writeFileSync(gateStateFile(sessionId), JSON.stringify({ state, ts: Date.now(), ...extra }), 'utf-8');\n"
+        "}",
+        "function writeGate(sessionId, state, extra = {}) {\n"
+        "  mkdirSync(STATE_DIR, { recursive: true });\n"
+        "  const prev = readGate(sessionId);\n"
+        "  writeFileSync(gateStateFile(sessionId), JSON.stringify({ state, ts: Date.now(), ...extra }), 'utf-8');\n"
+        "  // Gate decision log (2026-09-09): content-free, one line per state write.\n"
+        "  lat('gate', String(sessionId || 'unknown').slice(0, 8) + ' ' + (prev ? prev.state : 'none') + '->' + state);\n"
         "}",
     ),
     (

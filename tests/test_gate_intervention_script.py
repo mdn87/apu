@@ -23,7 +23,10 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "gate_intervention_2026_09_09.py"
 
 FIXTURE = r"""
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs';
+const STATE_DIR = process.env.STATE_DIR;
+function lat(event, detail = '') { appendFileSync(process.env.LAT_FILE, `${Date.now()}	${event}	${detail}
+`); }
 const GATE_ALLOW = ['Read', 'Glob', 'Grep'];
 const STRONG_OK = /^(go ahead|go for it|proceed|do it|do that|approved|approve[d]?|confirm(ed|ing)?|make it so|carry on|green light|ship it|sounds good|looks good|affirmative|permission granted|you may proceed|execute)\b/;
 const WEAK_OK = /^(yes|yep|yeah|yup|ok|okay|sure|fine|alright|all right|go|continue|please do|please proceed)\b/;
@@ -38,7 +41,10 @@ if (mode === 'gate') {
 
 function gateStateFile(sid) { return process.env.GATE_FILE; }
 function readGate(sid) { try { return JSON.parse(readFileSync(gateStateFile(sid), 'utf-8')); } catch { return null; } }
-function writeGate(sid, state, extra = {}) { writeFileSync(gateStateFile(sid), JSON.stringify({ state, ts: Date.now(), ...extra })); }
+function writeGate(sessionId, state, extra = {}) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(gateStateFile(sessionId), JSON.stringify({ state, ts: Date.now(), ...extra }), 'utf-8');
+}
 function bareCommand(prompt) { return prompt.split('(Voice context:')[0].replace(/\s+/g, ' ').trim(); }
 function isApproval(cmd) {
   const t = cmd.toLowerCase().replace(/^[\s,.!?:;-]+/, '').replace(/^(hey |ok |okay |alright |all right )?claude[,.!? ]+/, '').trim();
@@ -139,7 +145,12 @@ def _drive(node: str, hook: Path, gate_file: Path):
             input=json.dumps({"session_id": "proof", **payload}),
             capture_output=True,
             text=True,
-            env={**dict(__import__("os").environ), "GATE_FILE": str(gate_file)},
+            env={
+                **dict(__import__("os").environ),
+                "GATE_FILE": str(gate_file),
+                "STATE_DIR": str(gate_file.parent),
+                "LAT_FILE": str(gate_file.parent / "latency.log"),
+            },
         )
         return result.returncode, result.stdout, result.stderr
 
@@ -198,9 +209,17 @@ def test_patched_hook_runs_the_proof_sequence(patched_hook: Path, tmp_path: Path
         prompt("Build a completely new voice routing service with codenames for every session across all my machines and deploy it to production tonight")
         == "pending"
     )
-    # Known gap: a steer-led long new objective carries forward.
+    # Operator decision 2026-09-09: a steer-led long new objective does NOT inherit approval.
     assert prompt("go ahead") == "approved"
-    assert prompt("Now build a completely new voice routing service with codenames for every session across all my machines and deploy it") == "approved"
+    assert prompt("Now build a completely new voice routing service with codenames for every session across all my machines and deploy it") == "pending"
+    # A long steering message that continues the objective still carries forward.
+    assert prompt("go ahead") == "approved"
+    assert prompt("Keep this session on APU using its existing project directory and carry the completed proof forward without reopening it") == "approved"
+    # The decision log records every state write, content-free.
+    log = (tmp_path / "gate").parent.joinpath("latency.log").read_text(encoding="utf-8")
+    assert "	gate	proof none->pending" in log
+    assert "	gate	proof approved->pending" in log
+    assert "routing" not in log and "Select" not in log
     # "wait" is both a steer trap and a halt: it must withdraw.
     assert prompt("wait, also do the codename thing") == "pending"
 
