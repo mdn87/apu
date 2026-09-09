@@ -288,3 +288,42 @@ provider-attribution suites passed all 28 tests during this recheck. The
 referenced incident, diagnosis, and audit exist; the audit confirms one session
 and the three findings listed above. This closes case selection with reported
 confidence. Applying the gate change and proving its effect remain the next step.
+
+## Intervention attempt 1, 2026-09-09
+
+Candidates 1 and 2 were packaged as `scripts/gate_intervention_2026_09_09.py`
+and applied by the operator by hand, because the harness classifier denies
+this session any write or execution under the Claude home. The script kept a
+backup beside the hook, and `node --check` passed.
+
+The first proof run drove the live hook with synthetic session events through
+the scripted sequence and returned four mismatches out of fifteen rows:
+
+| Row | Prompt role | Expected | Observed |
+| --- | --- | --- | --- |
+| 6 | halt ("hold on, do not proceed") after approval | pending | approved, no hook output |
+| 6a | Bash after the halt | deny | allow |
+| 7 | new objective while pending | pending | approved |
+| 9 | long new objective after "go ahead" | pending | approved |
+
+Rows 1 through 5 and 8 passed, so the wider vocabulary and the early-phrase
+rule (I1) worked. The failures share one cause: the script placed its two new
+constants after the CLI dispatch that calls the gate, so every post-approval
+prompt that was not itself an approval or a question threw a ReferenceError
+before the gate could act. The state stayed `approved`. That is a live S2
+failure: while the defective version was installed, halt words did not
+withdraw approval in any session on this machine. Rows 4 and 10 "passed" for
+the same wrong reason and count as unmeasured for that run.
+
+Correction: commit `4dd0765` moves the constants beside `HALT`, adds
+`--reapply` (restore the backup, apply the corrected change), makes `--check`
+distinguish not-applied from anchors-missing, and adds a Node-driven test that
+runs the proof sequence against a fixture shaped like the real hook, including
+the early dispatch. The test would have caught the defect and now passes. The
+corrected change is not yet on the live hook; the operator must run
+`--reapply` and then the proof driver again. Until that run exists, every
+measure for attempt 1 is unmeasured, not passed.
+
+Lesson recorded: an intervention script that cannot be executed against its
+target from the session that wrote it must carry its own executable test, or
+it must not be handed to the operator.
