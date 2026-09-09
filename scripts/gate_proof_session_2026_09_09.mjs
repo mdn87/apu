@@ -59,7 +59,8 @@ check('2a Bash after affirmation', tool('Bash'), 'allow');
 // 3. A question leaves the state alone.
 prompt('3 question', 'what would the audit actually count?', 'approved');
 // 4. A long statement after a completed turn carries the objective forward (I2).
-prompt('4 long statement', 'the voice commands are going to another session on the desktop app not this one so you cannot hear me because we do not have routing entirely buttoned up', 'approved');
+// The wording avoids every halt-vocabulary token ("don't", "do not", "wait", ...).
+prompt('4 long statement', 'the voice commands are going to another session on the desktop app not this one so you cannot hear me because routing is not entirely buttoned up yet', 'approved');
 // 4b. The verbatim 2026-09-09 utterance contains "dont", which the gate's halt
 //     vocabulary treats as a halt. Documented over-match; expected to re-arm.
 prompt('4b verbatim statement with a contraction the halt list matches', 'the voice commands are going to another session on the desktop app not this one so you cant hear me say go ahead because we dont have routing entirely buttoned up', 'pending');

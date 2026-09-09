@@ -184,6 +184,9 @@ def test_patched_hook_runs_the_proof_sequence(patched_hook: Path, tmp_path: Path
     assert prompt("what would the audit actually count?") == "approved"
     # I2: a statement after a completed turn carries the objective forward.
     assert prompt("the voice commands are going to another session on the desktop app") == "approved"
+    # A halt-vocabulary token anywhere in a statement still re-arms (documented over-match).
+    assert prompt("the voice commands are going to another session because we do not have routing yet") == "pending"
+    assert prompt("go ahead") == "approved"
     # S2: halt words withdraw approval; S1: tools are denied again.
     assert prompt("hold on, do not proceed") == "pending"
     assert tool("Bash") == "deny"

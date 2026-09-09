@@ -390,6 +390,17 @@ content-free line per decision (session hash, prompt role, state before and
 after, timestamp) to its latency log, and teach `apu behavior audit` to read
 it. Until then, I3 stays reported.
 
+### Run 3: the checked-in driver on the live hook
+
+The operator ran `scripts/gate_proof_session_2026_09_09.mjs` against the live
+hook: eighteen rows, one mismatch. The mismatch was again the driver's own
+wording for row 4, which had been changed from "dont" to "do not", also a
+halt-vocabulary token; the hook re-armed by its own rule. The wording is now
+free of halt tokens. Two rows were new and both passed on the live hook:
+row 10 confirmed the steer-word carry-forward with the new hook message, and
+row 11 confirmed that "wait" withdraws approval. No hook behavior changed
+between runs 2 and 3; the scores above stand.
+
 ### Gaps recorded by this attempt
 
 - The halt vocabulary matches "don't" and "wait" anywhere in a message, so a
