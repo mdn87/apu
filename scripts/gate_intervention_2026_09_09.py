@@ -56,7 +56,17 @@ REPLACEMENTS: list[tuple[str, str]] = [
         "  const wordsBefore = t.slice(0, m.index).trim().split(/\\s+/).filter(Boolean).length;\n"
         "  if (wordsBefore < 10) return true;\n"
         "  return words <= 24 && !isQuestion(t);\n"
-        "}\n"
+        "}",
+    ),
+    (
+        # The CLI dispatch calls gateMain() near the top of the file, before any
+        # later top-level const is initialized. These definitions therefore sit
+        # right after HALT, which the gate already relies on, or gateMain throws
+        # a ReferenceError (temporal dead zone) on every post-approval prompt.
+        "const HALT = /\\b(stop|halt|wait|hold on|hold off|cancel|abort|don'?t|do not|"
+        "never ?mind|undo|revert)\\b/;",
+        "const HALT = /\\b(stop|halt|wait|hold on|hold off|cancel|abort|don'?t|do not|"
+        "never ?mind|undo|revert)\\b/;\n"
         "\n"
         "// Objective-bound approval: after an approval, a completed turn does not re-arm\n"
         "// the gate on its own. A follow-up that steers, affirms, or continues the same\n"
@@ -134,25 +144,34 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--revert", action="store_true")
+    mode.add_argument(
+        "--reapply",
+        action="store_true",
+        help="restore the backup, then apply the current version of the change",
+    )
     parser.add_argument("--hook", type=Path, default=HOOK)
     args = parser.parse_args(argv)
     hook: Path = args.hook
     backup = hook.with_name(BACKUP.name) if hook != HOOK else BACKUP
 
-    if args.revert:
+    if args.revert or args.reapply:
         if not backup.is_file():
             print(f"no backup at {backup}", file=sys.stderr)
             return 1
         shutil.copyfile(backup, hook)
         print(f"restored {hook} from {backup}")
-        return 0
+        if args.revert:
+            return 0
 
     text = hook.read_text(encoding="utf-8")
     applied, notes = check(text)
     if args.check:
+        # 0 applied, 1 not applied but every anchor present, 2 anchors missing.
         print(f"{hook}: {'applied' if applied else 'not applied'}"
               + (f" ({'; '.join(notes)})" if notes else ""))
-        return 0 if applied or not notes else 2
+        if applied:
+            return 0
+        return 2 if notes else 1
 
     if applied:
         print("already applied; nothing to do")
@@ -160,7 +179,8 @@ def main(argv: list[str] | None = None) -> int:
     if notes:
         print("; ".join(notes), file=sys.stderr)
         return 2
-    shutil.copyfile(hook, backup)
+    if not args.reapply:
+        shutil.copyfile(hook, backup)
     hook.write_text(apply(text), encoding="utf-8", newline="\n")
     print(f"applied; backup at {backup}")
     print("verify: node --check " + str(hook))
