@@ -214,7 +214,7 @@
       "projectId": "apu",
       "title": "Prove the intervention changed behavior",
       "summary": "Show the applied change moved the measured behavior, not only the report; decide whether findings need a stronger effect signal.",
-      "stage": "ready",
+      "stage": "blocked",
       "sequence": 80,
       "prereqs": [
         "apu:select-intervention-case"
@@ -224,7 +224,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-05T12:00:00.000Z",
-        "updatedAt": "2026-09-09T05:32:33Z"
+        "updatedAt": "2026-09-09T05:49:43Z"
       },
       "evidence": [
         {
@@ -238,6 +238,12 @@
           "at": "2026-09-09T05:32:33Z",
           "kind": "note",
           "message": "Unblocked 2026-09-09: apply one narrow gate rule change, then re-measure I1-I4 and safety S1-S2 from the case record."
+        },
+        {
+          "entryId": "apu:prove-intervention-effect:blocked-2026-09-09",
+          "at": "2026-09-09T05:49:43Z",
+          "kind": "stage-change",
+          "message": "Blocked 2026-09-09: apu-wtf selector fix landed and a restore point exists, but the harness classifier denies edits to the gate hook; operator must apply the packaged script."
         }
       ]
     }
