@@ -320,7 +320,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-09T10:02:09Z"
+        "updatedAt": "2026-09-09T10:12:13Z"
       },
       "evidence": [
         {
@@ -334,6 +334,12 @@
           "at": "2026-09-09T10:02:09Z",
           "kind": "stage-change",
           "message": "Operator decided 2026-09-09: steer-led new objectives do not inherit approval. Packaged and tested; reapply pending. Halt over-match and I4 still open."
+        },
+        {
+          "entryId": "apu:gate-rule-gaps:durable-2026-09-09",
+          "at": "2026-09-09T10:12:13Z",
+          "kind": "note",
+          "message": "Durable path built: the script renders an approved APU plan; apu apply is now provider-neutral. Operator must run the apply; the harness denies it to the session."
         }
       ]
     }

@@ -8,10 +8,10 @@
   "milestonePhase": "operational-proof",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-09-09T10:02:09Z",
+  "assessedAt": "2026-09-09T10:12:13Z",
   "confidence": "reported",
   "currentMilestone": "Bounded behavior audits, provider-neutral execution evidence, CI, and an Orca behavior-evidence boundary.",
-  "remainingSummary": "Reapply the narrowed gate rules and decision log to the live hook, then build the audit detector that turns gate decisions into the I3 measure.",
+  "remainingSummary": "Apply the rendered gate plan through apu apply (operator), then build the audit detector that turns gate decisions into the I3 measure.",
   "nextChipId": "apu:gate-decision-evidence",
   "source": {
     "label": "Reassessed 2026-09-09 after proof run 3; follow-up chips added.",
