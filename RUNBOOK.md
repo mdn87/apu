@@ -186,6 +186,19 @@ session in the current working directory. Use `--provider codex|claude-code`,
 not the intended session. If no event was marked, `apu-wtf` selects the most
 recent incomplete run itself.
 
+When the stop was an easy call the agent should have made on its own, use the
+one-step form instead of `apu-event` plus `apu-wtf`:
+
+```console
+apu-ezpz
+apu-intervene
+```
+
+`apu-ezpz` marks a fresh incident with the asserted `easy-decision-gate`
+signal and diagnoses it. The diagnosis recommends the decide-and-continue
+resume template, which `apu-intervene` then sends or prints. A barrier in the
+evidence still blocks automatic intervention.
+
 For non-interactive Codex sessions, `apu-intervene` sends the temporary resume
 instruction through `codex exec resume`. For Codex Desktop sessions it prints
 and records a `codex resume` continuation. For Claude Code it prints and records

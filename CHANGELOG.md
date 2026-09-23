@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add `apu-ezpz`: mark and diagnose, in one step, a stop where the agent
+  should have made a simple reversible decision itself. The incident carries
+  the operator-asserted `easy-decision-gate` signal; the diagnosis and
+  `apu-intervene` use the new `primary-agent-easy-decision-resume-v1`
+  template (choose the default, state it, continue). Diagnoses now name the
+  template the intervention will use instead of hard-coding one, and barrier
+  evidence still refuses automatic intervention.
 - Make the mutating `apu apply` session gate provider-neutral: `--provider
   claude-code` binds the apply to a fresh Claude Code session in the exact
   working directory; automatic selection still fails closed on ambiguity.

@@ -180,6 +180,10 @@ apu-watch autonomy-loss
 - `apu-wtf` analyzes the marked event, or the most recent incomplete run when no
   event is marked, and prints one compact diagnosis with evidence and likely
   pressure sources.
+- `apu-ezpz` is the one-step form for the commonest stop: the agent handed a
+  simple, reversible decision to the human gate. It marks the incident with an
+  operator-asserted signal, diagnoses it, and selects a resume template that
+  tells the agent to make the choice and continue.
 - `apu-intervene` attempts the smallest temporary correction in the active
   session or its immediate retry, then records whether the agent resumed and
   completed the blocked work.

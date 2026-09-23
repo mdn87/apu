@@ -6,7 +6,23 @@ from pathlib import Path
 
 import pytest
 
-from apu.behavior_cli import event_main, intervene_main, watch_main, wtf_main
+from apu.behavior_cli import (
+    EZPZ_DEFAULT_DESCRIPTION,
+    event_main,
+    ezpz_main,
+    intervene_main,
+    watch_main,
+    wtf_main,
+)
+from apu.behavior_watch import (
+    EASY_DECISION_SIGNAL,
+    EASY_DECISION_TEMPLATE_ID,
+    RESUME_TEMPLATE_ID,
+    intervention_prompt,
+    load_incident,
+    mark_incident,
+)
+from apu.models import sha256_bytes
 
 
 def _trace(root: Path, cwd: Path) -> Path:
@@ -112,6 +128,146 @@ def test_wtf_can_select_recent_incomplete_run_without_an_event(
     diagnosis = json.loads(capsys.readouterr().out)
     assert diagnosis["status"] == "likely-autonomy-loss"
     assert (state / "behavior" / "latest-incident.json").is_file()
+
+
+def test_ezpz_marks_an_easy_decision_and_intervenes_with_decide_and_continue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setattr("apu.behavior_watch.shutil.which", lambda _name: "codex")
+
+    assert ezpz_main(["--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert diagnosis["status"] == "likely-autonomy-loss"
+    assert EASY_DECISION_SIGNAL in diagnosis["observed_signals"]
+    assert diagnosis["possible_barriers"] == []
+    recommendation = diagnosis["recommended_intervention"]
+    assert recommendation["template_id"] == EASY_DECISION_TEMPLATE_ID
+    assert recommendation["prompt_sha256"] == sha256_bytes(
+        intervention_prompt(EASY_DECISION_TEMPLATE_ID).encode("utf-8")
+    )
+    assert recommendation["durable_policy_mutation"] is False
+
+    incident = load_incident(state)
+    assert incident["description"] == EZPZ_DEFAULT_DESCRIPTION
+    assert incident["claim"]["asserted_signals"] == [EASY_DECISION_SIGNAL]
+
+    assert intervene_main(["--dry-run", "--json"]) == 0
+    intervention = json.loads(capsys.readouterr().out)
+    assert intervention["prompt_template_id"] == EASY_DECISION_TEMPLATE_ID
+    assert intervention["prompt_sha256"] == recommendation["prompt_sha256"]
+    assert intervention["status"] == "planned"
+
+
+def test_ezpz_text_output_names_the_template_and_next_step(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(state))
+
+    assert (
+        ezpz_main(
+            [
+                "asked which of two equivalent test file names to use",
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(cwd),
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "marked now" in output
+    assert f"Attested: {EASY_DECISION_SIGNAL}" in output
+    assert f"Resume template: {EASY_DECISION_TEMPLATE_ID}" in output
+    assert "Next: apu-intervene" in output
+
+
+def test_ezpz_attestation_never_overrides_a_barrier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(state))
+
+    assert (
+        ezpz_main(
+            [
+                "stopped to ask for an API key it did not have",
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(cwd),
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "possible-legitimate-barrier" in output
+    assert "contradicts the easy-decision attestation" in output
+    assert "Next: apu-intervene" not in output
+    assert intervene_main(["--dry-run"]) == 1
+    assert "legitimate barrier" in capsys.readouterr().err
+
+
+def test_wtf_diagnosis_keeps_the_general_resume_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(state))
+
+    assert wtf_main(["--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert diagnosis["recommended_intervention"]["template_id"] == RESUME_TEMPLATE_ID
+    assert load_incident(state)["claim"]["asserted_signals"] == []
+
+
+def test_mark_incident_rejects_unknown_asserted_signals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(state))
+
+    with pytest.raises(ValueError, match="unknown asserted signal: made-up"):
+        mark_incident(
+            state,
+            "anything",
+            trace_root=traces,
+            cwd=cwd,
+            asserted_signals=("made-up",),
+        )
+    with pytest.raises(ValueError, match="unknown intervention template"):
+        intervention_prompt("no-such-template")
 
 
 def test_event_cli_returns_nonzero_for_no_attribution(

@@ -24,6 +24,7 @@ dev = [
 apu = "apu.cli:main"
 apu-event = "apu.behavior_cli:event_main"
 apu-wtf = "apu.behavior_cli:wtf_main"
+apu-ezpz = "apu.behavior_cli:ezpz_main"
 apu-intervene = "apu.behavior_cli:intervene_main"
 apu-watch = "apu.behavior_cli:watch_main"
 

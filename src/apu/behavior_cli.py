@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .behavior_watch import (
+    EASY_DECISION_SIGNAL,
     SESSION_PROVIDER_NAMES,
     WATCHER_ALIASES,
     WATCHER_ID,
@@ -20,6 +21,14 @@ from .behavior_watch import (
     normalized_cwd_key,
     record_intervention_result,
     watcher_status,
+)
+
+# Default attestation for ``apu-ezpz``: the agent paused on a choice that was
+# easy and reversible. The wording deliberately avoids barrier vocabulary so the
+# default never talks the diagnosis into a legitimate barrier on its own.
+EZPZ_DEFAULT_DESCRIPTION = (
+    "paused on a simple reversible choice and asked for approval instead of "
+    "choosing the default and continuing"
 )
 from .models import canonical_json
 from .state import resolve_state_home
@@ -196,6 +205,86 @@ def wtf_main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     return _run(_wtf_parser(), command, argv)
+
+
+def _ezpz_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="apu-ezpz",
+        description=(
+            "Mark and diagnose a stop where the agent should have made a simple, "
+            "reversible decision itself instead of handing it to the human gate."
+        ),
+    )
+    parser.add_argument("description", nargs="?", default=EZPZ_DEFAULT_DESCRIPTION)
+    parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
+    parser.add_argument("--session-id")
+    parser.add_argument("--trace-root", type=Path)
+    parser.add_argument("--cwd", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+    )
+    parser.add_argument("--json", action="store_true")
+    return parser
+
+
+def ezpz_main(argv: Sequence[str] | None = None) -> int:
+    """Mark an operator-attested easy-decision stop and diagnose it in one step.
+
+    Unlike ``apu-wtf`` this never reuses a previously marked incident: the
+    attestation belongs to the run selected now, and the diagnosis it produces
+    recommends the decide-and-continue resume template.
+    """
+
+    def command(args: argparse.Namespace) -> int:
+        state_home = resolve_state_home()
+        _, incident = mark_incident(
+            state_home,
+            args.description,
+            provider=args.provider,
+            trace_root=args.trace_root,
+            session_id=args.session_id,
+            cwd=args.cwd,
+            evidence_schema_version=args.evidence_schema_version,
+            asserted_signals=(EASY_DECISION_SIGNAL,),
+        )
+        path, diagnosis = diagnose_incident(
+            state_home,
+            incident_id=incident["incident_id"],
+            provider=args.provider,
+        )
+        barrier = diagnosis["status"] == "possible-legitimate-barrier"
+        if args.json:
+            _emit(diagnosis)
+        else:
+            print(f"Incident: {diagnosis['incident_id']} ({diagnosis['provider']}, marked now)")
+            print(f"Attested: {EASY_DECISION_SIGNAL}")
+            print(
+                f"{diagnosis['status']}: {', '.join(diagnosis['observed_signals'])}"
+            )
+            for source in diagnosis["likely_sources"][:3]:
+                location = source.get("path") or source["kind"]
+                lines = source.get("line_numbers")
+                suffix = f":{','.join(str(item) for item in lines)}" if lines else ""
+                print(
+                    f"{source['rank']}. {location}{suffix} "
+                    f"[{', '.join(source['reason_codes'])}]"
+                )
+            print(f"Saved: {path}")
+            if barrier:
+                print(
+                    "Barrier evidence contradicts the easy-decision attestation: "
+                    f"{', '.join(diagnosis['possible_barriers'])}"
+                )
+                print("Not resumable automatically; review the gate rule instead.")
+            else:
+                print(
+                    "Resume template: "
+                    f"{diagnosis['recommended_intervention']['template_id']}"
+                )
+                print("Next: apu-intervene")
+        return 0
+
+    return _run(_ezpz_parser(), command, argv)
 
 
 def _intervene_parser() -> argparse.ArgumentParser:

@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 from collections import Counter, deque
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -225,6 +225,38 @@ _RESUME_INSTRUCTION = (
     "barrier, a destructive or external side effect, an explicit user-requested "
     "approval point, or missing information that materially changes the result."
 )
+
+# ``apu-ezpz`` marks the case where the agent stopped for a decision the
+# operator attests was simple and reversible. The signal is asserted by the
+# operator, never inferred from a transcript, and it selects a resume template
+# that tells the agent to make the choice itself instead of re-asking.
+EASY_DECISION_SIGNAL = "easy-decision-gate"
+_ASSERTABLE_SIGNALS = frozenset({EASY_DECISION_SIGNAL})
+
+_EASY_DECISION_RESUME_INSTRUCTION = (
+    "The point where you paused was a simple, reversible decision that you were "
+    "expected to make yourself. Choose the reasonable default now, state the "
+    "choice in one line, and continue the original task until the requested "
+    "outcome is complete. Do not ask for confirmation of routine choices. Stop "
+    "only for a real permission or credential barrier, a destructive or external "
+    "side effect, an explicit user-requested approval point, or missing "
+    "information that materially changes the result."
+)
+
+RESUME_TEMPLATE_ID = "primary-agent-autonomy-resume-v1"
+EASY_DECISION_TEMPLATE_ID = "primary-agent-easy-decision-resume-v1"
+_RESUME_TEMPLATES: dict[str, str] = {
+    RESUME_TEMPLATE_ID: _RESUME_INSTRUCTION,
+    EASY_DECISION_TEMPLATE_ID: _EASY_DECISION_RESUME_INSTRUCTION,
+}
+
+
+def _resume_template_id(signals: Iterable[str]) -> str:
+    return (
+        EASY_DECISION_TEMPLATE_ID
+        if EASY_DECISION_SIGNAL in set(signals)
+        else RESUME_TEMPLATE_ID
+    )
 
 
 @dataclass(frozen=True)
@@ -1822,6 +1854,7 @@ def mark_incident(
     cwd: Path | None = None,
     recorded_at: str | None = None,
     evidence_schema_version: int = EVIDENCE_SCHEMA_VERSION,
+    asserted_signals: Iterable[str] = (),
 ) -> tuple[Path, dict[str, Any]]:
     note = description.strip()
     if not note:
@@ -1830,6 +1863,10 @@ def mark_incident(
         raise ValueError("incident description is too long")
     if find_secret_spans(note):
         raise ValueError("incident description contains credential-shaped material")
+    asserted = tuple(sorted(set(asserted_signals)))
+    unknown = [code for code in asserted if code not in _ASSERTABLE_SIGNALS]
+    if unknown:
+        raise ValueError(f"unknown asserted signal: {', '.join(unknown)}")
     if not watcher_status(state_home)["enabled"]:
         raise ValueError(f"watcher is disabled: {WATCHER_ID}")
 
@@ -1886,6 +1923,7 @@ def mark_incident(
         "claim": {
             "source": "operator-attestation",
             "verification_status": "asserted",
+            "asserted_signals": list(asserted),
         },
         "attribution": {
             "kind": selection.kind,
@@ -1916,7 +1954,10 @@ def mark_incident(
             "events": [dict(item) for item in events],
         },
         "observed_signals": sorted(
-            set(description_signals) | set(session.signal_codes) | evidence_signals
+            set(description_signals)
+            | set(session.signal_codes)
+            | evidence_signals
+            | set(asserted)
         ),
         "possible_barriers": list(barriers),
         "runtime_context": {
@@ -2114,6 +2155,7 @@ def diagnose_incident(
         if signals
         else "insufficient-evidence"
     )
+    template_id = _resume_template_id(signals)
     diagnosis_id = f"diagnosis-{uuid4().hex}"
     artifact = {
         "schema_version": _SCHEMA_VERSION,
@@ -2136,8 +2178,10 @@ def diagnose_incident(
         },
         "recommended_intervention": {
             "type": "resume-instruction",
-            "template_id": "primary-agent-autonomy-resume-v1",
-            "prompt_sha256": sha256_bytes(_RESUME_INSTRUCTION.encode("utf-8")),
+            "template_id": template_id,
+            "prompt_sha256": sha256_bytes(
+                _RESUME_TEMPLATES[template_id].encode("utf-8")
+            ),
             "durable_policy_mutation": False,
         },
     }
@@ -2199,6 +2243,10 @@ def intervene(
         raise ValueError(
             "intervention refused because durable_policy_mutation is not false"
         )
+    template_id = str(recommendation.get("template_id") or RESUME_TEMPLATE_ID)
+    if template_id not in _RESUME_TEMPLATES:
+        raise ValueError(f"unknown intervention template: {template_id}")
+    prompt = _RESUME_TEMPLATES[template_id]
     incident = load_incident(state_home, diagnosis["incident_id"])
     attribution = incident.get("attribution")
     if not isinstance(attribution, Mapping) or attribution.get("kind") != "selected":
@@ -2226,9 +2274,7 @@ def intervene(
     )
     session = binding.session
     cwd = session.cwd
-    resume = selected_provider.build_resume(
-        session, _RESUME_INSTRUCTION, executable=executable
-    )
+    resume = selected_provider.build_resume(session, prompt, executable=executable)
     command = list(resume.command)
 
     should_execute = not dry_run and (resume.execute_without_force or force_execute)
@@ -2270,8 +2316,8 @@ def intervene(
         "returncode": returncode,
         "result_signals": list(result_signals),
         "verification_status": "observed" if should_execute else "unverifiable",
-        "prompt_template_id": "primary-agent-autonomy-resume-v1",
-        "prompt_sha256": sha256_bytes(_RESUME_INSTRUCTION.encode("utf-8")),
+        "prompt_template_id": template_id,
+        "prompt_sha256": sha256_bytes(prompt.encode("utf-8")),
         "durable_policy_mutation": False,
     }
     ensure_state_home(state_home)
@@ -2284,8 +2330,11 @@ def intervene(
     return path, artifact
 
 
-def intervention_prompt() -> str:
-    return _RESUME_INSTRUCTION
+def intervention_prompt(template_id: str = RESUME_TEMPLATE_ID) -> str:
+    try:
+        return _RESUME_TEMPLATES[template_id]
+    except KeyError as error:
+        raise ValueError(f"unknown intervention template: {template_id}") from error
 
 
 def record_intervention_result(

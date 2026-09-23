@@ -240,7 +240,25 @@ been marked. Explicit `--provider`, `--session-id`, `--cwd`, or `--trace-root`
 selectors always describe the run you mean: the latest marked incident is
 reused only when it satisfies every selector, otherwise a fresh incident is
 marked from that selection. A stale incident from another provider or project
-is never diagnosed in its place. `apu-intervene` resumes a non-interactive Codex session directly;
+is never diagnosed in its place.
+
+`apu-ezpz` is the one-step form for the most common stop: the agent paused on a
+simple, reversible decision it should have made itself. It marks a fresh
+incident carrying the operator-asserted `easy-decision-gate` signal (an optional
+positional description replaces the default wording), diagnoses it, and
+recommends the `primary-agent-easy-decision-resume-v1` template, which tells
+the agent to choose the default, state it in one line, and continue. It takes
+the same selectors as `apu-wtf`. If the session or description carries barrier
+evidence, the diagnosis still reports `possible-legitimate-barrier` and
+`apu-intervene` still refuses; the attestation never overrides a barrier.
+
+```console
+apu-ezpz
+apu-ezpz "asked which of two equivalent test file names to use"
+apu-intervene
+```
+
+`apu-intervene` resumes a non-interactive Codex session directly;
 for Codex Desktop and Claude Code sessions it records and prints the exact
 provider continuation because APU cannot inject into the desktop process.
 Claude Code transcripts do not reliably distinguish interactive CLI runs from
