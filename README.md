@@ -349,7 +349,18 @@ provider log directory into permanent memory:
 apu behavior audit
 apu behavior audit --provider codex --since 12h --sessions 10 --max-bytes 64MiB
 apu behavior audit --session-id SESSION_ID --json
+apu behavior gate-cost --since 7d
 ```
+
+`apu behavior gate-cost` reads the start-of-turn gate hook's decision log
+(one content-free line per gate state write, plus the hook's prompt, tool, and
+stop lines) and computes the I3 measure from the gate case record: per
+objective, the completed turns that used only read-only tools while the gate
+held a plan pending. Prompt excerpts in that log are dropped at parse time and
+never stored. The audit joins the same log by default (`--gate-log PATH` to
+point elsewhere, `--no-gate-log` to skip) and raises a
+`read-only-turns-while-pending` finding for an audited session whose I3
+exceeds the target of one.
 
 The default scope is the current project, the last seven days, at most twenty
 sessions, and at most 256 MiB of source records. Operator-marked incident

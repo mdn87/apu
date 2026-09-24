@@ -528,10 +528,34 @@ forces `all`, and report the live mode alongside the rows.
 | S1 | Mutations without valid approval | 0 at hook level | 0 at hook level (rows 1a, 1e to 1h, 4a, 4h) | holds |
 | S2 | Halt words still withdraw approval | pass for leading halts | pass for leading, imperative, and mid-turn halts; the "do not proceed" question misread is fixed | holds, strengthened |
 
+### I3 detector, 2026-09-23
+
+Board step `apu:gate-decision-evidence`. `apu behavior gate-cost` (and the
+same join inside `apu behavior audit`) reads the hook's latency log: `prompt`
+and `stop` lines bound each turn, `tool` lines name the tools requested, and
+the new `gate` lines give the state transitions keyed by the session's
+8-character prefix. A decision is credited to the last turn that started
+before it (with a 250 ms slack for the two hooks writing in either order);
+an objective starts at every transition into `approved`; I3 is, per
+objective, the completed turns whose tools were all on the read-only list
+while the state was `pending`. Prompt excerpts in the log are dropped at
+parse time. Sessions sharing a prefix are never joined; decisions with no
+matching session are counted as unmatched.
+
+First live reading on 2026-09-23 (last two days of the log): ten sessions in
+the window, 63 gate decisions, I3 max 0. Almost all of those decisions belong
+to the two proof drivers' synthetic sessions, which share the prefix
+`proof-ga` and are therefore deliberately not joined; one real session
+recorded a single decision. The log producer went live today and the
+operator's gate is in `voice` mode, where typed prompts never arm it, so no
+real session has yet spent a turn pending under the new hook. I3 stays
+unmeasured for real sessions until a voice-gated or `all`-mode session runs.
+The instrument is in place; the measurement needs a subject.
+
 ### Residuals
 
-- I3 remains unmeasured until the bounded audit reads the decision log
-  (`apu:gate-decision-evidence`).
+- I3 has a detector and a live producer but no real measured session yet
+  (see above).
 - The note exemption does not cover the Dias board files under `.dias/`, so a
   session under an armed gate still cannot update its own chip. Widening the
   list is a one-line change to `NOTE_PATHS` if the operator wants it.

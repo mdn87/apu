@@ -5,12 +5,15 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
+from datetime import UTC, datetime
+
 from .behavior_audit import (
     DEFAULT_LOOKBACK,
     DEFAULT_SESSION_LIMIT,
     DEFAULT_SOURCE_BYTE_LIMIT,
     audit_behavior,
 )
+from .gate_decisions import DEFAULT_GATE_LOG, gate_cost_report
 from .models import canonical_json
 from .state import resolve_state_home
 
@@ -100,10 +103,37 @@ def add_behavior_parser(commands: argparse._SubParsersAction) -> None:
     audit.add_argument(
         "--evidence-schema-version", type=int, choices=(1, 2), default=2
     )
+    audit.add_argument(
+        "--gate-log",
+        type=Path,
+        default=DEFAULT_GATE_LOG,
+        help="gate hook latency log to join for the I3 gate-cost measure",
+    )
+    audit.add_argument(
+        "--no-gate-log",
+        action="store_true",
+        help="skip the gate-cost join entirely",
+    )
     audit.add_argument("--json", action="store_true")
+
+    gate = subcommands.add_parser(
+        "gate-cost",
+        help="I3 from the gate decision log: read-only turns while a plan was pending",
+    )
+    gate.add_argument(
+        "--log",
+        type=Path,
+        default=DEFAULT_GATE_LOG,
+        help="gate hook latency log (default: the hook's own log in the temp directory)",
+    )
+    gate.add_argument("--since", type=_parse_duration, default=DEFAULT_LOOKBACK)
+    gate.add_argument("--session-id", help="report one exact session")
+    gate.add_argument("--json", action="store_true")
 
 
 def run_behavior(args: argparse.Namespace) -> int:
+    if args.behavior_command == "gate-cost":
+        return _run_gate_cost(args)
     if args.behavior_command != "audit":
         raise ValueError(f"unsupported behavior command: {args.behavior_command}")
     providers = ("codex", "claude-code") if args.provider == "all" else (args.provider,)
@@ -117,6 +147,7 @@ def run_behavior(args: argparse.Namespace) -> int:
         session_id=args.session_id,
         trace_root=args.trace_root,
         evidence_schema_version=args.evidence_schema_version,
+        gate_log=None if args.no_gate_log else args.gate_log,
     )
     if args.json:
         print(canonical_json(report))
@@ -136,5 +167,52 @@ def run_behavior(args: argparse.Namespace) -> int:
             f"({finding['verification_status']}) in {finding['provider']}/"
             f"{finding['session_id']}"
         )
+    _print_gate_summary(report["gate_decisions"])
     print(f"Saved: {path}")
     return 0
+
+
+def _run_gate_cost(args: argparse.Namespace) -> int:
+    report = gate_cost_report(
+        args.log,
+        since=datetime.now(UTC) - args.since,
+        session_id=args.session_id,
+    )
+    if args.json:
+        print(canonical_json(report))
+        return 0
+    if report["status"] != "measured":
+        print(f"Gate cost: {report['status']} (no gate log at the given path)")
+        return 0
+    _print_gate_summary(report)
+    for session in report["sessions"]:
+        joined = "joined" if session["decisions_joined"] else "no decisions joined"
+        print(
+            f"- {session['session_id']}: I3 max {session['i3_max']}, "
+            f"{session['completed_turn_count']}/{session['turn_count']} turns completed, "
+            f"{session['decision_count']} decisions ({joined})"
+        )
+        for objective in session["objectives"]:
+            if objective["pending_readonly_turns"]:
+                print(
+                    f"    objective {objective['index']}: "
+                    f"{objective['pending_readonly_turns']} read-only turn(s) while pending "
+                    f"({objective['pending_plan_only_turns']} with no tools at all)"
+                )
+    return 0
+
+
+def _print_gate_summary(report: dict) -> None:
+    status = report.get("status")
+    if status != "measured":
+        print(f"Gate cost: {status}")
+        return
+    summary = report["summary"]
+    print(
+        "Gate cost (I3): "
+        f"{summary['session_count']} sessions in the log window, "
+        f"{summary['sessions_with_decisions']} with gate decisions, "
+        f"{summary['decision_count']} decisions, "
+        f"I3 max {summary['i3_max']} (target {report['i3_target']}), "
+        f"{len(summary['sessions_over_target'])} over target"
+    )

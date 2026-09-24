@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `apu behavior gate-cost` and a gate-log join in `apu behavior audit`:
+  read the gate hook's decision log, join decisions to turns and tool names,
+  and compute I3 (completed read-only turns while a plan was pending, per
+  objective). Prompt excerpts are dropped at parse time. An audited session
+  over the target gets a `read-only-turns-while-pending` finding.
 - Resolve the start-of-turn gate rule gaps with a new dated intervention
   script anchored on the live hook (the 2026-09-09 render-from-backup plan
   would have discarded later operator changes): steer list without imperative

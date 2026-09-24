@@ -277,7 +277,7 @@
       "projectId": "apu",
       "title": "Measure gate cost from decisions, not reports",
       "summary": "Make I3 measurable: a content-free gate decision log per prompt, and a bounded-audit detector joining read-only turns to those decisions.",
-      "stage": "active",
+      "stage": "done",
       "sequence": 90,
       "prereqs": [
         "apu:prove-intervention-effect"
@@ -287,7 +287,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-24T01:50:00Z"
+        "updatedAt": "2026-09-24T02:40:00Z"
       },
       "evidence": [
         {
@@ -307,6 +307,12 @@
           "at": "2026-09-24T01:50:00Z",
           "kind": "note",
           "message": "Producer is live as of 2026-09-23: the gate decision log ships with the rule-gaps install. Note the live gate is in voice mode. The audit detector is still to build."
+        },
+        {
+          "entryId": "apu:gate-decision-evidence:detector-2026-09-23",
+          "at": "2026-09-24T02:40:00Z",
+          "kind": "stage-change",
+          "message": "Done 2026-09-23: gate-cost detector joins decisions to turns and tools; I3 per objective; audit finding over target. Live reading: 0 real pending turns yet (voice mode)."
         }
       ]
     },

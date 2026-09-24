@@ -22,6 +22,7 @@ from .evidence import (
     reconcile_evidence,
     validate_evidence_event,
 )
+from .gate_decisions import DEFAULT_GATE_LOG, gate_cost_report, gate_findings
 from .models import canonical_json, sha256_bytes
 from .state import ensure_state_home, write_json_atomic
 
@@ -687,6 +688,34 @@ def _finding(
     }
 
 
+def _gate_cost_finding(
+    gate_session: Mapping[str, Any], *, provider: str
+) -> dict[str, Any]:
+    """I3 over target: completed read-only turns while the gate held a plan pending."""
+
+    session_id = str(gate_session["session_id"])
+    reference = f"gate-log:{gate_session['session_prefix']}"
+    worst = int(gate_session["i3_max"])
+    over = [
+        f"objective-{item['index']}:{item['pending_readonly_turns']}"
+        for item in gate_session.get("objectives", ())
+        if item["pending_readonly_turns"] > 1
+    ]
+    return _finding(
+        detector="read-only-turns-while-pending",
+        severity="medium" if worst >= 3 else "low",
+        session_id=session_id,
+        provider=provider,
+        evidence_refs=[reference],
+        verification={reference: {"status": "observed"}},
+        summary=(
+            f"{worst} completed read-only turns while the gate held one objective "
+            f"pending (target: at most 1); {len(over)} objective(s) over target"
+        ),
+        reason_codes=["gate-cost-over-target"],
+    )
+
+
 def _is_mutation(event: Mapping[str, Any]) -> bool:
     observation = event["observation"]
     tool_name = observation["tool_name"]
@@ -1070,7 +1099,10 @@ def audit_behavior(
     trace_root: Path | None = None,
     now: datetime | None = None,
     evidence_schema_version: int = 2,
+    gate_log: Path | None = DEFAULT_GATE_LOG,
 ) -> tuple[Path, dict[str, Any]]:
+    """Audit bounded session evidence; ``gate_log=None`` skips the gate-cost join."""
+
     if lookback <= timedelta(0):
         raise ValueError("behavior audit lookback must be positive")
     if session_limit < 1:
@@ -1127,6 +1159,14 @@ def audit_behavior(
         source_byte_limit=source_byte_limit,
     )
 
+    gate_report: dict[str, Any] | None = None
+    gate_over_target: dict[str, dict[str, Any]] = {}
+    if gate_log is not None:
+        gate_report = gate_cost_report(
+            gate_log, since=cutoff, session_id=session_id, now=selected_now
+        )
+        gate_over_target = gate_findings(gate_report)
+
     session_reports: list[dict[str, Any]] = []
     all_findings: list[dict[str, Any]] = []
     for candidate in selected:
@@ -1167,6 +1207,9 @@ def audit_behavior(
                 session_id=candidate.session_id,
             )
         )
+        gate_session = gate_over_target.get(candidate.session_id)
+        if gate_session is not None:
+            findings.append(_gate_cost_finding(gate_session, provider=candidate.provider))
         findings = _deduplicate_findings(findings)
         all_findings.extend(findings)
         counts = Counter(item["status"] for item in findings)
@@ -1232,6 +1275,7 @@ def audit_behavior(
             session_reports, key=lambda item: (item["provider"], item["session_id"])
         ),
         "findings": findings,
+        "gate_decisions": gate_report if gate_report is not None else {"status": "skipped"},
         "summary": {
             "reportable_finding_count": len(reportable),
             "suppressed_finding_count": len(suppressed),
