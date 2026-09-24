@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an end-to-end I3 session driver that plays a gated operator session
+  against the live hook and checks the detector's reading, and a part-b gate
+  script that widens the note exemption to `.dias/` (rendered plan; operator
+  applies).
 - Add `apu behavior gate-cost` and a gate-log join in `apu behavior audit`:
   read the gate hook's decision log, join decisions to turns and tool names,
   and compute I3 (completed read-only turns while a plan was pending, per

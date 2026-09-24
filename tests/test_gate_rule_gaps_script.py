@@ -291,6 +291,35 @@ def test_patched_hook_runs_the_gap_sequence(patched_hook: Path, tmp_path: Path) 
     assert "routing" not in log and "Select" not in log and "codename" not in log
 
 
+def test_dias_part_b_widens_the_note_exemption(patched_hook: Path, tmp_path: Path) -> None:
+    """Part b anchors on the installed 09-23 hook and adds .dias/ to the note paths."""
+
+    dias_script = SCRIPT.with_name("gate_intervention_2026_09_23_dias.py")
+    spec = importlib.util.spec_from_file_location("gate_dias", dias_script)
+    dias = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(dias)
+
+    unpatched = tmp_path / "unpatched.mjs"
+    unpatched.write_text(FIXTURE, encoding="utf-8")
+    assert dias.main(["--check", "--hook", str(unpatched)]) == 2  # needs the 09-23 change first
+
+    assert dias.main(["--check", "--hook", str(patched_hook)]) == 1
+    patched_hook.write_text(dias.apply(patched_hook.read_text(encoding="utf-8")), encoding="utf-8")
+    assert dias.main(["--check", "--hook", str(patched_hook)]) == 0
+
+    node = _node()
+    assert subprocess.run([node, "--check", str(patched_hook)]).returncode == 0
+    prompt, tool = _drive(node, patched_hook, tmp_path / "gate")
+    assert prompt("Select the intervention case and write the record") == "pending"
+    assert tool("Write", file_path=CWD + "\\.dias\\chips.json") == "allow"
+    assert tool("Edit", file_path=CWD + "/.dias/status.json") == "allow"
+    assert tool("Write", file_path=CWD + "\\.dias\\..\\src\\apu\\cli.py") == "deny"
+    assert tool("Write", file_path=CWD + "\\.claude\\handoff.md") == "allow"
+    assert tool("Write", file_path=CWD + "\\src\\apu\\cli.py") == "deny"
+    assert tool("Bash", command="git status") == "deny"
+
+
 def test_plan_mode_installs_through_apu_apply_and_rolls_back(tmp_path: Path) -> None:
     """The durable path: the script renders an APU plan; apply and rollback own the mutation."""
 

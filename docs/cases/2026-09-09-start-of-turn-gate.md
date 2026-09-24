@@ -552,10 +552,44 @@ real session has yet spent a turn pending under the new hook. I3 stays
 unmeasured for real sessions until a voice-gated or `all`-mode session runs.
 The instrument is in place; the measurement needs a subject.
 
+### End-to-end I3 subject, 2026-09-23
+
+`scripts/gate_i3_session_2026_09_23.mjs` plays the operator's side of the
+2026-09-09 before-state against the live hook through the same three hook
+modes Claude Code runs (gate on prompt, gate on tool, the Stop hook with a
+transcript path that does not exist, so nothing is spoken), under a unique
+synthetic session id and a config copy that forces gate `all`. Six turns: a
+plan-only request, a question with Read and Grep, a statement with Glob, an
+approval with Bash and Edit, a halt with Read, a re-approval with Bash. The
+live hook produced the expected states on every turn, and
+`apu behavior gate-cost --session-id` read back objective 0 at 3 read-only
+turns while pending, objective 1 at 1, objective 2 at 0: I3 max 3, all six
+turns completed and joined. That is the before-state number the case opened
+with (three tool-count observations), now produced end to end by the log
+producer and the detector rather than reported by hand. A real operator
+session under an armed gate is still the measurement that matters.
+
+### Part b: Dias board files in the note exemption, 2026-09-23
+
+`scripts/gate_intervention_2026_09_23_dias.py` adds `.dias/` to the note
+paths so a gated session can update its own chip. It anchors on the installed
+09-23 hook (refuses to run on an older one), is covered by the fixture test,
+and renders its plan the same way. The harness classifier denied `apu apply`
+for it from this session, twice, after allowing the main install earlier in
+the day. The plan is rendered and syntax-checked in `build/gate-dias/`; the
+operator runs:
+
+```console
+apu apply C:\Users\Matt\Desktop\MyDocs\apu\build\gate-dias\gate-dias-plan.json --provider claude-code --yes
+```
+
+Until then the live hook carries the 09-23 rules without `.dias/`.
+
 ### Residuals
 
-- I3 has a detector and a live producer but no real measured session yet
-  (see above).
+- I3 has a detector, a live producer, and a scripted end-to-end subject; a
+  real operator session under an armed gate has not been measured yet.
+- Part b (`.dias/` in the note paths) is rendered, not applied.
 - The note exemption does not cover the Dias board files under `.dias/`, so a
   session under an armed gate still cannot update its own chip. Widening the
   list is a one-line change to `NOTE_PATHS` if the operator wants it.

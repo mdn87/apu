@@ -287,7 +287,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-24T02:40:00Z"
+        "updatedAt": "2026-09-24T03:20:00Z"
       },
       "evidence": [
         {
@@ -313,6 +313,12 @@
           "at": "2026-09-24T02:40:00Z",
           "kind": "stage-change",
           "message": "Done 2026-09-23: gate-cost detector joins decisions to turns and tools; I3 per objective; audit finding over target. Live reading: 0 real pending turns yet (voice mode)."
+        },
+        {
+          "entryId": "apu:gate-decision-evidence:e2e-2026-09-23",
+          "at": "2026-09-24T03:20:00Z",
+          "kind": "note",
+          "message": "End-to-end subject: a scripted six-turn session on the live hook read back I3 3/1/0 per objective, 0 mismatches. A real operator session under an armed gate is still unmeasured."
         }
       ]
     },
@@ -332,7 +338,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-24T01:50:00Z"
+        "updatedAt": "2026-09-24T03:20:00Z"
       },
       "evidence": [
         {
@@ -358,6 +364,12 @@
           "at": "2026-09-24T01:50:00Z",
           "kind": "stage-change",
           "message": "Done 2026-09-23: new live-anchored script installed via apu apply with a receipt. Steer list, halt words, halt-vs-question, decision log, I4 all live; proof 31 rows, 0 mismatches."
+        },
+        {
+          "entryId": "apu:gate-rule-gaps:dias-2026-09-23",
+          "at": "2026-09-24T03:20:00Z",
+          "kind": "note",
+          "message": "Part b rendered: .dias added to the note paths, tested on the fixture. The harness denied the apply twice from this session; the operator runs the rendered plan."
         }
       ]
     }
