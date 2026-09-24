@@ -52,7 +52,7 @@ function check(label, got, want) { rows.push({ step: label, before: '', after: g
 prompt('1 new request', 'Select the intervention case and write the record', 'pending');
 check('1a Bash while pending (S1)', tool('Bash'), 'deny');
 check('1b Read while pending', tool('Read'), 'allow');
-check('1c Write of a note while pending (I4, candidate 3 not applied)', tool('Write'), 'deny');
+check('1c Write with no path while pending (I4 exemption needs a note path; see the 2026-09-23 driver)', tool('Write'), 'deny');
 // 2. The 2026-09-09 near-miss: must now approve (I1).
 prompt('2 off-list affirmation', 'sounds OK for this task. re-explain the gate challenge and how to do the human response turn end effectively', 'approved');
 check('2a Bash after affirmation', tool('Bash'), 'allow');
@@ -61,9 +61,11 @@ prompt('3 question', 'what would the audit actually count?', 'approved');
 // 4. A long statement after a completed turn carries the objective forward (I2).
 // The wording avoids every halt-vocabulary token ("don't", "do not", "wait", ...).
 prompt('4 long statement', 'the voice commands are going to another session on the desktop app not this one so you cannot hear me because routing is not entirely buttoned up yet', 'approved');
-// 4b. The verbatim 2026-09-09 utterance contains "dont", which the gate's halt
-//     vocabulary treats as a halt. Documented over-match; expected to re-arm.
-prompt('4b verbatim statement with a contraction the halt list matches', 'the voice commands are going to another session on the desktop app not this one so you cant hear me say go ahead because we dont have routing entirely buttoned up', 'pending');
+// 4b. The verbatim 2026-09-09 utterance contains "dont". Until 2026-09-23 the
+//     halt vocabulary matched it anywhere and re-armed the gate (documented
+//     over-match). The 2026-09-23 intervention narrowed "don't"/"do not"/"wait"
+//     to leading or imperative use, so this statement now carries forward.
+prompt('4b verbatim statement with a mid-sentence contraction (over-match closed 2026-09-23)', 'the voice commands are going to another session on the desktop app not this one so you cant hear me say go ahead because we dont have routing entirely buttoned up', 'approved');
 // 5. The second near-miss: approval phrase early in a long message (I1).
 prompt('5 early phrase, long tail', 'yeah mr wizard make it so. the apu-wtf ignoring anything is concerning to me, because it should take the entire picture into consideration but you are the boss right now.', 'approved');
 // 6. Halt words withdraw approval (S2) and tools are denied again (S1).

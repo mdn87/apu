@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Resolve the start-of-turn gate rule gaps with a new dated intervention
+  script anchored on the live hook (the 2026-09-09 render-from-backup plan
+  would have discarded later operator changes): steer list without imperative
+  verbs, halt words narrowed to leading or imperative use, a leading halt
+  outranking the question check, the content-free gate decision log, and the
+  I4 note-write exemption. Installed through `apu apply` with a receipt and
+  proven on the live hook by a new proof driver (31 rows, 0 mismatches).
 - Add `apu-ezpz`: mark and diagnose, in one step, a stop where the agent
   should have made a simple reversible decision itself. The incident carries
   the operator-asserted `easy-decision-gate` signal; the diagnosis and

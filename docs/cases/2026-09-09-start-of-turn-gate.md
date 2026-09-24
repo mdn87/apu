@@ -458,3 +458,83 @@ without the narrowing or the decision log.
   build…") carries the approval forward. Accepted for this attempt; the
   fixture test pins the behavior so a change to it is deliberate.
 - Candidate 3 (explicit local-note write exemption) is untouched; I4 is open.
+
+## Intervention attempt 3, 2026-09-23: the gate rule gaps
+
+Board step `apu:gate-rule-gaps`. The operator's instruction for this session
+was to keep going and make the simple decisions without stopping, so the
+three gaps were resolved together and installed through APU's plan path.
+
+### The 2026-09-09 plan was no longer safe to apply
+
+The live hook carried two operator backups dated 2026-09-20 and had grown
+from 969 to 1,209 lines since the intervention backup: conversational
+prompts, a `chat` gate state, and voice plumbing. The 2026-09-09 script
+renders its plan from the intervention backup, so applying that plan would
+have passed its precondition (the live hash) and then replaced the live file
+with a version missing eleven days of the operator's work. That path was
+abandoned. `scripts/gate_intervention_2026_09_23.py` anchors on the live
+text instead: every anchor must appear exactly once or `--check` returns 2,
+and there is no `--apply`; the only install path is the rendered APU plan.
+
+### What changed in the hook
+
+| Change | Rule | Targets |
+| --- | --- | --- |
+| Steer list narrowed | Imperative verbs removed from the carry-forward lead list; "now build ..." after an approval arms the gate | operator decision 2026-09-09 |
+| Halt words narrowed | "wait", "don't", "do not" withdraw approval only when leading the message or in an imperative aimed at the work ("do not proceed", "don't push that"); the other halt words still count anywhere | halt over-match (I2 resets) |
+| Halt outranks question | A leading halt is never a question. "do not proceed" used to match the question list (which starts with "do") and left the approval standing | S2, found by the fixture test |
+| Decision log | One content-free latency-log line per gate state write | I3 producer |
+| I4 note exemption | While the gate is armed, Write/Edit to the working directory's `.claude/handoff.md`, `.claude/handoff-history/`, `.claude/notes/`, or `incidents/` is allowed; paths are normalized, `..` and other directories stay denied | I4 |
+
+The halt narrowing accepts one known cost: a message that opens with "wait"
+counts as a halt even when it is a noun ("wait times are long"). Leading
+"wait" is an interjection in practice, and failing safe there costs a reset,
+never a mutation.
+
+### Installation
+
+Rendered with `--plan build/gate-rule-gaps`, syntax-checked with Node, and
+installed by `apu apply ... --provider claude-code` from this Claude Code
+session, bound to the `apu` working directory. Receipt
+`install-20260924T014333916844Z` holds the prior bytes; `apu rollback` on that
+receipt restores them. The live hook's SHA-256 after apply is
+`58c6abccf8c793e9704fbd84f72a82c825fff8aa58c4978db2a0f1792eabfd54`. The
+harness classifier did not deny the apply this time.
+
+### Proof on the live hook
+
+`scripts/gate_proof_session_2026_09_23.mjs` drives the live hook with a
+synthetic session through 31 rows: I4 allows and denials, the three
+narrative statements that used to re-arm, five halt forms, the steer-led new
+objective, short and affirmation-led steers, a question, and an off-list
+affirmation. Result: 31 rows, 0 mismatches. The 2026-09-09 driver, with its
+row 4b flipped to the new expectation, also passes: 20 rows, 0 mismatches.
+
+One finding on the way: the first run of both drivers failed from row 1,
+because the live gate is in `voice` mode, where typed prompts never arm the
+gate and only approvals are written. That is an operator setting, not a hook
+defect; the drivers now run the hook with a copy of the live config that
+forces `all`, and report the live mode alongside the rows.
+
+### Scores against the definition
+
+| Id | Measure | Before this attempt | After | Verdict |
+| --- | --- | --- | --- | --- |
+| I1 | Approval near-misses | 0 (attempt 2) | 0 (rows 6b, 5c, 5d) | holds |
+| I2 | Resets without a new imperative or halt | 1 known cause (mid-sentence halt tokens) | 0 in the proof (rows 3, 3b, 3c carry forward) | met |
+| I3 | Read-only turns while pending, per objective | unmeasured | unmeasured; the decision log now exists on the live hook, the audit detector does not | producer landed |
+| I4 | Denials of an explicitly requested local note write | denied (row 1c, attempt 2) | allowed for note paths, denied elsewhere (rows 1c to 1h) | met |
+| S1 | Mutations without valid approval | 0 at hook level | 0 at hook level (rows 1a, 1e to 1h, 4a, 4h) | holds |
+| S2 | Halt words still withdraw approval | pass for leading halts | pass for leading, imperative, and mid-turn halts; the "do not proceed" question misread is fixed | holds, strengthened |
+
+### Residuals
+
+- I3 remains unmeasured until the bounded audit reads the decision log
+  (`apu:gate-decision-evidence`).
+- The note exemption does not cover the Dias board files under `.dias/`, so a
+  session under an armed gate still cannot update its own chip. Widening the
+  list is a one-line change to `NOTE_PATHS` if the operator wants it.
+- Leading "wait" as a noun still re-arms the gate (fails safe).
+- The live gate mode is `voice`; typed prompts are not gated at all right
+  now. The rules above apply whenever the gate is armed, by voice or by mode.

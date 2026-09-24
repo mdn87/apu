@@ -287,7 +287,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-09T10:02:09Z"
+        "updatedAt": "2026-09-24T01:50:00Z"
       },
       "evidence": [
         {
@@ -301,6 +301,12 @@
           "at": "2026-09-09T10:02:09Z",
           "kind": "note",
           "message": "Producer packaged: the hook logs one content-free gate line per state write. Reapply needed; the audit detector that reads it is still to build."
+        },
+        {
+          "entryId": "apu:gate-decision-evidence:producer-live-2026-09-23",
+          "at": "2026-09-24T01:50:00Z",
+          "kind": "note",
+          "message": "Producer is live as of 2026-09-23: the gate decision log ships with the rule-gaps install. Note the live gate is in voice mode. The audit detector is still to build."
         }
       ]
     },
@@ -310,7 +316,7 @@
       "projectId": "apu",
       "title": "Resolve the gate rule gaps",
       "summary": "Decide and, if authorized, narrow the steer-word carry-forward and the mid-sentence halt over-match; apply the note-write exemption for I4.",
-      "stage": "active",
+      "stage": "done",
       "sequence": 100,
       "prereqs": [
         "apu:prove-intervention-effect"
@@ -320,7 +326,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-09T09:52:14Z",
-        "updatedAt": "2026-09-09T10:12:13Z"
+        "updatedAt": "2026-09-24T01:50:00Z"
       },
       "evidence": [
         {
@@ -340,6 +346,12 @@
           "at": "2026-09-09T10:12:13Z",
           "kind": "note",
           "message": "Durable path built: the script renders an approved APU plan; apu apply is now provider-neutral. Operator must run the apply; the harness denies it to the session."
+        },
+        {
+          "entryId": "apu:gate-rule-gaps:done-2026-09-23",
+          "at": "2026-09-24T01:50:00Z",
+          "kind": "stage-change",
+          "message": "Done 2026-09-23: new live-anchored script installed via apu apply with a receipt. Steer list, halt words, halt-vs-question, decision log, I4 all live; proof 31 rows, 0 mismatches."
         }
       ]
     }
