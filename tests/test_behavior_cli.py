@@ -17,7 +17,10 @@ from apu.behavior_cli import (
 from apu.behavior_watch import (
     EASY_DECISION_SIGNAL,
     EASY_DECISION_TEMPLATE_ID,
+    RECOVERY_SIGNAL,
+    RECOVERY_TEMPLATE_ID,
     RESUME_TEMPLATE_ID,
+    diagnose_incident,
     intervention_prompt,
     load_incident,
     mark_incident,
@@ -132,7 +135,7 @@ def test_wtf_can_select_recent_incomplete_run_without_an_event(
     assert (state / "behavior" / "latest-incident.json").is_file()
 
 
-def test_ezpz_marks_an_easy_decision_and_intervenes_with_decide_and_continue(
+def test_ezpz_marks_recovery_without_claiming_a_proven_cause(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys,
@@ -147,23 +150,27 @@ def test_ezpz_marks_an_easy_decision_and_intervenes_with_decide_and_continue(
 
     assert ezpz_main(["--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
     diagnosis = json.loads(capsys.readouterr().out)
-    assert diagnosis["status"] == "likely-autonomy-loss"
-    assert EASY_DECISION_SIGNAL in diagnosis["observed_signals"]
+    assert diagnosis["status"] == "recovery-requested"
+    assert RECOVERY_SIGNAL in diagnosis["observed_signals"]
+    assert EASY_DECISION_SIGNAL not in diagnosis["observed_signals"]
+    assert diagnosis["evaluation"]["verification_status"] == "asserted"
     assert diagnosis["possible_barriers"] == []
     recommendation = diagnosis["recommended_intervention"]
-    assert recommendation["template_id"] == EASY_DECISION_TEMPLATE_ID
+    assert recommendation["template_id"] == RECOVERY_TEMPLATE_ID
     assert recommendation["prompt_sha256"] == sha256_bytes(
-        intervention_prompt(EASY_DECISION_TEMPLATE_ID).encode("utf-8")
+        intervention_prompt(RECOVERY_TEMPLATE_ID, incident=load_incident(state)).encode(
+            "utf-8"
+        )
     )
     assert recommendation["durable_policy_mutation"] is False
 
     incident = load_incident(state)
     assert incident["description"] == EZPZ_DEFAULT_DESCRIPTION
-    assert incident["claim"]["asserted_signals"] == [EASY_DECISION_SIGNAL]
+    assert incident["claim"]["asserted_signals"] == [RECOVERY_SIGNAL]
 
     assert intervene_main(["--dry-run", "--json"]) == 0
     intervention = json.loads(capsys.readouterr().out)
-    assert intervention["prompt_template_id"] == EASY_DECISION_TEMPLATE_ID
+    assert intervention["prompt_template_id"] == RECOVERY_TEMPLATE_ID
     assert intervention["prompt_sha256"] == recommendation["prompt_sha256"]
     assert intervention["status"] == "planned"
 
@@ -194,8 +201,9 @@ def test_ezpz_text_output_names_the_template_and_next_step(
     )
     output = capsys.readouterr().out
     assert "marked now" in output
-    assert f"Attested: {EASY_DECISION_SIGNAL}" in output
-    assert f"Resume template: {EASY_DECISION_TEMPLATE_ID}" in output
+    assert "Operator report: the requested outcome remains unresolved." in output
+    assert f"Resume template: {RECOVERY_TEMPLATE_ID}" in output
+    assert intervention_prompt(RECOVERY_TEMPLATE_ID) in output
     assert "Next: apu-intervene" in output
 
 
@@ -225,10 +233,219 @@ def test_ezpz_attestation_never_overrides_a_barrier(
     )
     output = capsys.readouterr().out
     assert "possible-legitimate-barrier" in output
-    assert "contradicts the easy-decision attestation" in output
+    assert "Review the barrier and its evidence" in output
     assert "Next: apu-intervene" not in output
     assert intervene_main(["--dry-run"]) == 1
     assert "legitimate barrier" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("description", "signal"),
+    [
+        (
+            "The process is healthy but the voice command is still broken",
+            "outcome-unverified",
+        ),
+        ("tests pass but nobody verified the actual workflow", "outcome-unverified"),
+        (
+            "keeps trying the same restart without new evidence",
+            "repeated-ineffective-attempt",
+        ),
+        (
+            "made an unsupported diagnosis and offered another fix",
+            "repeated-ineffective-attempt",
+        ),
+        (
+            "asked me to approve a reversible filename choice",
+            "reversible-choice-escalation",
+        ),
+        ("told me to do it even though it had the tools", "user-action-transfer"),
+    ],
+)
+def test_ezpz_distinguishes_reported_failure_patterns(
+    tmp_path, monkeypatch, capsys, description, signal
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    assert (
+        main(
+            [
+                "ezpz",
+                description,
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(cwd),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert diagnosis["status"] == "recovery-requested"
+    assert signal in diagnosis["observed_signals"]
+    assert diagnosis["recommended_intervention"]["template_id"] == RECOVERY_TEMPLATE_ID
+
+
+def test_ezpz_prompt_only_does_not_launch_an_agent(tmp_path, monkeypatch, capsys):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(
+        "apu.behavior_watch.subprocess.run",
+        lambda *a, **kw: pytest.fail("must not launch"),
+    )
+    assert (
+        main(["ezpz", "--trace-root", str(traces), "--cwd", str(cwd), "--prompt"]) == 0
+    )
+    assert capsys.readouterr().out.strip() == intervention_prompt(
+        RECOVERY_TEMPLATE_ID, incident=load_incident(tmp_path / "state")
+    )
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "needs an API key",
+        "access denied",
+        "delete the database",
+        "send email",
+        "unknown target",
+    ],
+)
+def test_ezpz_prompt_cannot_bypass_barriers(tmp_path, monkeypatch, capsys, description):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    assert (
+        ezpz_main(
+            [description, "--trace-root", str(traces), "--cwd", str(cwd), "--prompt"]
+        )
+        == 1
+    )
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "recovery prompt withheld" in output.err
+
+
+def test_ezpz_can_target_an_explicit_session_after_the_agent_ended_its_turn(
+    tmp_path, monkeypatch, capsys
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    trace = _trace(traces, cwd)
+    records = [json.loads(line) for line in trace.read_text().splitlines()]
+    records.append(
+        {
+            "timestamp": records[-1]["timestamp"],
+            "type": "event_msg",
+            "payload": {"type": "task_complete"},
+        }
+    )
+    trace.write_text(
+        "\n".join(json.dumps(record) for record in records), encoding="utf-8"
+    )
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    assert (
+        ezpz_main(
+            [
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(cwd),
+                "--session-id",
+                "cli-session",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["status"] == "recovery-requested"
+
+
+def test_legacy_easy_decision_incidents_keep_their_original_template(
+    tmp_path, monkeypatch, capsys
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    state = tmp_path / "state"
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setattr("apu.behavior_watch.shutil.which", lambda name: name)
+    _, incident = mark_incident(
+        state,
+        "choose a reversible default",
+        trace_root=traces,
+        cwd=cwd,
+        asserted_signals=(EASY_DECISION_SIGNAL,),
+    )
+    _, diagnosis = diagnose_incident(state, incident_id=incident["incident_id"])
+    assert (
+        diagnosis["recommended_intervention"]["template_id"]
+        == EASY_DECISION_TEMPLATE_ID
+    )
+    assert intervene_main(["--dry-run", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["command"][-1] == intervention_prompt(EASY_DECISION_TEMPLATE_ID)
+
+
+def test_recovery_continuation_preserves_report_and_rejects_changed_incident(
+    tmp_path, monkeypatch, capsys
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    state = tmp_path / "state"
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setattr("apu.behavior_watch.shutil.which", lambda name: name)
+    note = "The voice listener is healthy but commands still do not reach the chat."
+    assert (
+        ezpz_main([note, "--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
+    )
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert intervene_main(["--dry-run", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert json.dumps(note) in result["command"][-1]
+    assert (
+        result["prompt_sha256"]
+        == diagnosis["recommended_intervention"]["prompt_sha256"]
+    )
+    path = state / "behavior" / "incidents" / (diagnosis["incident_id"] + ".json")
+    incident = json.loads(path.read_text())
+    incident["description"] = "a different report"
+    path.write_text(json.dumps(incident), encoding="utf-8")
+    assert intervene_main(["--dry-run"]) == 1
+    assert "prompt changed since diagnosis" in capsys.readouterr().err
+
+
+def test_insufficient_evidence_cannot_be_resumed_by_calling_intervene_directly(
+    tmp_path, monkeypatch, capsys
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    trace = _trace(traces, cwd)
+    trace.write_text(
+        trace.read_text().replace(
+            "Would you prefer that I choose which file?", "Working."
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    assert wtf_main(["--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "insufficient-evidence"
+    assert intervene_main(["--dry-run"]) == 1
+    assert "evidence does not support continuation" in capsys.readouterr().err
 
 
 def test_wtf_diagnosis_keeps_the_general_resume_template(
@@ -352,7 +569,12 @@ def test_spaced_commands_diagnose_and_pin_the_next_action(
     output = capsys.readouterr().out
     assert "Session: cli-session (codex)" in output
     assert f"Directory: {cwd}" in output
-    assert "The agent appears to have paused on work it could continue." in output
+    expected = (
+        "You reported an unresolved task. The root cause still needs verification."
+        if command == "ezpz"
+        else "The agent appears to have paused on work it could continue."
+    )
+    assert expected in output
     assert "clues, not proof" in output
     continuation = next(
         line for line in output.splitlines() if line.startswith("Next: ")

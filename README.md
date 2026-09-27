@@ -252,19 +252,36 @@ barriers prompt review instead of continuation. Selection failures explain
 how to resolve the mismatch or ambiguity. `--json` retains the existing
 diagnosis and attribution-error formats.
 
-`apu ezpz` (also `apu-ezpz`) is the one-step form for the most common stop: the agent paused on a
-simple, reversible decision it should have made itself. It marks a fresh
-incident carrying the operator-asserted `easy-decision-gate` signal (an optional
-positional description replaces the default wording), diagnoses it, and
-recommends the `primary-agent-easy-decision-resume-v1` template, which tells
-the agent to choose the default, state it in one line, and continue. It takes
-the same selectors as `apu-wtf`. If the session or description carries barrier
-evidence, the diagnosis still reports `possible-legitimate-barrier` and
-`apu-intervene` still refuses; the attestation never overrides a barrier.
+`apu ezpz` (also `apu-ezpz`) prepares recovery when the requested outcome is
+still unresolved: the agent stopped early, repeated an ineffective approach,
+or handed routine work and approval requests back to you. It marks a fresh
+incident with `operator-requested-recovery` and reports `recovery-requested`,
+not a proven diagnosis. The optional description identifies what still needs
+fixing and travels with the continuation.
+
+The `primary-agent-outcome-recovery-v1` instruction tells the agent to verify
+the actual behavior, test its suspected cause, change an ineffective approach,
+and act within existing authorization. Tests passing or a process being healthy
+are supporting evidence, not proof that the user's task works. Necessary human
+actions remain explicit and unverified until their results are known.
+
+Normal output includes the recovery instruction and the exact incident-bound
+continuation command. `--prompt` prints only that instruction for use in the
+selected chat; it cannot be combined with `--json`. Neither form launches an
+agent. Selection remains exact to the working directory and provider. If the
+agent already ended its turn, use `--session-id` to select that fresh session
+explicitly. Automatic selection does not guess between idle chats.
+
+Barrier evidence still takes precedence: `possible-legitimate-barrier` blocks
+both prompt-only output and `apu-intervene`. Old `easy-decision-gate` incidents
+retain their original template. Saved diagnosis hashes bind the specific
+instruction and operator report used by the continuation.
 
 ```console
 apu ezpz
-apu ezpz "asked which of two equivalent test file names to use"
+apu ezpz "tests pass but the voice command still does not work"
+apu ezpz "keeps trying the same restart without new evidence" --prompt
+apu ezpz "asked me to approve a reversible filename choice" --session-id SESSION_ID
 # Run the exact apu-intervene --diagnosis ... command printed by the diagnosis.
 ```
 
@@ -273,8 +290,11 @@ for Codex Desktop and Claude Code sessions it records and prints the exact
 provider continuation because APU cannot inject into the desktop process.
 Claude Code transcripts do not reliably distinguish interactive CLI runs from
 `--print`, so their continuations always require `--execute`. Add `--dry-run`
-to only record the proposed action. After a manual continuation, record its
-outcome:
+to only record the proposed action. An executed continuation is recorded as
+`resumed`, with `turn_completed` tracking an observed Codex turn-end marker
+(null when not observed through that transport) and `outcome_verification:
+unverified`. A model turn ending does not mark the task completed. After
+checking the actual result, record the outcome as an operator attestation:
 
 ```console
 apu-intervene --result completed

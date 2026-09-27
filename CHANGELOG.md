@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Expand `apu ezpz` to recover unresolved outcomes, ineffective retries, and
+  unnecessary approval requests. Recovery diagnoses distinguish the operator's
+  report from a verified cause; the report is included in the hashed continuation.
+  Add `--prompt` and show the recovery instruction in normal output. Preserve
+  existing easy-decision diagnoses and all session and barrier checks.
+- Stop treating a completed model turn as a completed user task. Intervention
+  records expose turn completion separately and keep the outcome unverified
+  until the operator records a result. Reject insufficient-evidence interventions
+  and instructions that changed after diagnosis.
+
 - Add `apu wtf` and `apu ezpz` alongside the existing hyphenated commands,
   with shared help, plain-language results, session/evidence context, and
   actionable attribution errors. Continuation commands name the exact

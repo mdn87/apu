@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from apu.behavior_cli import event_main, intervene_main, watch_main, wtf_main
+from apu.behavior_cli import event_main, ezpz_main, intervene_main, watch_main, wtf_main
 from apu.behavior_watch import (
     NoAttribution,
     SelectedSession,
@@ -605,6 +605,51 @@ def test_configured_claude_denial_is_a_barrier_not_an_invented_gate(
     assert diagnosis["status"] == "possible-legitimate-barrier"
     with pytest.raises(ValueError, match="legitimate barrier"):
         intervene(state, diagnosis_id=diagnosis["diagnosis_id"], dry_run=True)
+
+
+@pytest.mark.parametrize("denied", [False, True])
+def test_claude_ezpz_recovery_respects_configured_denial(
+    tmp_path, monkeypatch, capsys, denied
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "projects"
+    _write_claude_trace(traces, cwd, configured_denial=denied)
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr("apu.behavior_watch.shutil.which", lambda name: name)
+    monkeypatch.setattr(
+        "apu.behavior_watch.subprocess.run",
+        lambda *a, **kw: pytest.fail("must not launch"),
+    )
+    assert (
+        ezpz_main(
+            [
+                "keeps trying the same fix",
+                "--provider",
+                "claude-code",
+                "--trace-root",
+                str(traces),
+                "--cwd",
+                str(cwd),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert diagnosis["provider"] == "claude-code"
+    if denied:
+        assert diagnosis["status"] == "possible-legitimate-barrier"
+        assert intervene_main(["--dry-run"]) == 1
+        assert "legitimate barrier" in capsys.readouterr().err
+    else:
+        assert diagnosis["status"] == "recovery-requested"
+        assert intervene_main(["--json"]) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["status"] == "continuation-ready"
+        assert result["executed"] is False
+        assert result["command"][0] == "claude"
+        assert "keeps trying the same fix" in result["command"][-1]
 
 
 def test_harness_failure_is_not_misclassified_as_operator_designed_gate(
