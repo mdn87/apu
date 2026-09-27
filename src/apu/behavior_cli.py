@@ -9,6 +9,7 @@ from typing import Any
 
 from .behavior_watch import (
     EASY_DECISION_SIGNAL,
+    RECOVERY_SIGNAL,
     SESSION_PROVIDER_NAMES,
     WATCHER_ALIASES,
     WATCHER_ID,
@@ -16,6 +17,7 @@ from .behavior_watch import (
     configure_watcher,
     diagnose_incident,
     intervene,
+    intervention_prompt,
     load_incident,
     mark_incident,
     normalized_cwd_key,
@@ -25,12 +27,9 @@ from .behavior_watch import (
 from .models import canonical_json
 from .state import resolve_state_home
 
-# Default attestation for ``apu-ezpz``: the agent paused on a choice that was
-# easy and reversible. The wording deliberately avoids barrier vocabulary so the
-# default never talks the diagnosis into a legitimate barrier on its own.
 EZPZ_DEFAULT_DESCRIPTION = (
-    "paused on a simple reversible choice and asked for approval instead of "
-    "choosing the default and continuing"
+    "the requested outcome remains unresolved; recover the task using evidence "
+    "and the authorization already given"
 )
 
 _ATTRIBUTION_HELP = {
@@ -38,7 +37,7 @@ _ATTRIBUTION_HELP = {
     "ambiguous_provider": "Both providers match. Add --provider codex or --provider claude-code.",
     "ambiguous_session_id": "The session ID matches several traces. Narrow --trace-root to the intended trace directory.",
     "cwd_mismatch": "The session belongs to another directory. Set --cwd to that session's project directory.",
-    "no_active_candidate": "No incomplete session matches. Start or resume the task in this directory, then retry.",
+    "no_active_candidate": "No incomplete session matches. For an agent that already ended its turn, select its --session-id explicitly.",
     "no_exact_cwd_candidate": "No session matches this directory. Run from the agent's project directory or set --cwd.",
     "session_not_found": "The session ID was not found. Check --session-id, --provider, and --trace-root.",
     "stale_trace": "The matching trace is over ten minutes old. Resume the task, then retry.",
@@ -47,6 +46,7 @@ _ATTRIBUTION_HELP = {
 }
 
 _STATUS_HELP = {
+    "recovery-requested": "You reported an unresolved task. The root cause still needs verification.",
     "likely-autonomy-loss": "The agent appears to have paused on work it could continue.",
     "possible-legitimate-barrier": "The stop may require your input or authorization.",
     "insufficient-evidence": "The evidence does not establish why the agent stopped.",
@@ -145,7 +145,9 @@ def _wtf_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_selection_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_selection_arguments(
+    parser: argparse.ArgumentParser, *, prompt_output: bool = False
+) -> None:
     parser.add_argument(
         "--provider",
         choices=SESSION_PROVIDER_NAMES,
@@ -167,9 +169,16 @@ def _add_selection_arguments(parser: argparse.ArgumentParser) -> None:
         default=2,
         help="saved evidence format (default: 2)",
     )
-    parser.add_argument(
+    output = parser.add_mutually_exclusive_group() if prompt_output else parser
+    output.add_argument(
         "--json", action="store_true", help="print the diagnosis as JSON"
     )
+    if prompt_output:
+        output.add_argument(
+            "--prompt",
+            action="store_true",
+            help="print only the recovery instruction for the selected chat; refuse if a barrier is detected",
+        )
 
 
 def add_shortcut_parsers(commands) -> None:
@@ -179,7 +188,7 @@ def add_shortcut_parsers(commands) -> None:
             "ezpz",
             _ezpz_parser,
             _ezpz_command,
-            "diagnose an unnecessary pause on a simple decision",
+            "recover unfinished work, ineffective retries, and unnecessary approval requests",
         ),
     ):
         parent = factory()
@@ -219,6 +228,8 @@ def _print_diagnosis(
         print(
             f"Attested: {EASY_DECISION_SIGNAL} (you identified this as a simple, reversible choice)"
         )
+    if RECOVERY_SIGNAL in asserted:
+        print("Operator report: the requested outcome remains unresolved.")
     signals = diagnosis["observed_signals"]
     if signals:
         print(f"Signals: {', '.join(signals)}")
@@ -342,27 +353,22 @@ def _ezpz_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="apu-ezpz",
         description=(
-            "Mark and diagnose a stop where the agent should have made a simple, "
-            "reversible decision itself instead of handing it to the human gate."
+            "Recover an unresolved task: verify the outcome, investigate failed "
+            "approaches, and continue within existing authorization."
         ),
     )
     parser.add_argument(
         "description",
         nargs="?",
         default=EZPZ_DEFAULT_DESCRIPTION,
-        help="what the agent asked you to decide (optional)",
+        help="what is still wrong, repeated, or being handed back to you (optional)",
     )
-    _add_selection_arguments(parser)
+    _add_selection_arguments(parser, prompt_output=True)
     return parser
 
 
 def ezpz_main(argv: Sequence[str] | None = None) -> int:
-    """Mark an operator-attested easy-decision stop and diagnose it in one step.
-
-    Unlike ``apu-wtf`` this never reuses a previously marked incident: the
-    attestation belongs to the run selected now, and the diagnosis it produces
-    recommends the decide-and-continue resume template.
-    """
+    """Mark a fresh operator recovery request and prepare an outcome-focused continuation."""
 
     return _run(_ezpz_parser(), _ezpz_command, argv)
 
@@ -377,17 +383,36 @@ def _ezpz_command(args: argparse.Namespace) -> int:
         session_id=args.session_id,
         cwd=args.cwd if args.cwd is not None else Path.cwd(),
         evidence_schema_version=args.evidence_schema_version,
-        asserted_signals=(EASY_DECISION_SIGNAL,),
+        asserted_signals=(RECOVERY_SIGNAL,),
     )
     path, diagnosis = diagnose_incident(
         state_home,
         incident_id=incident["incident_id"],
         provider=args.provider,
     )
-    if args.json:
+    if args.prompt:
+        if diagnosis["status"] == "possible-legitimate-barrier":
+            raise ValueError(
+                "recovery prompt withheld because a legitimate barrier may exist: "
+                + ", ".join(diagnosis["possible_barriers"])
+            )
+        print(
+            intervention_prompt(
+                diagnosis["recommended_intervention"]["template_id"], incident=incident
+            )
+        )
+    elif args.json:
         _emit(diagnosis)
     else:
         _print_diagnosis(path, diagnosis, incident, marked=True)
+        if diagnosis["status"] == "recovery-requested":
+            print("Recovery instruction for this session:")
+            print(
+                intervention_prompt(
+                    diagnosis["recommended_intervention"]["template_id"],
+                    incident=incident,
+                )
+            )
     return 0
 
 
@@ -432,6 +457,10 @@ def intervene_main(argv: Sequence[str] | None = None) -> int:
             _emit(result)
         else:
             print(f"Intervention: {result['status']}")
+            if result["executed"]:
+                print(
+                    "Outcome: unverified. A model turn ending does not prove the task works."
+                )
             if not result["executed"]:
                 print("Continuation command:")
                 print(json.dumps(result["command"], ensure_ascii=False))

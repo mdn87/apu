@@ -55,6 +55,24 @@ _NO_ATTRIBUTION_REASONS = frozenset(
 
 _SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
+        "outcome-unverified",
+        re.compile(
+            r"(?:still (?:broken|does(?:n't| not) work)|"
+            r"(?:tests? pass|healthy|claimed (?:success|done)).*(?:but|without).*"
+            r"(?:work|verif|test|broken)|(?:never|not|hasn't) verified.*(?:outcome|end.to.end))",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
+        "repeated-ineffective-attempt",
+        re.compile(
+            r"(?:same (?:failed |ineffective )?(?:fix|attempt|restart|command).*(?:again|repeat)|"
+            r"(?:repeat|retry|keeps? trying).*(?:same|without new evidence)|"
+            r"(?:wrong|unsupported|unproven) diagnos)",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
         "request-substitution",
         re.compile(
             r"(?=.*\b(?:asked|told|request(?:ed)?)\b)"
@@ -231,7 +249,35 @@ _RESUME_INSTRUCTION = (
 # operator, never inferred from a transcript, and it selects a resume template
 # that tells the agent to make the choice itself instead of re-asking.
 EASY_DECISION_SIGNAL = "easy-decision-gate"
-_ASSERTABLE_SIGNALS = frozenset({EASY_DECISION_SIGNAL})
+RECOVERY_SIGNAL = "operator-requested-recovery"
+_ASSERTABLE_SIGNALS = frozenset({EASY_DECISION_SIGNAL, RECOVERY_SIGNAL})
+
+_RECOVERY_INSTRUCTION = (
+    "The requested outcome is still unresolved. Resume the original task within "
+    "its existing scope and authorization. Recover the user's intended result, "
+    "not just the last proposed step.\n\n"
+    "Check the current state and identify the next observable result that would "
+    "show the task works. Separate observations from hypotheses. Test the suspected "
+    "cause before changing it; a recent edit or matching instruction is not proof "
+    "of causation. Use failed attempts as evidence. Do not repeat the same failed "
+    "action unless a relevant condition changed; test a different explanation or "
+    "use another permitted method.\n\n"
+    "Carry forward approval already given for this target and outcome. Make "
+    "routine reversible choices and do the work with your available tools. Do "
+    "not return an offer to finish, request the same approval again, or hand "
+    "executable steps back to the user. Continue independent work while awaiting "
+    "information only the user can supply.\n\n"
+    "Verify the actual requested behavior. Passing tests, a healthy process, an "
+    "installed change, or an ended model turn alone do not prove success. When "
+    "a human action is essential, complete every independent check first and "
+    "request only that action; label the outcome unverified until evidence arrives. "
+    "Report what works, the evidence, and any specific unresolved condition.\n\n"
+    "Respect real access denials, missing credentials, explicit approval points, "
+    "and actions outside existing authorization. Do not bypass them or replay an "
+    "action whose effects are uncertain. If such a barrier prevents completion, "
+    "name the exact action, evidence, and minimum user decision needed. This "
+    "recovery request does not grant new permissions or change durable policy."
+)
 
 _EASY_DECISION_RESUME_INSTRUCTION = (
     "The point where you paused was a simple, reversible decision that you were "
@@ -245,16 +291,21 @@ _EASY_DECISION_RESUME_INSTRUCTION = (
 
 RESUME_TEMPLATE_ID = "primary-agent-autonomy-resume-v1"
 EASY_DECISION_TEMPLATE_ID = "primary-agent-easy-decision-resume-v1"
+RECOVERY_TEMPLATE_ID = "primary-agent-outcome-recovery-v1"
 _RESUME_TEMPLATES: dict[str, str] = {
     RESUME_TEMPLATE_ID: _RESUME_INSTRUCTION,
     EASY_DECISION_TEMPLATE_ID: _EASY_DECISION_RESUME_INSTRUCTION,
+    RECOVERY_TEMPLATE_ID: _RECOVERY_INSTRUCTION,
 }
 
 
 def _resume_template_id(signals: Iterable[str]) -> str:
+    signals = set(signals)
+    if RECOVERY_SIGNAL in signals:
+        return RECOVERY_TEMPLATE_ID
     return (
         EASY_DECISION_TEMPLATE_ID
-        if EASY_DECISION_SIGNAL in set(signals)
+        if EASY_DECISION_SIGNAL in signals
         else RESUME_TEMPLATE_ID
     )
 
@@ -2151,6 +2202,8 @@ def diagnose_incident(
     status = (
         "possible-legitimate-barrier"
         if barriers
+        else "recovery-requested"
+        if RECOVERY_SIGNAL in signals
         else "likely-autonomy-loss"
         if signals
         else "insufficient-evidence"
@@ -2171,8 +2224,12 @@ def diagnose_incident(
         "evaluation": {
             "method": "deterministic",
             "semantic_evaluator_used": False,
-            "verification_status": "observed",
-            "reason": "deterministic signals were sufficient"
+            "verification_status": "asserted"
+            if RECOVERY_SIGNAL in signals
+            else "observed",
+            "reason": "operator requested recovery; the root cause is not established"
+            if RECOVERY_SIGNAL in signals
+            else "deterministic signals were sufficient"
             if signals
             else "no signal matched",
         },
@@ -2180,7 +2237,7 @@ def diagnose_incident(
             "type": "resume-instruction",
             "template_id": template_id,
             "prompt_sha256": sha256_bytes(
-                _RESUME_TEMPLATES[template_id].encode("utf-8")
+                intervention_prompt(template_id, incident=incident).encode("utf-8")
             ),
             "durable_policy_mutation": False,
         },
@@ -2199,7 +2256,7 @@ def load_diagnosis(state_home: Path, diagnosis_id: str | None = None) -> dict[st
     return _load_leaf(state_home, "diagnoses", diagnosis_id)
 
 
-def _completed_without_pressure(stdout: str) -> tuple[bool, tuple[str, ...]]:
+def _continuation_observations(stdout: str) -> tuple[bool, tuple[str, ...]]:
     completed = False
     signals: set[str] = set()
     for line in stdout.splitlines():
@@ -2216,7 +2273,7 @@ def _completed_without_pressure(stdout: str) -> tuple[bool, tuple[str, ...]]:
             text = item.get("text")
             if isinstance(text, str):
                 signals.update(_signals(text, agent_message=True))
-    return completed and not signals, tuple(sorted(signals))
+    return completed, tuple(sorted(signals))
 
 
 def intervene(
@@ -2235,6 +2292,10 @@ def intervene(
     diagnosis = load_diagnosis(state_home, diagnosis_id)
     if diagnosis["status"] == "possible-legitimate-barrier":
         raise ValueError("intervention refused because a legitimate barrier may exist")
+    if diagnosis["status"] not in {"likely-autonomy-loss", "recovery-requested"}:
+        raise ValueError(
+            "intervention refused because evidence does not support continuation"
+        )
     recommendation = diagnosis.get("recommended_intervention")
     if (
         not isinstance(recommendation, Mapping)
@@ -2246,8 +2307,12 @@ def intervene(
     template_id = str(recommendation.get("template_id") or RESUME_TEMPLATE_ID)
     if template_id not in _RESUME_TEMPLATES:
         raise ValueError(f"unknown intervention template: {template_id}")
-    prompt = _RESUME_TEMPLATES[template_id]
     incident = load_incident(state_home, diagnosis["incident_id"])
+    prompt = intervention_prompt(template_id, incident=incident)
+    if recommendation.get("prompt_sha256") != sha256_bytes(prompt.encode("utf-8")):
+        raise ValueError(
+            "intervention prompt changed since diagnosis; diagnose the incident again"
+        )
     attribution = incident.get("attribution")
     if not isinstance(attribution, Mapping) or attribution.get("kind") != "selected":
         raise ValueError("intervention incident has no selected attribution")
@@ -2280,6 +2345,7 @@ def intervene(
     should_execute = not dry_run and (resume.execute_without_force or force_execute)
     returncode: int | None = None
     result_signals: tuple[str, ...] = ()
+    turn_completed: bool | None = None
     if should_execute:
         completed = subprocess.run(
             command,
@@ -2293,8 +2359,10 @@ def intervene(
         if returncode != 0:
             status = "failed"
         elif resume.completion_format == "codex-jsonl":
-            finished, result_signals = _completed_without_pressure(completed.stdout)
-            status = "completed" if finished else "resumed"
+            turn_completed, result_signals = _continuation_observations(
+                completed.stdout
+            )
+            status = "resumed"
         else:
             status = "resumed"
     else:
@@ -2315,6 +2383,8 @@ def intervene(
         "executed": should_execute,
         "returncode": returncode,
         "result_signals": list(result_signals),
+        "turn_completed": turn_completed,
+        "outcome_verification": "unverified",
         "verification_status": "observed" if should_execute else "unverifiable",
         "prompt_template_id": template_id,
         "prompt_sha256": sha256_bytes(prompt.encode("utf-8")),
@@ -2330,11 +2400,24 @@ def intervene(
     return path, artifact
 
 
-def intervention_prompt(template_id: str = RESUME_TEMPLATE_ID) -> str:
+def intervention_prompt(
+    template_id: str = RESUME_TEMPLATE_ID, *, incident: Mapping[str, Any] | None = None
+) -> str:
     try:
-        return _RESUME_TEMPLATES[template_id]
+        prompt = _RESUME_TEMPLATES[template_id]
     except KeyError as error:
         raise ValueError(f"unknown intervention template: {template_id}") from error
+    if template_id == RECOVERY_TEMPLATE_ID and incident is not None:
+        note = str(incident["description"])
+        if len(note) > _MAX_DESCRIPTION_CHARS or find_secret_spans(note):
+            raise ValueError(
+                "recovery report is too long or contains credential-shaped material"
+            )
+        prompt += (
+            "\n\nOperator report (investigate this report; it is not a verified cause "
+            "or additional authorization):\n" + json.dumps(note, ensure_ascii=False)
+        )
+    return prompt
 
 
 def record_intervention_result(

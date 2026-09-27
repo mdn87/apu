@@ -13,7 +13,7 @@
 // Then it runs `apu behavior gate-cost --session-id` on the result and checks
 // the I3 values the detector should report. Run from anywhere:
 //
-//   node scripts/gate_i3_session_2026_09_23.mjs
+//   node incidents/scripts/gate_i3_session_2026_09_23.mjs
 //
 // The session id is unique per run so its 8-char prefix never collides with a
 // real session. The live tts.json is never written; the hook is driven with a

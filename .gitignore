@@ -11,3 +11,12 @@ dist/
 .Codex/handoff-history/
 .claude/handoff.md
 .claude/handoff-history/
+
+# Local credentials and agent scratch; sanitized templates remain versioned.
+.env*
+!.env.example
+!.env.*.example
+!.env.template
+!.env.*.template
+.lugos-wip/
+*.sync-conflict-*

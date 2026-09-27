@@ -291,7 +291,7 @@ confidence. Applying the gate change and proving its effect remain the next step
 
 ## Intervention attempt 1, 2026-09-09
 
-Candidates 1 and 2 were packaged as `scripts/gate_intervention_2026_09_09.py`
+Candidates 1 and 2 were packaged as `incidents/scripts/gate_intervention_2026_09_09.py`
 and applied by the operator by hand, because the harness classifier denies
 this session any write or execution under the Claude home. The script kept a
 backup beside the hook, and `node --check` passed.
@@ -360,7 +360,7 @@ forward, which the fixture test covers. This is a halt over-match in the
 original rule set, not a regression from the change; it is recorded as a gap
 below. Row 10 failed because the driver did not re-approve after row 9
 re-armed the gate, so the state it probed was pending, not approved. The
-checked-in driver `scripts/gate_proof_session_2026_09_09.mjs` fixes both
+checked-in driver `incidents/scripts/gate_proof_session_2026_09_09.mjs` fixes both
 sequencing points and adds a "wait" halt row; the fixture-backed test already
 covers the steer-word gap and passes.
 
@@ -392,7 +392,7 @@ it. Until then, I3 stays reported.
 
 ### Run 3: the checked-in driver on the live hook
 
-The operator ran `scripts/gate_proof_session_2026_09_09.mjs` against the live
+The operator ran `incidents/scripts/gate_proof_session_2026_09_09.mjs` against the live
 hook: eighteen rows, one mismatch. The mismatch was again the driver's own
 wording for row 4, which had been changed from "dont" to "do not", also a
 halt-vocabulary token; the hook re-armed by its own rule. The wording is now
@@ -426,7 +426,7 @@ The operator decided the steer-word gap (a steer-led new objective must not
 inherit approval) and asked for the change to be durable. Durable here means
 APU's own plan path, not a hand-run patch with a `.bak` beside it:
 
-1. `scripts/gate_intervention_2026_09_09.py --plan build/gate-intervention`
+1. `incidents/scripts/gate_intervention_2026_09_09.py --plan build/gate-intervention`
    renders the patched hook and an approved plan: one `merge` operation with
    `full_file` strategy, the live hook's SHA-256 as precondition, the rendered
    hash as proposed output, backup required. Rendering touches nothing.
@@ -473,7 +473,7 @@ prompts, a `chat` gate state, and voice plumbing. The 2026-09-09 script
 renders its plan from the intervention backup, so applying that plan would
 have passed its precondition (the live hash) and then replaced the live file
 with a version missing eleven days of the operator's work. That path was
-abandoned. `scripts/gate_intervention_2026_09_23.py` anchors on the live
+abandoned. `incidents/scripts/gate_intervention_2026_09_23.py` anchors on the live
 text instead: every anchor must appear exactly once or `--check` returns 2,
 and there is no `--apply`; the only install path is the rendered APU plan.
 
@@ -504,7 +504,7 @@ harness classifier did not deny the apply this time.
 
 ### Proof on the live hook
 
-`scripts/gate_proof_session_2026_09_23.mjs` drives the live hook with a
+`incidents/scripts/gate_proof_session_2026_09_23.mjs` drives the live hook with a
 synthetic session through 31 rows: I4 allows and denials, the three
 narrative statements that used to re-arm, five halt forms, the steer-led new
 objective, short and affirmation-led steers, a question, and an off-list
@@ -554,7 +554,7 @@ The instrument is in place; the measurement needs a subject.
 
 ### End-to-end I3 subject, 2026-09-23
 
-`scripts/gate_i3_session_2026_09_23.mjs` plays the operator's side of the
+`incidents/scripts/gate_i3_session_2026_09_23.mjs` plays the operator's side of the
 2026-09-09 before-state against the live hook through the same three hook
 modes Claude Code runs (gate on prompt, gate on tool, the Stop hook with a
 transcript path that does not exist, so nothing is spoken), under a unique
@@ -571,7 +571,7 @@ session under an armed gate is still the measurement that matters.
 
 ### Part b: Dias board files in the note exemption, 2026-09-23
 
-`scripts/gate_intervention_2026_09_23_dias.py` adds `.dias/` to the note
+`incidents/scripts/gate_intervention_2026_09_23_dias.py` adds `.dias/` to the note
 paths so a gated session can update its own chip. It anchors on the installed
 09-23 hook (refuses to run on an older one), is covered by the fixture test,
 and renders its plan the same way. The harness classifier denied `apu apply`

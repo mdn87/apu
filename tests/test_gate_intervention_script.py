@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "gate_intervention_2026_09_09.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "incidents" / "scripts" / "gate_intervention_2026_09_09.py"
 
 FIXTURE = r"""
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs';

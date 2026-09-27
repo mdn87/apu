@@ -25,8 +25,8 @@ the live text as of 2026-09-23 and changes four things:
    standing. Found by this script's own fixture test.
 
 Usage:
-    python scripts/gate_intervention_2026_09_23.py --check
-    python scripts/gate_intervention_2026_09_23.py --plan build/gate-rule-gaps
+    python incidents/scripts/gate_intervention_2026_09_23.py --check
+    python incidents/scripts/gate_intervention_2026_09_23.py --plan build/gate-rule-gaps
     apu apply build/gate-rule-gaps/gate-rule-gaps-plan.json --provider claude-code
 
 There is deliberately no --apply: the durable path is apu apply with a

@@ -16,9 +16,9 @@ The change does three things:
    the gate as before.
 
 Usage:
-    python scripts/gate_intervention_2026_09_09.py --check   # report only
-    python scripts/gate_intervention_2026_09_09.py --apply   # patch + .bak
-    python scripts/gate_intervention_2026_09_09.py --revert  # restore .bak
+    python incidents/scripts/gate_intervention_2026_09_09.py --check   # report only
+    python incidents/scripts/gate_intervention_2026_09_09.py --apply   # patch + .bak
+    python incidents/scripts/gate_intervention_2026_09_09.py --revert  # restore .bak
 
 The script refuses to apply twice and never touches any other file.
 """
@@ -219,7 +219,7 @@ def render_plan(hook: Path, out_dir: Path) -> tuple[Path, Path]:
                 "docs/cases/2026-09-09-start-of-turn-gate.md.",
                 "evidence": [
                     "docs/cases/2026-09-09-start-of-turn-gate.md",
-                    "scripts/gate_proof_session_2026_09_09.mjs",
+                    "incidents/scripts/gate_proof_session_2026_09_09.mjs",
                 ],
             }
         ],

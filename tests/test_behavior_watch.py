@@ -231,7 +231,7 @@ def test_legitimate_barrier_blocks_intervention(tmp_path: Path) -> None:
         intervene(state, diagnosis_id=diagnosis["diagnosis_id"], dry_run=True)
 
 
-def test_noninteractive_intervention_resumes_and_records_completion(
+def test_noninteractive_turn_completion_does_not_prove_task_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -269,7 +269,9 @@ def test_noninteractive_intervention_resumes_and_records_completion(
         created_at="2026-08-12T10:03:00Z",
     )
 
-    assert result["status"] == "completed"
+    assert result["status"] == "resumed"
+    assert result["turn_completed"] is True
+    assert result["outcome_verification"] == "unverified"
     assert result["executed"] is True
     assert seen["command"][:3] == ["codex", "exec", "resume"]
     assert seen["kwargs"]["cwd"] == cwd
