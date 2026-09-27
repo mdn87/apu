@@ -431,7 +431,7 @@ than a hand-run patch. The case's script renders the changed surface and a
 reviewed plan whose precondition is the live file's hash:
 
 ```console
-python scripts/gate_intervention_2026_09_09.py --plan build/gate-intervention
+python incidents/scripts/gate_intervention_2026_09_09.py --plan build/gate-intervention
 apu review build/gate-intervention/gate-intervention-plan.json
 apu apply build/gate-intervention/gate-intervention-plan.json --provider claude-code
 apu rollback RECEIPT

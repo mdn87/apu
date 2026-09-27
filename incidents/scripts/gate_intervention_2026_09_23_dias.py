@@ -10,8 +10,8 @@ the deny path is unchanged; the path normalization and `..` refusal in
 isNoteWrite apply as before.
 
 Usage:
-    python scripts/gate_intervention_2026_09_23_dias.py --check
-    python scripts/gate_intervention_2026_09_23_dias.py --plan build/gate-dias
+    python incidents/scripts/gate_intervention_2026_09_23_dias.py --check
+    python incidents/scripts/gate_intervention_2026_09_23_dias.py --plan build/gate-dias
     apu apply build/gate-dias/gate-dias-plan.json --provider claude-code
 
 No --apply: the durable path is apu apply with a receipt.

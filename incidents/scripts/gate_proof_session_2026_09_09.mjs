@@ -7,7 +7,7 @@
 // event. It never touches a real session's gate state and removes its own
 // temp markers when done. Run from anywhere:
 //
-//   node scripts/gate_proof_session_2026_09_09.mjs
+//   node incidents/scripts/gate_proof_session_2026_09_09.mjs
 //
 // Prints one JSON object. "mismatches" must be 0.
 import { spawnSync } from 'node:child_process';
