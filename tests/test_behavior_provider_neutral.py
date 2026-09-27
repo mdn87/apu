@@ -696,6 +696,7 @@ def test_claude_cli_provider_override_runs_the_short_command_flow(
         == 0
     )
     assert "Provider: claude-code" in capsys.readouterr().out
+    monkeypatch.chdir(cwd)
     assert wtf_main(["--provider", "claude-code", "--json"]) == 0
     diagnosis = json.loads(capsys.readouterr().out)
     assert diagnosis["provider"] == "claude-code"
@@ -802,8 +803,9 @@ def test_wtf_explicit_provider_does_not_diagnose_a_stale_incident_of_another_pro
     )
     assert latest["incident_id"] == diagnosis["incident_id"]
 
-    # Without selectors the latest (now Claude) incident is reused, and the text
-    # output says which incident and provider it diagnosed.
+    # In the same directory the latest (now Claude) incident is reused, and the
+    # text output says which incident and provider it diagnosed.
+    monkeypatch.chdir(claude_cwd)
     assert wtf_main([]) == 0
     output = capsys.readouterr().out
     assert f"Incident: {diagnosis['incident_id']} (claude-code, previously marked)" in output

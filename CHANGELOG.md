@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add `apu wtf` and `apu ezpz` alongside the existing hyphenated commands,
+  with shared help, plain-language results, session/evidence context, and
+  actionable attribution errors. Continuation commands name the exact
+  diagnosis; insufficient evidence asks for context instead of continuation.
+- Scope default `wtf` incident reuse to the current directory. Add `--fresh`
+  to inspect the run again, retain explicit `--incident` access from other
+  directories, and reject conflicting incident/session selectors.
+
 - Add an end-to-end I3 session driver that plays a gated operator session
   against the live hook and checks the detector's reading, and a part-b gate
   script that widens the note exemption to `.dias/` (rendered plan; operator

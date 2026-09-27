@@ -176,28 +176,37 @@ Run these commands from the repository associated with the agent session:
 
 ```console
 apu-event "asked me to approve a reversible filename choice"
-apu-wtf
-apu-intervene
+apu wtf
+# Run the printed apu-intervene --diagnosis ... command.
 ```
 
 The event command selects one fresh, incomplete Codex or Claude Code JSONL
 session in the current working directory. Use `--provider codex|claude-code`,
 `--session-id`, or `--trace-root` when automatic selection is ambiguous or is
-not the intended session. If no event was marked, `apu-wtf` selects the most
-recent incomplete run itself.
+not the intended session. If no matching event was marked, `apu wtf` selects
+one fresh, incomplete run in the current directory. It never reuses another
+directory's incident by default. Use `apu wtf --fresh` to capture the run
+again after it changes, or `apu wtf --incident ID` to inspect a saved incident
+from any directory. The legacy `apu-wtf` spelling still works.
 
 When the stop was an easy call the agent should have made on its own, use the
 one-step form instead of `apu-event` plus `apu-wtf`:
 
 ```console
-apu-ezpz
-apu-intervene
+apu ezpz
+# Run the printed apu-intervene --diagnosis ... command.
 ```
 
-`apu-ezpz` marks a fresh incident with the asserted `easy-decision-gate`
+`apu ezpz` (also `apu-ezpz`) marks a fresh incident with the asserted `easy-decision-gate`
 signal and diagnoses it. The diagnosis recommends the decide-and-continue
 resume template, which `apu-intervene` then sends or prints. A barrier in the
 evidence still blocks automatic intervention.
+
+Read the session and directory in the output before continuing. The printed
+command is bound to that diagnosis even if another incident is marked later.
+If the result is `insufficient-evidence`, describe the stop with `apu-event`
+and diagnose it again. Attribution errors include a recovery hint; `--json`
+keeps the machine-readable result without additional prose.
 
 For non-interactive Codex sessions, `apu-intervene` sends the temporary resume
 instruction through `codex exec resume`. For Codex Desktop sessions it prints

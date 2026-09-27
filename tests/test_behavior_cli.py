@@ -22,6 +22,7 @@ from apu.behavior_watch import (
     load_incident,
     mark_incident,
 )
+from apu.cli import main
 from apu.models import sha256_bytes
 
 
@@ -93,6 +94,7 @@ def test_short_command_flow_marks_diagnoses_and_prepares_continuation(
         == 0
     )
     assert "Next: apu-wtf" in capsys.readouterr().out
+    monkeypatch.chdir(cwd)
     assert wtf_main([]) == 0
     assert "likely-autonomy-loss" in capsys.readouterr().out
     assert intervene_main(["--dry-run"]) == 0
@@ -298,3 +300,172 @@ def test_event_cli_returns_nonzero_for_no_attribution(
     )
     assert "no_attribution: no_exact_cwd_candidate" in capsys.readouterr().err
     assert not (state / "behavior" / "latest-incident.json").exists()
+
+
+def test_wtf_default_does_not_reuse_another_directorys_incident(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    other = tmp_path / "other"
+    current = tmp_path / "current"
+    other.mkdir()
+    current.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, other)
+    monkeypatch.setenv("APU_HOME", str(state))
+    _, incident = mark_incident(
+        state,
+        "asked me to choose a filename",
+        trace_root=traces,
+        cwd=other,
+    )
+    monkeypatch.chdir(current)
+    # Empty provider homes keep selection isolated from real user sessions.
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "empty-codex"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty-claude"))
+
+    assert wtf_main(["--json"]) == 2
+    assert json.loads(capsys.readouterr().out)["kind"] == "no_attribution"
+    assert load_incident(state)["incident_id"] == incident["incident_id"]
+    assert not (state / "behavior" / "latest-diagnosis.json").exists()
+
+
+@pytest.mark.parametrize("command", ["wtf", "ezpz"])
+def test_spaced_commands_diagnose_and_pin_the_next_action(
+    command: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setattr("apu.behavior_watch.shutil.which", lambda _name: "codex")
+    selectors = ["--trace-root", str(traces), "--cwd", str(cwd)]
+
+    assert main([command, *selectors]) == 0
+    output = capsys.readouterr().out
+    assert "Session: cli-session (codex)" in output
+    assert f"Directory: {cwd}" in output
+    assert "The agent appears to have paused on work it could continue." in output
+    assert "clues, not proof" in output
+    continuation = next(
+        line for line in output.splitlines() if line.startswith("Next: ")
+    )
+    diagnosis_id = continuation.split("--diagnosis ")[1]
+
+    # A newer diagnosis must not redirect the printed continuation command.
+    assert main([command, *selectors, "--json"]) == 0
+    newer = json.loads(capsys.readouterr().out)
+    assert newer["diagnosis_id"] != diagnosis_id
+    assert intervene_main(["--diagnosis", diagnosis_id, "--dry-run", "--json"]) == 0
+    intervention = json.loads(capsys.readouterr().out)
+    assert intervention["diagnosis_id"] == diagnosis_id
+    assert intervention["executed"] is False
+
+
+def test_wtf_fresh_reads_new_evidence_and_explicit_incident_can_cross_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "codex" / "sessions"
+    trace = _trace(traces, cwd)
+    monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setenv("CODEX_HOME", str(traces.parent))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty-claude"))
+    monkeypatch.chdir(cwd)
+    assert wtf_main(["--json"]) == 0
+    original = json.loads(capsys.readouterr().out)
+    assert wtf_main(["--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["incident_id"] == original["incident_id"]
+
+    trace.write_text(
+        trace.read_text(encoding="utf-8").replace(
+            "Would you prefer that I choose which file?",
+            "I am checking the implementation.",
+        ),
+        encoding="utf-8",
+    )
+    assert main(["wtf", "--fresh", "--json"]) == 0
+    fresh = json.loads(capsys.readouterr().out)
+    assert fresh["incident_id"] != original["incident_id"]
+    assert fresh["status"] == "insufficient-evidence"
+    _, barrier_incident = mark_incident(
+        state,
+        "stopped to ask for an API key",
+        trace_root=traces,
+        cwd=cwd,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["wtf", "--incident", barrier_incident["incident_id"]]) == 0
+    output = capsys.readouterr().out
+    assert "Possible barriers: credential-barrier" in output
+    assert "Review the barrier and its evidence" in output
+    assert "Next: apu-intervene" not in output
+
+
+@pytest.mark.parametrize("command", ["wtf", "ezpz"])
+def test_spaced_commands_explain_attribution_failure_and_preserve_json(
+    command: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    args = [command, "--provider", "codex", "--trace-root", str(tmp_path / "missing")]
+    assert main(args) == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert f"apu {command}: no_attribution: trace_root_unavailable" in output.err
+    assert "set --trace-root" in output.err
+    assert main([*args, "--json"]) == 2
+    output = capsys.readouterr()
+    assert not output.err
+    result = json.loads(output.out)
+    assert set(result) == {"kind", "reason_code", "provenance"}
+    assert result["reason_code"] == "trace_root_unavailable"
+
+
+def test_insufficient_evidence_asks_for_context_instead_of_continuation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    trace = _trace(tmp_path / "sessions", tmp_path)
+    trace.write_text(
+        trace.read_text(encoding="utf-8").replace(
+            "Would you prefer that I choose which file?",
+            "I am checking the implementation.",
+        ),
+        encoding="utf-8",
+    )
+    assert main(["wtf", "--trace-root", str(trace.parent), "--cwd", str(tmp_path)]) == 0
+    output = capsys.readouterr().out
+    assert "insufficient-evidence" in output
+    assert "Next: describe the stop" in output
+    assert "Next: apu-intervene" not in output
+
+
+@pytest.mark.parametrize("selector", ["--cwd", "--session-id", "--trace-root"])
+def test_wtf_rejects_ignored_selectors_with_saved_incident(
+    selector: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    state = tmp_path / "state"
+    monkeypatch.setenv("APU_HOME", str(state))
+    assert main(["wtf", "--incident", "incident-example", selector, "example"]) == 1
+    assert "--incident cannot be combined" in capsys.readouterr().err
+    assert not state.exists()

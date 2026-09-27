@@ -224,8 +224,8 @@ ten minutes old:
 
 ```console
 apu-event "asked me to approve a reversible filename choice"
-apu-wtf
-apu-intervene
+apu wtf
+# Run the exact apu-intervene --diagnosis ... command printed by the diagnosis.
 ```
 
 Use `--provider codex|claude-code` and `--session-id` to resolve an ambiguity
@@ -235,14 +235,24 @@ incomplete matches, APU returns `no_attribution` with a bounded reason code and
 exits nonzero. It never falls back to a recent session from another project or
 provider.
 
-`apu-wtf` can also analyze the most recent incomplete run when no event has
-been marked. Explicit `--provider`, `--session-id`, `--cwd`, or `--trace-root`
-selectors always describe the run you mean: the latest marked incident is
-reused only when it satisfies every selector, otherwise a fresh incident is
-marked from that selection. A stale incident from another provider or project
-is never diagnosed in its place.
+`apu wtf` (also `apu-wtf`) reuses the latest marked incident only when it
+matches the current directory, or the directory supplied with `--cwd`, and
+every explicit provider/session selector. Otherwise it selects one fresh,
+incomplete run in that directory. `--fresh` forces a new snapshot of the run;
+`--trace-root` also forces fresh selection. Use `--incident ID` to inspect a
+specific saved incident from any directory. It cannot be combined with
+`--fresh`, `--cwd`, `--session-id`, or `--trace-root`.
 
-`apu-ezpz` is the one-step form for the most common stop: the agent paused on a
+Both commands explain the result and show the session, directory, evidence
+location, possible causes, and saved diagnosis. Matching instruction rules
+are clues rather than proof of causation. A continuation command includes
+`--diagnosis ID`, so another diagnosis cannot redirect it to a different
+incident. Insufficient evidence prompts you to describe the stop; possible
+barriers prompt review instead of continuation. Selection failures explain
+how to resolve the mismatch or ambiguity. `--json` retains the existing
+diagnosis and attribution-error formats.
+
+`apu ezpz` (also `apu-ezpz`) is the one-step form for the most common stop: the agent paused on a
 simple, reversible decision it should have made itself. It marks a fresh
 incident carrying the operator-asserted `easy-decision-gate` signal (an optional
 positional description replaces the default wording), diagnoses it, and
@@ -253,9 +263,9 @@ evidence, the diagnosis still reports `possible-legitimate-barrier` and
 `apu-intervene` still refuses; the attestation never overrides a barrier.
 
 ```console
-apu-ezpz
-apu-ezpz "asked which of two equivalent test file names to use"
-apu-intervene
+apu ezpz
+apu ezpz "asked which of two equivalent test file names to use"
+# Run the exact apu-intervene --diagnosis ... command printed by the diagnosis.
 ```
 
 `apu-intervene` resumes a non-interactive Codex session directly;

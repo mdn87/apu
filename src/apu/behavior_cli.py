@@ -22,6 +22,8 @@ from .behavior_watch import (
     record_intervention_result,
     watcher_status,
 )
+from .models import canonical_json
+from .state import resolve_state_home
 
 # Default attestation for ``apu-ezpz``: the agent paused on a choice that was
 # easy and reversible. The wording deliberately avoids barrier vocabulary so the
@@ -30,8 +32,25 @@ EZPZ_DEFAULT_DESCRIPTION = (
     "paused on a simple reversible choice and asked for approval instead of "
     "choosing the default and continuing"
 )
-from .models import canonical_json
-from .state import resolve_state_home
+
+_ATTRIBUTION_HELP = {
+    "ambiguous_active_candidates": "Several sessions match. Add --session-id with the session you mean.",
+    "ambiguous_provider": "Both providers match. Add --provider codex or --provider claude-code.",
+    "ambiguous_session_id": "The session ID matches several traces. Narrow --trace-root to the intended trace directory.",
+    "cwd_mismatch": "The session belongs to another directory. Set --cwd to that session's project directory.",
+    "no_active_candidate": "No incomplete session matches. Start or resume the task in this directory, then retry.",
+    "no_exact_cwd_candidate": "No session matches this directory. Run from the agent's project directory or set --cwd.",
+    "session_not_found": "The session ID was not found. Check --session-id, --provider, and --trace-root.",
+    "stale_trace": "The matching trace is over ten minutes old. Resume the task, then retry.",
+    "trace_root_unavailable": "No trace directory is available. Start a Codex or Claude Code session, or set --trace-root.",
+    "unparsable_trace": "The matching trace could not be read. Check --trace-root and the session's JSONL file.",
+}
+
+_STATUS_HELP = {
+    "likely-autonomy-loss": "The agent appears to have paused on work it could continue.",
+    "possible-legitimate-barrier": "The stop may require your input or authorization.",
+    "insufficient-evidence": "The evidence does not establish why the agent stopped.",
+}
 
 
 def _emit(value: Any) -> None:
@@ -40,6 +59,10 @@ def _emit(value: Any) -> None:
 
 def _run(parser: argparse.ArgumentParser, function, argv: Sequence[str] | None) -> int:
     args = parser.parse_args(argv)
+    return _run_command(parser.prog, function, args)
+
+
+def _run_command(prog: str, function, args: argparse.Namespace) -> int:
     try:
         return function(args)
     except NoAttributionError as error:
@@ -52,12 +75,13 @@ def _run(parser: argparse.ArgumentParser, function, argv: Sequence[str] | None) 
             _emit(result)
         else:
             print(
-                f"{parser.prog}: no_attribution: {error.result.reason_code}",
+                f"{prog}: no_attribution: {error.result.reason_code}",
                 file=sys.stderr,
             )
+            print(_ATTRIBUTION_HELP[error.result.reason_code], file=sys.stderr)
         return 2
     except (OSError, TypeError, ValueError, RuntimeError) as error:
-        print(f"{parser.prog}: {error}", file=sys.stderr)
+        print(f"{prog}: {error}", file=sys.stderr)
         return 1
 
 
@@ -103,17 +127,129 @@ def event_main(argv: Sequence[str] | None = None) -> int:
 
 
 def _wtf_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="apu-wtf")
-    parser.add_argument("--incident")
-    parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
-    parser.add_argument("--session-id")
-    parser.add_argument("--trace-root", type=Path)
-    parser.add_argument("--cwd", type=Path)
-    parser.add_argument(
-        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+    parser = argparse.ArgumentParser(
+        prog="apu-wtf",
+        description="Explain an agent's stop and show the next action for that incident.",
+        epilog="Reuses the latest incident only in the selected directory. Use --fresh to inspect the current run.",
     )
-    parser.add_argument("--json", action="store_true")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--incident", help="diagnose this saved incident, even from another directory"
+    )
+    selection.add_argument(
+        "--fresh",
+        action="store_true",
+        help="mark the current run instead of reusing a saved incident",
+    )
+    _add_selection_arguments(parser)
     return parser
+
+
+def _add_selection_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--provider",
+        choices=SESSION_PROVIDER_NAMES,
+        help="limit selection to this provider",
+    )
+    parser.add_argument("--session-id", help="select an exact session ID")
+    parser.add_argument(
+        "--trace-root", type=Path, help="read sessions from this trace directory"
+    )
+    parser.add_argument(
+        "--cwd",
+        type=Path,
+        help="agent's project directory (default: current directory)",
+    )
+    parser.add_argument(
+        "--evidence-schema-version",
+        type=int,
+        choices=(1, 2),
+        default=2,
+        help="saved evidence format (default: 2)",
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="print the diagnosis as JSON"
+    )
+
+
+def add_shortcut_parsers(commands) -> None:
+    for name, factory, handler, summary in (
+        ("wtf", _wtf_parser, _wtf_command, "explain why an agent stopped"),
+        (
+            "ezpz",
+            _ezpz_parser,
+            _ezpz_command,
+            "diagnose an unnecessary pause on a simple decision",
+        ),
+    ):
+        parent = factory()
+        parser = commands.add_parser(
+            name,
+            parents=[parent],
+            add_help=False,
+            help=summary,
+            description=parent.description,
+            epilog=parent.epilog,
+        )
+        parser.set_defaults(behavior_handler=handler)
+
+
+def run_shortcut(args: argparse.Namespace) -> int:
+    return _run_command(f"apu {args.command}", args.behavior_handler, args)
+
+
+def _print_diagnosis(
+    path: Path,
+    diagnosis: dict[str, Any],
+    incident: dict[str, Any],
+    *,
+    marked: bool,
+) -> None:
+    status = diagnosis["status"]
+    print(f"{status}: {_STATUS_HELP[status]}")
+    session = incident["session"]
+    print(f"Session: {session['session_id']} ({diagnosis['provider']})")
+    print(f"Directory: {session['cwd']}")
+    print(
+        f"Incident: {diagnosis['incident_id']} "
+        f"({diagnosis['provider']}, {'marked now' if marked else 'previously marked'})"
+    )
+    asserted = incident.get("claim", {}).get("asserted_signals", [])
+    if EASY_DECISION_SIGNAL in asserted:
+        print(
+            f"Attested: {EASY_DECISION_SIGNAL} (you identified this as a simple, reversible choice)"
+        )
+    signals = diagnosis["observed_signals"]
+    if signals:
+        print(f"Signals: {', '.join(signals)}")
+    evidence = incident.get("nearby_evidence", {})
+    if evidence.get("line_start") is not None:
+        print(
+            f"Evidence: {session['trace_path']}:{evidence['line_start']}-{evidence['line_end']}"
+        )
+    print("Possible causes (matching rules are clues, not proof):")
+    for source in diagnosis["likely_sources"][:3]:
+        location = source.get("path") or source["kind"]
+        lines = source.get("line_numbers")
+        suffix = f":{','.join(str(item) for item in lines)}" if lines else ""
+        print(
+            f"  {source['rank']}. {location}{suffix} [{', '.join(source['reason_codes'])}]"
+        )
+    print(f"Saved: {path}")
+    if status == "possible-legitimate-barrier":
+        print(f"Possible barriers: {', '.join(diagnosis['possible_barriers'])}")
+        if EASY_DECISION_SIGNAL in asserted:
+            print("Barrier evidence contradicts the easy-decision attestation.")
+        print("Review the barrier and its evidence before continuing the task.")
+    elif status == "insufficient-evidence":
+        print(
+            'Next: describe the stop with apu-event "what happened", then run apu wtf.'
+        )
+    else:
+        print(
+            f"Resume template: {diagnosis['recommended_intervention']['template_id']}"
+        )
+        print(f"Next: apu-intervene --diagnosis {diagnosis['diagnosis_id']}")
 
 
 def _latest_incident_matches(
@@ -148,63 +284,58 @@ def _latest_incident_matches(
 
 
 def wtf_main(argv: Sequence[str] | None = None) -> int:
-    def command(args: argparse.Namespace) -> int:
-        state_home = resolve_state_home()
-        incident_id = args.incident
-        marked = False
-        if incident_id is None:
-            # Explicit selectors describe the run the operator means. The latest
-            # incident is reused only when it satisfies all of them; otherwise a
-            # fresh incident is marked from that selection instead of silently
-            # diagnosing whatever was marked last, possibly for another provider
-            # or project.
-            incident_id = _latest_incident_matches(
-                state_home,
-                provider=args.provider,
-                session_id=args.session_id,
-                cwd=args.cwd,
-            )
-            if incident_id is None or args.trace_root is not None:
-                _, incident = mark_incident(
-                    state_home,
-                    "most recent incomplete provider run selected automatically",
-                    provider=args.provider,
-                    trace_root=args.trace_root,
-                    session_id=args.session_id,
-                    cwd=args.cwd if args.cwd is not None else Path.cwd(),
-                    evidence_schema_version=args.evidence_schema_version,
-                )
-                incident_id = incident["incident_id"]
-                marked = True
-        path, diagnosis = diagnose_incident(
-            state_home,
-            incident_id=incident_id,
-            provider=args.provider,
-        )
-        if args.json:
-            _emit(diagnosis)
-        else:
-            print(
-                f"Incident: {diagnosis['incident_id']} "
-                f"({diagnosis['provider']}, {'marked now' if marked else 'previously marked'})"
-            )
-            print(
-                f"{diagnosis['status']}: {', '.join(diagnosis['observed_signals']) or 'no matched signal'}"
-            )
-            for source in diagnosis["likely_sources"][:3]:
-                location = source.get("path") or source["kind"]
-                lines = source.get("line_numbers")
-                suffix = f":{','.join(str(item) for item in lines)}" if lines else ""
-                print(
-                    f"{source['rank']}. {location}{suffix} "
-                    f"[{', '.join(source['reason_codes'])}]"
-                )
-            print(f"Saved: {path}")
-            if diagnosis["status"] != "possible-legitimate-barrier":
-                print("Next: apu-intervene")
-        return 0
+    return _run(_wtf_parser(), _wtf_command, argv)
 
-    return _run(_wtf_parser(), command, argv)
+
+def _wtf_command(args: argparse.Namespace) -> int:
+    if args.incident is not None and any(
+        value is not None for value in (args.cwd, args.session_id, args.trace_root)
+    ):
+        raise ValueError(
+            "--incident cannot be combined with --cwd, --session-id, or --trace-root; choose a saved incident or a current run"
+        )
+    state_home = resolve_state_home()
+    incident_id = args.incident
+    marked = False
+    if incident_id is None:
+        # Explicit selectors describe the run the operator means. The latest
+        # incident is reused only when it satisfies all of them; otherwise a
+        # fresh incident is marked from that selection instead of silently
+        # diagnosing whatever was marked last, possibly for another provider
+        # or project.
+        incident_id = _latest_incident_matches(
+            state_home,
+            provider=args.provider,
+            session_id=args.session_id,
+            cwd=args.cwd if args.cwd is not None else Path.cwd(),
+        )
+        if incident_id is None or args.trace_root is not None or args.fresh:
+            _, incident = mark_incident(
+                state_home,
+                "incomplete provider run selected from the requested directory",
+                provider=args.provider,
+                trace_root=args.trace_root,
+                session_id=args.session_id,
+                cwd=args.cwd if args.cwd is not None else Path.cwd(),
+                evidence_schema_version=args.evidence_schema_version,
+            )
+            incident_id = incident["incident_id"]
+            marked = True
+    path, diagnosis = diagnose_incident(
+        state_home,
+        incident_id=incident_id,
+        provider=args.provider,
+    )
+    if args.json:
+        _emit(diagnosis)
+    else:
+        _print_diagnosis(
+            path,
+            diagnosis,
+            load_incident(state_home, diagnosis["incident_id"]),
+            marked=marked,
+        )
+    return 0
 
 
 def _ezpz_parser() -> argparse.ArgumentParser:
@@ -215,15 +346,13 @@ def _ezpz_parser() -> argparse.ArgumentParser:
             "reversible decision itself instead of handing it to the human gate."
         ),
     )
-    parser.add_argument("description", nargs="?", default=EZPZ_DEFAULT_DESCRIPTION)
-    parser.add_argument("--provider", choices=SESSION_PROVIDER_NAMES)
-    parser.add_argument("--session-id")
-    parser.add_argument("--trace-root", type=Path)
-    parser.add_argument("--cwd", type=Path, default=Path.cwd())
     parser.add_argument(
-        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+        "description",
+        nargs="?",
+        default=EZPZ_DEFAULT_DESCRIPTION,
+        help="what the agent asked you to decide (optional)",
     )
-    parser.add_argument("--json", action="store_true")
+    _add_selection_arguments(parser)
     return parser
 
 
@@ -235,56 +364,31 @@ def ezpz_main(argv: Sequence[str] | None = None) -> int:
     recommends the decide-and-continue resume template.
     """
 
-    def command(args: argparse.Namespace) -> int:
-        state_home = resolve_state_home()
-        _, incident = mark_incident(
-            state_home,
-            args.description,
-            provider=args.provider,
-            trace_root=args.trace_root,
-            session_id=args.session_id,
-            cwd=args.cwd,
-            evidence_schema_version=args.evidence_schema_version,
-            asserted_signals=(EASY_DECISION_SIGNAL,),
-        )
-        path, diagnosis = diagnose_incident(
-            state_home,
-            incident_id=incident["incident_id"],
-            provider=args.provider,
-        )
-        barrier = diagnosis["status"] == "possible-legitimate-barrier"
-        if args.json:
-            _emit(diagnosis)
-        else:
-            print(f"Incident: {diagnosis['incident_id']} ({diagnosis['provider']}, marked now)")
-            print(f"Attested: {EASY_DECISION_SIGNAL}")
-            print(
-                f"{diagnosis['status']}: {', '.join(diagnosis['observed_signals'])}"
-            )
-            for source in diagnosis["likely_sources"][:3]:
-                location = source.get("path") or source["kind"]
-                lines = source.get("line_numbers")
-                suffix = f":{','.join(str(item) for item in lines)}" if lines else ""
-                print(
-                    f"{source['rank']}. {location}{suffix} "
-                    f"[{', '.join(source['reason_codes'])}]"
-                )
-            print(f"Saved: {path}")
-            if barrier:
-                print(
-                    "Barrier evidence contradicts the easy-decision attestation: "
-                    f"{', '.join(diagnosis['possible_barriers'])}"
-                )
-                print("Not resumable automatically; review the gate rule instead.")
-            else:
-                print(
-                    "Resume template: "
-                    f"{diagnosis['recommended_intervention']['template_id']}"
-                )
-                print("Next: apu-intervene")
-        return 0
+    return _run(_ezpz_parser(), _ezpz_command, argv)
 
-    return _run(_ezpz_parser(), command, argv)
+
+def _ezpz_command(args: argparse.Namespace) -> int:
+    state_home = resolve_state_home()
+    _, incident = mark_incident(
+        state_home,
+        args.description,
+        provider=args.provider,
+        trace_root=args.trace_root,
+        session_id=args.session_id,
+        cwd=args.cwd if args.cwd is not None else Path.cwd(),
+        evidence_schema_version=args.evidence_schema_version,
+        asserted_signals=(EASY_DECISION_SIGNAL,),
+    )
+    path, diagnosis = diagnose_incident(
+        state_home,
+        incident_id=incident["incident_id"],
+        provider=args.provider,
+    )
+    if args.json:
+        _emit(diagnosis)
+    else:
+        _print_diagnosis(path, diagnosis, incident, marked=True)
+    return 0
 
 
 def _intervene_parser() -> argparse.ArgumentParser:
