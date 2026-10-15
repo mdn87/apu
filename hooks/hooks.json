@@ -1,0 +1,4 @@
+{
+  "description": "Explicit operator commands only; no watcher or automatic recovery.",
+  "modules": ["./register.js"]
+}
