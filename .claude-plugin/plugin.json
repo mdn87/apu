@@ -1,0 +1,7 @@
+{
+  "name": "apu-session",
+  "version": "0.1.0",
+  "description": "Exact-session APU diagnosis and preparation through the existing portable CLI.",
+  "author": { "name": "APU contributors" },
+  "license": "MIT"
+}

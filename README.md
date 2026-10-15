@@ -10,6 +10,38 @@ through an independently installed and authenticated Codex or Claude CLI.
 
 ## Install and use
 
+### Optional Claude session commands
+
+After installing APU's CLI, load this checkout with
+`claude --plugin-dir /absolute/path/to/apu`. On Claude Code 2.1.287+,
+`/apu-diagnose` passes the current provider, session ID and working directory
+to `apu-wtf --fresh`. It saves an ordinary APU incident and diagnosis and prints
+their IDs and the existing status. It does not infer a session from nearby
+files or replace journal evidence with mod events.
+
+`/apu-prepare` uses that saved diagnosis with `apu-intervene --dry-run`.
+APU owns attribution, barrier checks, prompt integrity and policy-mutation
+checks. A refusal stays a refusal. A successful preparation prints the saved
+continuation argument vector and leaves its outcome unverified. Repeating the
+command returns the same preparation in the current mod instance. Neither
+command submits a prompt, resumes an agent, enables a watcher or changes policy.
+
+Clear, resume, branch, reload and directory changes discard the adapter's
+cached diagnosis. Diagnose the current session again before preparing. Failed
+or timed-out calls are not retried automatically; inspect APU's saved artifacts.
+Commands are explicit and immediate, with a 15-second subprocess deadline and
+no background polling. The ordinary CLI remains available without the mod for
+both Codex and Claude. `apu-watch` controls the watcher and is separate from
+these commands.
+
+The pilot targets native Windows first. Run `claude plugin validate .` and
+`claude plugin test .`; the generated types and runtime were checked with
+Claude Code 2.1.296. macOS/Linux CLI launch and live Desktop remain separate
+qualification checks. Native prompt delivery and voice transport are outside
+this pilot; no UI event implies successful recovery.
+
+### Portable CLI
+
 ```console
 python -m pip install .
 apu audit /path/to/repository --json inventory.json

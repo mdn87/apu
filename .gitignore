@@ -20,3 +20,7 @@ dist/
 !.env.*.template
 .lugos-wip/
 *.sync-conflict-*
+.lugos-audit/
+.apu-mod-smoke/
+.claude-plugin/types/
+/tsconfig.json
