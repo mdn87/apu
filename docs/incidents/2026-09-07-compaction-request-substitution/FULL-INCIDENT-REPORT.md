@@ -2,7 +2,7 @@
 
 - **Observed:** 2026-09-07, approximately 02:55–03:21 America/New_York
 - **Affected session:** Claude Code/Claude Desktop session
-  `05a17f11-6cfb-46eb-9fb2-6ca95025439c`
+  (session id withheld)
 - **Status:** diagnostic support repaired; recurrence prevention remains partly
   outside APU
 - **Primary failure:** context compaction changed the operator's request
@@ -143,7 +143,7 @@ this decisive fact only after two incorrect turns.
 ## Repairs completed
 
 APU commit `48d7560` is on `origin/main`, and the global uv installation now
-uses `file:///C:/Users/Matt/Desktop/MyDocs/apu`.
+uses a local `file://` checkout of this repository.
 
 The implementation now:
 
