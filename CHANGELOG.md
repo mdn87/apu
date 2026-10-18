@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.0 — 2026-10-18
+
+- Add the optional `apu-session` Claude Code plugin (0.1.0) with
+  `/apu-diagnose` and `/apu-prepare`. Both call the existing CLI for the exact
+  current session (`apu-wtf --fresh`, `apu-intervene --dry-run`); neither
+  submits a prompt, resumes an agent, enables a watcher or changes policy.
+
 - Expand `apu ezpz` to recover unresolved outcomes, ineffective retries, and
   unnecessary approval requests. Recovery diagnoses distinguish the operator's
   report from a verified cause; the report is included in the hashed continuation.

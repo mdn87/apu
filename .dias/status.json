@@ -4,17 +4,17 @@
   "projectLabel": "APU",
   "assessmentState": "scored",
   "assessmentScope": "current-milestone",
-  "percentComplete": 100,
-  "milestonePhase": "operational-proof",
+  "percentComplete": 95,
+  "milestonePhase": "closeout",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-09-24T02:40:00Z",
+  "assessedAt": "2026-10-18T12:00:00Z",
   "confidence": "reported",
-  "currentMilestone": "Bounded behavior audits, provider-neutral execution evidence, CI, and an Orca behavior-evidence boundary.",
-  "remainingSummary": "All board steps done. I3 measured end to end on a scripted session; a real gated session is still unmeasured. Part b (.dias note paths) is rendered, operator applies.",
-  "nextChipId": null,
+  "currentMilestone": "Release 0.9.0: provider-neutral incident attribution, the proven start-of-turn gate intervention with its I3 detector, and the wtf and ezpz diagnosis and recovery workflows.",
+  "remainingSummary": "0.9.0 cut and tagged 2026-10-18 (changelog closed, runbook pin repointed); PR 17 added the optional apu-session Claude plugin (not yet installed). Left: apply the rendered Dias note-path plan to the live gate, measure I3 on a real session.",
+  "nextChipId": "apu:apply-dias-note-paths",
   "source": {
-    "label": "Reassessed 2026-09-23 after the gate rule gaps install and the I3 detector.",
-    "updatedAt": "2026-09-23"
+    "label": "Reassessed 2026-10-18 during the audit landing pass after PR 17 (apu-session plugin 0.1.0) and the 0.9.0 tag.",
+    "updatedAt": "2026-10-18"
   }
 }

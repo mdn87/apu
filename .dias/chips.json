@@ -369,7 +369,167 @@
           "entryId": "apu:gate-rule-gaps:dias-2026-09-23",
           "at": "2026-09-24T03:20:00Z",
           "kind": "note",
-          "message": "Part b rendered: .dias added to the note paths, tested on the fixture. The harness denied the apply twice from this session; the operator runs the rendered plan."
+          "message": "Part b rendered: the Dias board folder added to the note paths, tested on the fixture. The harness denied the apply twice from this session; the operator runs the rendered plan."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:diagnosis-recovery",
+      "projectId": "apu",
+      "title": "Plain-language wtf and ezpz diagnosis with outcome recovery",
+      "summary": "The wtf and ezpz commands share help and plain results, scope incident reuse to the current directory, and ezpz recovers unresolved outcomes and needless approval requests.",
+      "stage": "done",
+      "sequence": 110,
+      "prereqs": [
+        "apu:orca-evidence-boundary"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-09-23T23:42:07Z",
+        "updatedAt": "2026-10-18T12:00:00Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:diagnosis-recovery:authored-2026-09-27",
+          "at": "2026-09-27T19:55:12.874Z",
+          "kind": "created",
+          "message": "Landed 2026-09-27: the diagnosis workflow refinement, then outcome recovery merged as PR 16. Full suite run today: 555 passed, 2 skipped."
+        },
+        {
+          "entryId": "apu:diagnosis-recovery:outcomes-2026-09-27",
+          "at": "2026-09-27T19:55:12.874Z",
+          "kind": "note",
+          "message": "A completed model turn no longer counts as a completed task; outcomes stay unverified until the operator records a result. Insufficient-evidence interventions are rejected."
+        },
+        {
+          "entryId": "apu:diagnosis-recovery:pr17-2026-10-18",
+          "at": "2026-10-18T12:00:00Z",
+          "kind": "note",
+          "message": "PR 17 (merged 2026-10-15) adds the optional apu-session Claude plugin 0.1.0 with /apu-diagnose and /apu-prepare over the same CLI. The plugin is not installed on this host yet; installing it is an operator step."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:release-0-9-0",
+      "projectId": "apu",
+      "title": "Cut the 0.9.0 release",
+      "summary": "Close the unreleased changelog as 0.9.0, tag it, and repoint the runbook install pin, which still names 0.6.0; the package version already reads 0.9.0.",
+      "stage": "done",
+      "sequence": 120,
+      "prereqs": [
+        "apu:diagnosis-recovery",
+        "apu:gate-rule-gaps"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-09-27T19:55:12.874Z",
+        "updatedAt": "2026-10-18T12:00:00Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:release-0-9-0:authored-2026-09-27",
+          "at": "2026-09-27T19:55:12.874Z",
+          "kind": "created",
+          "message": "Ready 2026-09-27: all unreleased work is merged with a green suite. The newest tag is 0.8.0 from 2026-08-14 and the changelog section is still headed Unreleased."
+        },
+        {
+          "entryId": "apu:release-0-9-0:recheck-2026-09-27",
+          "at": "2026-09-27T20:14:54.186Z",
+          "kind": "note",
+          "message": "Rechecked 2026-09-27: suite 555 passed, 2 skipped; newest tag still 0.8.0; changelog still headed Unreleased; runbook install pin still 0.6.0."
+        },
+        {
+          "entryId": "apu:release-0-9-0:cut-2026-10-18",
+          "at": "2026-10-18T12:00:00Z",
+          "kind": "note",
+          "message": "Cut 2026-10-18: changelog closed as 0.9.0 with the PR 17 apu-session plugin entry, runbook pins repointed to v0.9.0, tag v0.9.0 pushed on main."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:apply-dias-note-paths",
+      "projectId": "apu",
+      "title": "Apply the Dias board note-path exemption to the live gate",
+      "summary": "Operator runs the rendered part-b plan so a gated session may update its own chip files. The live hook was checked 2026-09-27 and still lacks the exemption.",
+      "stage": "ready",
+      "sequence": 130,
+      "prereqs": [
+        "apu:gate-rule-gaps"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-09-24T03:20:00Z",
+        "updatedAt": "2026-09-27T19:55:12.874Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:apply-dias-note-paths:authored-2026-09-27",
+          "at": "2026-09-27T19:55:12.874Z",
+          "kind": "created",
+          "message": "Rendered and fixture-tested since 2026-09-23. Live hook note list read 2026-09-27: the Dias board folder is absent, so the apply has not run yet."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:measure-real-gated-session",
+      "projectId": "apu",
+      "title": "Measure I3 on a real gated operator session",
+      "summary": "Run a real operator session with the gate armed, by voice or in all mode, and read I3 from the detector. The only reading so far is a scripted six-turn subject.",
+      "stage": "planned",
+      "sequence": 140,
+      "prereqs": [
+        "apu:gate-decision-evidence"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-09-27T19:55:12.874Z",
+        "updatedAt": "2026-09-27T19:55:12.874Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:measure-real-gated-session:authored-2026-09-27",
+          "at": "2026-09-27T19:55:12.874Z",
+          "kind": "created",
+          "message": "Open residual in the case record: the live gate is in voice mode, so no real session has yet spent a turn pending under the new hook."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:second-intervention-case",
+      "projectId": "apu",
+      "title": "Select a second intervention case",
+      "summary": "Repeat the case method on another audited finding, such as the compaction request-substitution incident, once the first case has a real-session measurement.",
+      "stage": "vague",
+      "sequence": 150,
+      "prereqs": [
+        "apu:measure-real-gated-session"
+      ],
+      "linkedRunIds": [],
+      "confidence": "unknown",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-09-27T19:55:12.874Z",
+        "updatedAt": "2026-09-27T19:55:12.874Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:second-intervention-case:authored-2026-09-27",
+          "at": "2026-09-27T19:55:12.874Z",
+          "kind": "created",
+          "message": "Idea only; nothing selected. The case method and the durable apply path exist from the first case."
         }
       ]
     }
