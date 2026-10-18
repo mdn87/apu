@@ -34,7 +34,7 @@ does not resume this session.
 
 The source transcript is:
 
-`C:\Users\Matt\.claude\projects\C--Users-Matt-Desktop-MyDocs\05a17f11-6cfb-46eb-9fb2-6ca95025439c.jsonl`
+a local Claude Code session transcript (path withheld; not published)
 
 The evidence establishes the following sequence:
 
