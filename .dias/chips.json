@@ -408,7 +408,7 @@
           "entryId": "apu:diagnosis-recovery:pr17-2026-10-18",
           "at": "2026-10-18T12:00:00Z",
           "kind": "note",
-          "message": "PR 17 (merged 2026-10-15) adds the optional apu-session Claude plugin 0.1.0 with /apu-diagnose and /apu-prepare over the same CLI. The plugin is not installed on this host yet; installing it is an operator step."
+          "message": "PR 17 (merged 2026-10-15) adds the optional apu-session Claude plugin 0.1.0: /apu-diagnose and /apu-prepare over the same CLI. Not yet installed on this host; operator step."
         }
       ]
     },
