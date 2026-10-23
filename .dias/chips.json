@@ -523,18 +523,18 @@
       "chipId": "apu:second-intervention-case",
       "projectId": "apu",
       "title": "Select a second intervention case",
-      "summary": "Repeat the case method on another audited finding, such as the compaction request-substitution incident, once the first case has a real-session measurement.",
-      "stage": "vague",
+      "summary": "Selected an evidence-quality case: structured Codex results hide nonzero command exits from APU. Recent history provides a replayable baseline without operator interaction.",
+      "stage": "done",
       "sequence": 150,
       "prereqs": [
         "apu:measure-real-gated-session"
       ],
       "linkedRunIds": [],
-      "confidence": "unknown",
+      "confidence": "reported",
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-27T19:55:12.874Z",
-        "updatedAt": "2026-09-27T19:55:12.874Z"
+        "updatedAt": "2026-10-23T23:12:24.264936Z"
       },
       "evidence": [
         {
@@ -542,6 +542,39 @@
           "at": "2026-09-27T19:55:12.874Z",
           "kind": "created",
           "message": "Idea only; nothing selected. The case method and the durable apply path exist from the first case."
+        },
+        {
+          "entryId": "apu:second-intervention-case:selected-2026-10-23",
+          "at": "2026-10-23T23:12:24.264936Z",
+          "kind": "stage-change",
+          "message": "Selected structured Codex result ingestion: 68 explicit nonzero command results in six sessions were recorded as completed. History analysis supplies the baseline."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:structured-codex-results",
+      "projectId": "apu",
+      "title": "Recognize structured Codex command results",
+      "summary": "Read typed result blocks and explicit command exit codes without copying output text; preserve existing evidence and make history audits reflect recorded failures.",
+      "stage": "ready",
+      "sequence": 160,
+      "prereqs": [
+        "apu:second-intervention-case"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-23T23:12:24.264936Z",
+        "updatedAt": "2026-10-23T23:12:24.264936Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:structured-codex-results:scoped-2026-10-23",
+          "at": "2026-10-23T23:12:24.264936Z",
+          "kind": "note",
+          "message": "Ready for local implementation: 68 misclassified command results identified. Preserve replay compatibility; no live gate, external configuration, or manual observation needed."
         }
       ]
     }
