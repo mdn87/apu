@@ -485,7 +485,7 @@
       "projectId": "apu",
       "title": "Measure I3 on a real gated operator session",
       "summary": "Run a real operator session with the gate armed, by voice or in all mode, and read I3 from the detector. The only reading so far is a scripted six-turn subject.",
-      "stage": "planned",
+      "stage": "blocked",
       "sequence": 140,
       "prereqs": [
         "apu:gate-decision-evidence"
@@ -495,7 +495,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-27T19:55:12.874Z",
-        "updatedAt": "2026-09-27T19:55:12.874Z"
+        "updatedAt": "2026-10-23T23:00:56.311Z"
       },
       "evidence": [
         {
@@ -503,6 +503,12 @@
           "at": "2026-09-27T19:55:12.874Z",
           "kind": "created",
           "message": "Open residual in the case record: the live gate is in voice mode, so no real session has yet spent a turn pending under the new hook."
+        },
+        {
+          "entryId": "apu:measure-real-gated-session:checked-2026-10-23",
+          "at": "2026-10-23T23:00:56.311Z",
+          "kind": "stage-change",
+          "message": "Blocked: live gate is off; 61 retained sessions contain no gate decisions. I3 remains unmeasured until a real operator completes a gated Claude session."
         }
       ]
     },

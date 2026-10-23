@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-10-23T23:00:56.311Z",
+  "chip_id": "apu:measure-real-gated-session",
+  "measurement_status": "unmeasured",
+  "reason": "No retained session has a joined gate decision; the live Claude gate is off.",
+  "live_gate_mode": "off",
+  "hook_sha256": "b25ebf07dd05b279662e11e98c00b2bad8cc5a80f6d7fcce9c4fd56b461607d0",
+  "log": {
+    "path_sha256": "ad0b5474eac79e4508f5a6ce4f6f87aa418f58fd973d2415b347219bbd5f9402",
+    "file_bytes": 2083001,
+    "read_bytes": 2083001,
+    "truncated": false,
+    "invalid_line_count": 0,
+    "event_count": 31777
+  },
+  "first_event_at": "2026-10-14T07:00:00.692000Z",
+  "last_event_at": "2026-10-23T05:38:43.019000Z",
+  "detector_summary": {
+    "session_count": 61,
+    "sessions_with_decisions": 0,
+    "decision_count": 0,
+    "unmatched_prefix_decision_count": 0,
+    "ambiguous_prefixes": [],
+    "i3_max": 0,
+    "sessions_over_target": []
+  },
+  "i3_real_operator_session": null,
+  "scope": "Bounded retained hook log across projects; no repository-specific gated subject was found.",
+  "privacy": "No prompts, tool inputs, tool outputs, or raw log lines retained."
+}

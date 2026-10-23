@@ -596,3 +596,33 @@ Until then the live hook carries the 09-23 rules without `.dias/`.
 - Leading "wait" as a noun still re-arms the gate (fails safe).
 - The live gate mode is `voice`; typed prompts are not gated at all right
   now. The rules above apply whenever the gate is armed, by voice or by mode.
+
+### Real-session measurement attempt, 2026-10-23
+
+The board prerequisite `apu:gate-decision-evidence` is done. The live hook
+still contains the decision-log producer, but its current configuration is
+`gate: off`, superseding the September observation of voice mode. This Codex
+session does not execute Claude Code's start-of-turn gate.
+
+The detector found 61 sessions and **zero gate decisions** in the retained
+log. The bounded read covered the entire 2,083,001-byte file without
+truncation or invalid lines: 31,777 recognized events from October 14 at
+07:00:00.692 UTC through October 23 at 05:38:43.019 UTC. No alternate latency
+log was present in the hook's state directory. This log spans projects; its
+session count is not an APU-only sample. The 30-day CLI query and the bounded
+retained-log check agreed on the absence of gate decisions.
+
+**Real-session I3 remains unmeasured.** The detector's numeric zero has no
+joined gated subject and cannot establish that the gate costs zero turns.
+The content-free aggregate is retained in
+`2026-10-23-real-gated-session-check.json`; no raw log content was copied.
+The seven detector tests passed. No gate configuration or hook was changed.
+
+The measurement chip is blocked on a real operator session in Claude Code
+with the gate armed by voice or in all mode. Record its session ID, complete
+the pending plan turn and the operator's approval, then run
+`apu behavior gate-cost --session-id SESSION_ID --since 1d --json`.
+Require joined decisions and completed pending turns; annotate intentional
+question turns separately. A scripted driver or an agent supplying both sides
+of that interaction would remain a synthetic subject. The Dias exemption and
+second intervention case were not worked on.

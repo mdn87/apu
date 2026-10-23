@@ -8,10 +8,10 @@
   "milestonePhase": "closeout",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-10-18T12:00:00Z",
+  "assessedAt": "2026-10-23T23:00:56.311Z",
   "confidence": "reported",
   "currentMilestone": "Release 0.9.0: provider-neutral incident attribution, the proven start-of-turn gate intervention with its I3 detector, and the wtf and ezpz diagnosis and recovery workflows.",
-  "remainingSummary": "0.9.0 cut and tagged 2026-10-18 (changelog closed, runbook pin repointed); PR 17 added the optional apu-session Claude plugin (not yet installed). Left: apply the rendered Dias note-path plan to the live gate, measure I3 on a real session.",
+  "remainingSummary": "Release 0.9.0 is tagged; the optional session plugin is not installed. Dias exemption remains open. Real-session I3 is unmeasured: the gate is off and a gated subject is needed.",
   "nextChipId": "apu:apply-dias-note-paths",
   "source": {
     "label": "Reassessed 2026-10-18 during the audit landing pass after PR 17 (apu-session plugin 0.1.0) and the 0.9.0 tag.",
