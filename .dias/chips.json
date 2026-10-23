@@ -484,8 +484,8 @@
       "chipId": "apu:measure-real-gated-session",
       "projectId": "apu",
       "title": "Measure I3 on a real gated operator session",
-      "summary": "Run a real operator session with the gate armed, by voice or in all mode, and read I3 from the detector. The only reading so far is a scripted six-turn subject.",
-      "stage": "blocked",
+      "summary": "Closed by operator acceptance: Matt reports that the intervention or a newer approach worked. Numerical I3 measurement waived; real-session I3 remains unmeasured.",
+      "stage": "done",
       "sequence": 140,
       "prereqs": [
         "apu:gate-decision-evidence"
@@ -495,7 +495,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-27T19:55:12.874Z",
-        "updatedAt": "2026-10-23T23:00:56.311Z"
+        "updatedAt": "2026-10-23T23:04:22.287Z"
       },
       "evidence": [
         {
@@ -509,6 +509,12 @@
           "at": "2026-10-23T23:00:56.311Z",
           "kind": "stage-change",
           "message": "Blocked: live gate is off; 61 retained sessions contain no gate decisions. I3 remains unmeasured until a real operator completes a gated Claude session."
+        },
+        {
+          "entryId": "apu:measure-real-gated-session:operator-accepted-2026-10-23",
+          "at": "2026-10-23T23:04:22.287Z",
+          "kind": "stage-change",
+          "message": "Closed by operator acceptance: Matt reports the intervention or a newer approach worked. Numerical I3 measurement waived; no measured result claimed."
         }
       ]
     },

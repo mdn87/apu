@@ -618,7 +618,7 @@ The content-free aggregate is retained in
 `2026-10-23-real-gated-session-check.json`; no raw log content was copied.
 The seven detector tests passed. No gate configuration or hook was changed.
 
-The measurement chip is blocked on a real operator session in Claude Code
+At this check, the measurement chip was blocked on a real operator session in Claude Code
 with the gate armed by voice or in all mode. Record its session ID, complete
 the pending plan turn and the operator's approval, then run
 `apu behavior gate-cost --session-id SESSION_ID --since 1d --json`.
@@ -626,3 +626,14 @@ Require joined decisions and completed pending turns; annotate intentional
 question turns separately. A scripted driver or an agent supplying both sides
 of that interaction would remain a synthetic subject. The Dias exemption and
 second intervention case were not worked on.
+
+### Operator acceptance, 2026-10-23
+
+Matt subsequently accepted the practical outcome, reporting that the
+intervention or a newer technique he tried worked. At his direction, the
+board item is closed with reported confidence and the numerical I3
+measurement requirement waived. This is operator acceptance, not a detector
+measurement or evidence attributing the improvement to a specific technique.
+Real-session I3 remains unmeasured, and the retained evidence above is unchanged.
+No further gated session is required to close this item. The separate Dias
+exemption remains the board's next item; no second case was selected.
