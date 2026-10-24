@@ -13,6 +13,7 @@ from typing import Any
 from uuid import uuid4
 
 from .audit import build_inventory
+from .behavior_lock import serialized_behavior
 from .behavior_watch import claude_code_trace_root, codex_trace_root, normalized_cwd_key
 from .evidence import (
     EVIDENCE_READER_VERSIONS,
@@ -1145,6 +1146,7 @@ def _deduplicate_findings(
     )
 
 
+@serialized_behavior
 def audit_behavior(
     state_home: Path,
     *,
@@ -1394,9 +1396,10 @@ def audit_behavior(
         "retention": {
             "event_detail_days": 30,
             "policy": (
-                "Detailed normalized events are candidates for expiry after 30 days "
-                "or when a linked policy monitoring window closes; this audit does "
-                "not delete provider logs or APU evidence."
+                "Unreferenced normalized session files older than 30 days may be "
+                "pruned with a reviewed retention preview. Referenced sessions "
+                "remain pinned, including closed monitoring windows. This audit "
+                "does not delete provider logs or APU evidence."
             ),
         },
         "privacy": (

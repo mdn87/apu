@@ -531,9 +531,11 @@ source record still match. Known legitimate barriers suppress incident findings.
 
 The report binds incident-time surfaces separately from current-at-audit
 surfaces and stores only safe metadata, hashes, references, counts, and detector
-codes. It neither archives nor deletes provider logs. Thirty days or closure of
-a linked monitoring window is recorded as the detailed-event retention target;
-automated pruning requires its own reviewed implementation.
+codes. It neither archives nor deletes provider logs. Explicit preview/apply
+retention now prunes whole unreferenced session files older than thirty days,
+with bounded scans, shared writer exclusion, and durable resumable receipts.
+References pin all versions of a session, even after a monitoring window closes;
+there is no reliable linkage that would justify earlier expiry on closure alone.
 
 ### M13 — Provider-neutral incident attribution
 

@@ -728,7 +728,7 @@
       "projectId": "apu",
       "title": "Implement behavior evidence pruning",
       "summary": "Preview and apply bounded retention while preserving referenced evidence and provider logs.",
-      "stage": "planned",
+      "stage": "done",
       "sequence": 210,
       "prereqs": [
         "apu:behavior-audits"
@@ -738,7 +738,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-10-24T03:29:48.768233Z",
-        "updatedAt": "2026-10-24T03:29:48.768233Z"
+        "updatedAt": "2026-10-24T04:03:43.212695Z"
       },
       "evidence": [
         {
@@ -746,6 +746,12 @@
           "at": "2026-10-24T03:29:48.768233Z",
           "kind": "note",
           "message": "Matt authorized completing this implementation as part of the three-item APU goal."
+        },
+        {
+          "entryId": "apu:behavior-evidence-pruning:implemented-2026-10-24",
+          "at": "2026-10-24T04:03:43.212695Z",
+          "kind": "stage-change",
+          "message": "Preview and pruning implemented with reference protection, writer locks, and crash recovery. Real-state preview succeeded; no live evidence was deleted."
         }
       ]
     }

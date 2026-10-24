@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .behavior_lock import serialized_behavior
 from .models import canonical_json
 from .state import ensure_state_home, validate_installation_id
 
@@ -52,6 +53,7 @@ _V2_FIELDS = _BASE_FIELDS | frozenset(
 )
 
 
+@serialized_behavior
 def append_outcome(state_home: Path, record: Mapping[str, Any]) -> Path:
     """Validate and append one canonical JSONL outcome record."""
 
