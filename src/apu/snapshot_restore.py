@@ -24,6 +24,8 @@ def restore_snapshot(
     *,
     paths: Iterable[Path] = (),
     force_paths: Iterable[Path] = (),
+    expected_states: Mapping[Path, tuple[str, str | None]] | None = None,
+    journal_id: str | None = None,
 ) -> RestoreResult:
     """Restore a snapshot's declared roots or exact selected manifest paths."""
 
@@ -32,6 +34,10 @@ def restore_snapshot(
     selections = _select_entries(manifest, tuple(paths))
     forced = {_absolute_path(path, "--force-path") for path in force_paths}
     selected_targets = {target for target, _logical_path in selections}
+    if expected_states is not None and set(expected_states) != selected_targets:
+        raise RestorePreflightError("expected states must cover every selected target")
+    if expected_states is not None and forced:
+        raise RestorePreflightError("bound restore cannot force past expected states")
     unknown_forced = forced - selected_targets
     if unknown_forced:
         raise RestorePreflightError(
@@ -56,6 +62,13 @@ def restore_snapshot(
                 temporary / f"{index:04d}",
             )
             current_type, current_hash = _describe_current(target)
+            if expected_states is not None:
+                expected = expected_states[target]
+                if (current_type, current_hash) != expected:
+                    raise RestorePreflightError(
+                        "restore target changed since the recorded update"
+                    )
+                current_type, current_hash = expected
             items.append(
                 RestoreItem(
                     target=target,
@@ -69,6 +82,7 @@ def restore_snapshot(
             root / "restore-journals",
             force_paths=forced,
             snapshot_id=snapshot_id,
+            journal_id=journal_id,
         )
 
 
@@ -82,9 +96,9 @@ def _select_entries(
             "logical_path"
         ]
     for entry in manifest["entries"]:
-        available[
-            _absolute_path(Path(entry["target_path"]), "snapshot entry")
-        ] = entry["logical_path"]
+        available[_absolute_path(Path(entry["target_path"]), "snapshot entry")] = entry[
+            "logical_path"
+        ]
 
     if requested:
         selected: list[tuple[Path, str]] = []

@@ -12,6 +12,7 @@ def run_confined(
     input: bytes,
     timeout: float,
     cwd: Path,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Bound a sandbox launch and terminate its process tree on interruption."""
     process = subprocess.Popen(
@@ -20,6 +21,7 @@ def run_confined(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=cwd,
+        env=env,
         start_new_session=os.name != "nt",
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     )

@@ -80,7 +80,7 @@ def _latest_only_help(arguments: tuple[str, ...]) -> HelpCommandResult:
     return HelpCommandResult(exit_code=0, stdout=text.encode())
 
 
-def test_claude_latest_only_cli_is_explicitly_unavailable_and_read_only(
+def test_claude_latest_only_cli_has_read_only_snapshot_capability(
     tmp_path: Path,
 ) -> None:
     home, tree = _installed_claude_package(tmp_path)
@@ -102,21 +102,18 @@ def test_claude_latest_only_cli_is_explicitly_unavailable_and_read_only(
         help_runner=runner,
     )
 
-    assert capability.status == "unavailable"
+    assert capability.status == "available"
     assert capability.exact_version_supported is False
-    assert capability.verifiable_rollback_supported is False
-    assert capability.execution_supported is False
+    assert capability.verifiable_rollback_supported is True
+    assert capability.execution_supported is True
     assert capability.pre_state == PackageStateIdentity(
         package_id=coordinate.package_id,
         version="5.0.7",
         tree_sha256=capability.pre_state.tree_sha256,
         scope="user",
     )
-    assert capability.reason_codes == (
-        "apu-provider-upgrade-executor-disabled",
-        "provider-exact-version-selection-unsupported",
-        "provider-verifiable-rollback-unsupported",
-    )
+    assert capability.reason_codes == ()
+    assert capability.rollback_method == "apu-snapshot"
     assert calls == [
         ("plugin", "--help"),
         ("plugin", "update", "--help"),
@@ -136,11 +133,11 @@ def test_claude_latest_only_cli_is_explicitly_unavailable_and_read_only(
     assert capability.to_dict()["protocol"] == {
         "journal_before_mutation": True,
         "authoritative_pre_state": True,
-        "official_provider_operation_only": True,
+        "official_update_required": True,
         "exact_target_version_required": True,
         "target_tree_verification_required": True,
         "receipt_required": True,
-        "official_rollback_required": True,
+        "apu_snapshot_rollback_allowed": True,
         "rollback_verification_required": True,
         "idempotency_required": True,
         "journal_states": [
@@ -154,7 +151,7 @@ def test_claude_latest_only_cli_is_explicitly_unavailable_and_read_only(
     }
 
 
-def test_unavailable_upgrade_refuses_before_state_or_provider_mutation(
+def test_missing_executor_refuses_before_state_or_provider_mutation(
     tmp_path: Path,
 ) -> None:
     home, _ = _installed_claude_package(tmp_path)
@@ -181,7 +178,7 @@ def test_unavailable_upgrade_refuses_before_state_or_provider_mutation(
 
     with pytest.raises(
         PackageUpgradeUnavailable,
-        match="exact-version-selection-unsupported",
+        match="executor is not implemented",
     ):
         require_package_upgrade(request, capability, state_home=state)
 

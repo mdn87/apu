@@ -8,10 +8,10 @@
   "milestonePhase": "closeout",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-10-24T04:03:43.212695Z",
+  "assessedAt": "2026-10-24T05:20:00.102960Z",
   "confidence": "reported",
   "currentMilestone": "Release 0.9.0: provider-neutral incident attribution, the proven start-of-turn gate intervention with its I3 detector, and the wtf and ezpz diagnosis and recovery workflows.",
-  "remainingSummary": "Claude dispatch and evidence pruning are implemented. Package coordinator is complete; live Claude upgrades await exact-version install and restore support.",
+  "remainingSummary": "Claude dispatch, package updates with verified restoration, and evidence pruning are implemented. The separate gate note-path exemption remains ready.",
   "nextChipId": "apu:apply-dias-note-paths",
   "source": {
     "label": "Implementation, captured-history replay, and passing regression checks.",

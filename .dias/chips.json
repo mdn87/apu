@@ -695,7 +695,7 @@
       "projectId": "apu",
       "title": "Implement package upgrade execution",
       "summary": "Journal provider upgrades, verify the target, and support verifiable rollback and retry.",
-      "stage": "blocked",
+      "stage": "done",
       "sequence": 200,
       "prereqs": [
         "apu:deterministic-core"
@@ -705,7 +705,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-10-24T03:29:48.768233Z",
-        "updatedAt": "2026-10-24T03:54:02.693956Z"
+        "updatedAt": "2026-10-24T05:20:00.102960Z"
       },
       "evidence": [
         {
@@ -719,6 +719,18 @@
           "at": "2026-10-24T03:54:02.693956Z",
           "kind": "stage-change",
           "message": "Coordinator implemented; 636 tests pass. Live Claude upgrades still need documented exact-version install and restore operations."
+        },
+        {
+          "entryId": "apu:package-upgrade-execution:snapshot-authorized-2026-10-24",
+          "at": "2026-10-24T05:04:51.610535Z",
+          "kind": "note",
+          "message": "Matt authorized APU-managed Claude rollback using the existing snapshot and restore process. Implementing complete capture, drift checks, and recovery verification."
+        },
+        {
+          "entryId": "apu:package-upgrade-execution:snapshot-verified-2026-10-24",
+          "at": "2026-10-24T05:20:00.102960Z",
+          "kind": "stage-change",
+          "message": "Claude updates now use APU restore points. A real isolated CLI upgrade and rollback verified plugin files, settings, installation records, and the restored version."
         }
       ]
     },

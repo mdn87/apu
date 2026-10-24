@@ -167,11 +167,11 @@ class PackageUpgradeProtocolContract:
 
     journal_before_mutation: bool = True
     authoritative_pre_state: bool = True
-    official_provider_operation_only: bool = True
+    official_update_required: bool = True
     exact_target_version_required: bool = True
     target_tree_verification_required: bool = True
     receipt_required: bool = True
-    official_rollback_required: bool = True
+    apu_snapshot_rollback_allowed: bool = True
     rollback_verification_required: bool = True
     idempotency_required: bool = True
     journal_states: tuple[str, ...] = (
@@ -201,12 +201,18 @@ class PackageUpgradeCapability:
     reason_codes: tuple[str, ...]
     help_evidence: tuple[HelpEvidence, ...]
     protocol: PackageUpgradeProtocolContract = PackageUpgradeProtocolContract()
+    rollback_method: str = "provider"
 
     def __post_init__(self) -> None:
+        if self.rollback_method not in {"provider", "apu-snapshot"}:
+            raise ValueError("unsupported package rollback method")
         if self.status not in {"available", "unavailable"}:
             raise ValueError("unsupported package upgrade capability status")
         if self.status == "available" and (
-            not self.exact_version_supported
+            (
+                not self.exact_version_supported
+                and self.rollback_method != "apu-snapshot"
+            )
             or not self.verifiable_rollback_supported
             or not self.execution_supported
             or self.pre_state is None
@@ -234,11 +240,12 @@ class PackageUpgradeCapability:
             "reason_codes": list(self.reason_codes),
             "help_evidence": [item.to_dict() for item in self.help_evidence],
             "protocol": self.protocol.to_dict(),
+            "rollback_method": self.rollback_method,
         }
 
 
 class PackageUpgradeExecutor(Protocol):
-    """Trusted executable adapter boundary; operations must be provider-owned."""
+    """Official updates with verified provider or APU snapshot restoration."""
 
     provider: str
 
@@ -250,14 +257,14 @@ class PackageUpgradeExecutor(Protocol):
         coordinate: PackageCoordinate,
         request: PackageUpgradeRequest,
     ) -> Mapping[str, Any]:
-        """Run an official exact-version provider operation."""
+        """Run an official update; the coordinator verifies the exact target."""
 
     def rollback_exact(
         self,
         coordinate: PackageCoordinate,
         pre_state: PackageStateIdentity,
     ) -> Mapping[str, Any]:
-        """Run an official provider operation restoring the captured version."""
+        """Restore captured state through the provider or APU's restore journal."""
 
 
 def assess_claude_package_upgrade(
@@ -302,32 +309,32 @@ def assess_claude_package_upgrade(
         help_text[arguments] = result.stdout.decode("utf-8", errors="replace")
 
     update_help = help_text.get(("plugin", "update", "--help"), "")
-    install_help = help_text.get(("plugin", "install", "--help"), "")
     exact_update = _documents_exact_version(update_help)
-    exact_restore = _documents_exact_version(install_help)
-    if not exact_update:
-        reasons.append("provider-exact-version-selection-unsupported")
-    if not exact_restore:
-        reasons.append("provider-verifiable-rollback-unsupported")
+    from .claude_package_upgrade import claude_restore_surfaces
+
+    try:
+        claude_restore_surfaces(home, coordinate)
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+        reasons.append("claude-restore-coverage-unavailable")
+    if not update_help or "update" not in update_help.casefold():
+        reasons.append("provider-update-unavailable")
 
     second = adapter.observe(coordinate.profile_selector)
     if second.to_dict() != first.to_dict():
         reasons.append("provider-state-changed-during-capability-probe")
 
-    # The installed Claude CLI currently documents latest-only updates and no
-    # exact reinstall/rollback. Keep execution disabled even if future help
-    # text changes until a provider adapter implements and verifies both legs.
-    reasons.append("apu-provider-upgrade-executor-disabled")
     return PackageUpgradeCapability(
         provider="claude",
         package_id=coordinate.package_id,
-        status="unavailable",
+        status="unavailable" if reasons else "available",
         exact_version_supported=exact_update,
-        verifiable_rollback_supported=exact_restore,
-        execution_supported=False,
+        verifiable_rollback_supported="claude-restore-coverage-unavailable"
+        not in reasons,
+        execution_supported=not reasons,
         pre_state=pre_state,
         reason_codes=tuple(sorted(set(reasons))),
         help_evidence=tuple(evidence),
+        rollback_method="apu-snapshot",
     )
 
 

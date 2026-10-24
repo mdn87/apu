@@ -187,11 +187,11 @@ def test_research_persists_honest_improved_report_without_live_mutation(
         "decision": "work-order",
         "reason_codes": [
             "candidate-fixtures-unverified",
-            "provider-pin-unsupported",
             "static-classifier-improved",
+            "upgrade-capability-check-required",
         ],
         "eligible_for_pin_plan": False,
-        "mutation_status": "unavailable-provider-pin-unsupported",
+        "mutation_status": "requires-explicit-upgrade-with-restore-point",
     }
     assert report["efficacy"]["attribution_status"] == "none"
     assert report_path.is_file()

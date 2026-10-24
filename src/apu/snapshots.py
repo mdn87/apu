@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any
-from .filesystem import matches_exclude
 
+from .filesystem import matches_exclude
 from .models import sha256_bytes, sha256_json
 from .state import ensure_private_directory, write_json_atomic
 
@@ -255,6 +255,33 @@ def enforce_retention(
     open_snapshot_ids: Iterable[str] = (),
 ) -> list[str]:
     """Prune old manifests while preserving recent, protected, and open ones."""
+
+    from .package_state import PackageLock
+
+    with PackageLock(state_home, "snapshot-retention"):
+        protected = set(protected_snapshot_ids)
+        points = Path(state_home) / "claude-restore-points"
+        if points.is_symlink():
+            raise ValueError("linked Claude restore points are unsupported")
+        for point in points.glob("*.json"):
+            if point.is_symlink() or point.stat().st_size > 4 * 1024 * 1024:
+                raise ValueError("invalid Claude restore point")
+            value = json.loads(point.read_text(encoding="utf-8"))
+            if value.get("schema_version") != 1:
+                raise ValueError("unknown Claude restore point version")
+            identifier = value["snapshot_id"]
+            _validate_sha256(identifier, "Claude restore point snapshot id")
+            protected.add(identifier)
+        return _enforce_retention_locked(
+            state_home, keep_last=keep_last,
+            protected_snapshot_ids=protected, open_snapshot_ids=open_snapshot_ids,
+        )
+
+
+def _enforce_retention_locked(
+    state_home: Path, *, keep_last: int,
+    protected_snapshot_ids: Iterable[str], open_snapshot_ids: Iterable[str],
+) -> list[str]:
 
     if isinstance(keep_last, bool) or not isinstance(keep_last, int) or keep_last < 0:
         raise ValueError("keep_last must be a non-negative integer")
