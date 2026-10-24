@@ -655,6 +655,93 @@
           "message": "Codex execution commands are classified. Replay preserves old bytes and avoids duplicate events. All 616 tests pass; failed and unknown results cannot count as passing tests."
         }
       ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:claude-isolated-dispatch",
+      "projectId": "apu",
+      "title": "Implement isolated Claude dispatch",
+      "summary": "Run Claude work orders inside proven OS write isolation and validate proposed edits.",
+      "stage": "done",
+      "sequence": 190,
+      "prereqs": [
+        "apu:behavior-audits"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-24T03:29:48.768233Z",
+        "updatedAt": "2026-10-24T03:43:28.661683Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:claude-isolated-dispatch:goal-2026-10-24",
+          "at": "2026-10-24T03:29:48.768233Z",
+          "kind": "note",
+          "message": "Matt authorized completing this implementation as part of the three-item APU goal."
+        },
+        {
+          "entryId": "apu:claude-isolated-dispatch:verified-2026-10-24",
+          "at": "2026-10-24T03:43:28.661683Z",
+          "kind": "stage-change",
+          "message": "Implemented and verified: 626 tests pass, live writes are denied, and a real Claude request returns no edits. The API proxy is limited to the provider host."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:package-upgrade-execution",
+      "projectId": "apu",
+      "title": "Implement package upgrade execution",
+      "summary": "Journal provider upgrades, verify the target, and support verifiable rollback and retry.",
+      "stage": "planned",
+      "sequence": 200,
+      "prereqs": [
+        "apu:deterministic-core"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-24T03:29:48.768233Z",
+        "updatedAt": "2026-10-24T03:29:48.768233Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:package-upgrade-execution:goal-2026-10-24",
+          "at": "2026-10-24T03:29:48.768233Z",
+          "kind": "note",
+          "message": "Matt authorized completing this implementation as part of the three-item APU goal."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:behavior-evidence-pruning",
+      "projectId": "apu",
+      "title": "Implement behavior evidence pruning",
+      "summary": "Preview and apply bounded retention while preserving referenced evidence and provider logs.",
+      "stage": "planned",
+      "sequence": 210,
+      "prereqs": [
+        "apu:behavior-audits"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-24T03:29:48.768233Z",
+        "updatedAt": "2026-10-24T03:29:48.768233Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:behavior-evidence-pruning:goal-2026-10-24",
+          "at": "2026-10-24T03:29:48.768233Z",
+          "kind": "note",
+          "message": "Matt authorized completing this implementation as part of the three-item APU goal."
+        }
+      ]
     }
   ]
 }

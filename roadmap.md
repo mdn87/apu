@@ -187,6 +187,11 @@ order stays in the hand-run queue — it does not degrade to prompt-only
 "read-only" claims. Isolation must not be achieved by mutating the live
 roots' own ACLs: snapshot manifests declare ACLs out of scope, so an ACL
 change APU cannot faithfully restore is not a recoverable operation.
+The Claude adapter is implemented using Codex's sandbox as the OS broker,
+with Claude running in safe and restricted modes with tools disabled. A fresh
+probe binds each invocation to its stage; structured output is checked before
+it becomes a candidate. It requires both installed CLIs and provider authentication.
+
 Prompt instructions are guidance, not the enforcement mechanism. The session's sole output channel is a plan
 candidate; APU diffs it against the staged copy, attaches it to the campaign
 plan, and the change reaches live files only via `apu system apply` — plan,

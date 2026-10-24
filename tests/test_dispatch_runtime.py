@@ -97,6 +97,7 @@ def test_runner_uses_ephemeral_workspace_and_parses_schema_result(
     ) == {target: "files/target.txt"}
 
 
-def test_runtime_fails_closed_for_unimplemented_claude() -> None:
-    with pytest.raises(DispatchUnavailableError, match="Claude"):
+def test_claude_runtime_requires_both_cli_and_sandbox(monkeypatch) -> None:
+    monkeypatch.setattr("apu.dispatch_runtime.shutil.which", lambda name: None)
+    with pytest.raises(DispatchUnavailableError):
         runtime_for("claude")
