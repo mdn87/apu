@@ -32,7 +32,7 @@ def add_evidence_parser(commands: argparse._SubParsersAction) -> None:
     codex.add_argument("--session-id")
     codex.add_argument("--trace-root", type=Path)
     codex.add_argument("--cwd", type=Path)
-    codex.add_argument("--schema-version", type=int, choices=(1, 2), default=2)
+    codex.add_argument("--schema-version", type=int, choices=(1, 2, 3), default=3)
     codex.add_argument("--json", action="store_true")
 
     hook = subcommands.add_parser(
@@ -43,7 +43,7 @@ def add_evidence_parser(commands: argparse._SubParsersAction) -> None:
     hook.add_argument("--event", required=True)
     hook.add_argument("--input", type=Path)
     hook.add_argument("--observe-state", action="store_true")
-    hook.add_argument("--schema-version", type=int, choices=(1, 2), default=2)
+    hook.add_argument("--schema-version", type=int, choices=(1, 2, 3), default=3)
     hook.add_argument("--json", action="store_true")
 
     observe = subcommands.add_parser(
@@ -54,7 +54,7 @@ def add_evidence_parser(commands: argparse._SubParsersAction) -> None:
     observe.add_argument("--session-id", required=True)
     observe.add_argument("--cwd", type=Path, default=Path.cwd())
     observe.add_argument("--sequence", type=int, default=0)
-    observe.add_argument("--schema-version", type=int, choices=(1, 2), default=2)
+    observe.add_argument("--schema-version", type=int, choices=(1, 2, 3), default=3)
     observe.add_argument("--json", action="store_true")
 
     show = subcommands.add_parser(

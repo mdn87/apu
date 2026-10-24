@@ -369,14 +369,32 @@ bodies, reasoning, tool inputs, tool outputs, and command text are inspected onl
 in memory and never enter APU state. Stored records contain safe labels, hashes,
 exit status, duration, correlation hashes, and optional Git state.
 
-Evidence schema v2 adds exact selector provenance: selector mode, candidate
-count, last-event age, and confidence. The v2 reader also accepts legacy v1
-records, but v2 records are written under a separate `behavior/evidence/v2`
-route so a 0.8.0 reader never encounters a v2 object in its v1 file. During a
-staged rollout or rollback, ingestion commands can write a complete v1 object
-with `--schema-version 1`; `apu-event` exposes the equivalent
-`--evidence-schema-version 1` option, as does `apu behavior audit` when it
-ingests a Codex trace. No version is silently coerced.
+Evidence schema v3 is the default. It retains v2's selector provenance and
+interprets typed Codex command-result envelopes, including explicit nonzero,
+zero, running, and unknown statuses. Output bodies are never recursively
+searched for embedded statuses. A nonzero sibling result dominates; opaque
+siblings prevent a success claim. A tool response may finish while its command
+is still running, so consumers use observation status as well as event type.
+
+V1, v2, and v3 records remain in separate append-only routes; v3 uses
+`behavior/evidence/v3`. Readers select v3's result status for the same Codex
+source record without double-counting older interpretations. Changes outside
+the allowed result-status correction still fail closed. Snapshot boundaries
+may grow while the immutable source record stays the same. Existing evidence
+files are never rewritten. Auditing raw Codex traces reingests them once per
+writer version; evidence-only audits retain their existing projections until
+an explicit ingestion is performed.
+
+For rollback, ingestion commands accept `--schema-version 1` or `2` with the
+historical projection behavior. `apu-event`, `apu-wtf`, and `apu behavior audit`
+expose `--evidence-schema-version`. Old readers see only their supported routes;
+the current reader still prefers stored v3 records even if the writer is rolled
+back. No version is silently coerced.
+
+Codex command exits remain diagnostic observations, but single or repeated
+nonzero exits alone cannot establish autonomy loss or permit recovery. Search
+misses, for example, can legitimately return a nonzero exit. Independent
+behavioral signals or an explicit recovery request are still required.
 
 Ingest the most recent Codex session for the current repository, then inspect its
 request/result reconciliation and verify that its source records still match the

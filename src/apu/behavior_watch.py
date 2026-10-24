@@ -681,7 +681,10 @@ def _parse_session(path: Path) -> SessionTrace:
                     name = payload.get("name")
                     if isinstance(name, str) and name:
                         tool_calls[name] += 1
-                elif payload_type in {"function_call_output", "custom_tool_call_output"}:
+                elif payload_type in {
+                    "function_call_output",
+                    "custom_tool_call_output",
+                }:
                     output = payload.get("output", payload.get("result"))
                     if codex_result_status(output)[0] == "failed":
                         signal_codes.add("tool-failure-observed")
@@ -2131,6 +2134,15 @@ def diagnose_incident(
             f"diagnosis provider mismatch: expected {incident_provider}, got {provider}"
         )
     signals = tuple(sorted(set(incident.get("observed_signals", ()))))
+    # Codex command exits describe processes, including benign search misses.
+    # Retain them as evidence, but require a separate behavioral signal before
+    # diagnosing autonomy loss or permitting a recovery continuation.
+    diagnostic_signals = set(signals)
+    if incident_provider == "codex":
+        diagnostic_signals -= {
+            "tool-failure-observed",
+            "repeated-identical-tool-failure",
+        }
     barriers = tuple(sorted(set(incident.get("possible_barriers", ()))))
     sources = _surface_sources(incident)
     evidence = incident.get("nearby_evidence", {})
@@ -2149,7 +2161,11 @@ def diagnose_incident(
         sources.append(
             {
                 "kind": "runtime-behavior",
-                "reason_codes": ["tool-failure-without-proven-fallback"],
+                "reason_codes": [
+                    "command-exit-observed"
+                    if incident_provider == "codex"
+                    else "tool-failure-without-proven-fallback"
+                ],
                 "score": 60,
             }
         )
@@ -2202,7 +2218,7 @@ def diagnose_incident(
         else "recovery-requested"
         if RECOVERY_SIGNAL in signals
         else "likely-autonomy-loss"
-        if signals
+        if diagnostic_signals
         else "insufficient-evidence"
     )
     template_id = _resume_template_id(signals)
@@ -2227,6 +2243,8 @@ def diagnose_incident(
             "reason": "operator requested recovery; the root cause is not established"
             if RECOVERY_SIGNAL in signals
             else "deterministic signals were sufficient"
+            if diagnostic_signals
+            else "command status alone does not establish autonomy loss"
             if signals
             else "no signal matched",
         },

@@ -1,4 +1,5 @@
 """Interpret command status without mining command output for nested evidence."""
+
 from __future__ import annotations
 
 import json
@@ -20,14 +21,18 @@ def _envelope_status(value: Any) -> tuple[str, int | None]:
         and bool(value["chunk_id"])
         and isinstance(value.get("output"), str)
         and type(duration) in (int, float)
-        and math.isfinite(duration)
+        and (type(duration) is int or math.isfinite(duration))
         and duration >= 0
     ):
         return "unknown", None
     code = value.get("exit_code")
     if type(code) is int:
         return ("failed" if code else "completed"), code
-    if code is None and type(value.get("session_id")) is int and value["session_id"] > 0:
+    if (
+        code is None
+        and type(value.get("session_id")) is int
+        and value["session_id"] > 0
+    ):
         return "running", None
     return "unknown", None
 
@@ -55,7 +60,10 @@ def codex_result_status(output: Any) -> tuple[str, int | None]:
     for block in output:
         if isinstance(block, Mapping) and block.get("type") in {"input_image", "image"}:
             continue
-        if not isinstance(block, Mapping) or block.get("type") not in {"input_text", "output_text"}:
+        if not isinstance(block, Mapping) or block.get("type") not in {
+            "input_text",
+            "output_text",
+        }:
             statuses.append(("unknown", None))
             continue
         try:

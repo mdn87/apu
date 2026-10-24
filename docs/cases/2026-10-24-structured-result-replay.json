@@ -1,0 +1,580 @@
+{
+  "schema_version": 1,
+  "evidence_version": 3,
+  "sessions": [
+    {
+      "session_id": "01a16afa-c649-7f71-9e07-e1ba356b30dc",
+      "event_count": 84,
+      "corrected_baseline_results": 5,
+      "result_statuses": {
+        "unknown": 35,
+        "failed": 5,
+        "completed": 1
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 84,
+        "event_counts": {
+          "session.started": 1,
+          "task.started": 1,
+          "tool.completed": 41,
+          "tool.requested": 41
+        },
+        "paired_tool_calls": 41,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 84,
+        "event_counts": {
+          "session.started": 1,
+          "task.started": 1,
+          "tool.completed": 36,
+          "tool.failed": 5,
+          "tool.requested": 41
+        },
+        "paired_tool_calls": 41,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 84
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a16716-8113-7113-a054-293cfe4b8a67",
+      "event_count": 75,
+      "corrected_baseline_results": 0,
+      "result_statuses": {
+        "unknown": 30,
+        "completed": 1
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 75,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 6,
+          "task.started": 6,
+          "tool.completed": 31,
+          "tool.requested": 31
+        },
+        "paired_tool_calls": 31,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 75,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 6,
+          "task.started": 6,
+          "tool.completed": 31,
+          "tool.requested": 31
+        },
+        "paired_tool_calls": 31,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 75
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a1673f-5ea1-7f10-97d4-9ce1f0588be2",
+      "event_count": 3,
+      "corrected_baseline_results": 0,
+      "result_statuses": {},
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 3,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 1,
+          "task.started": 1
+        },
+        "paired_tool_calls": 0,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 3,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 1,
+          "task.started": 1
+        },
+        "paired_tool_calls": 0,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 3
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a16725-35bc-7b31-8bbb-c157327bec37",
+      "event_count": 401,
+      "corrected_baseline_results": 7,
+      "result_statuses": {
+        "unknown": 189,
+        "failed": 7
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 401,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 4,
+          "task.started": 4,
+          "tool.completed": 196,
+          "tool.requested": 196
+        },
+        "paired_tool_calls": 196,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 401,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 4,
+          "task.started": 4,
+          "tool.completed": 189,
+          "tool.failed": 7,
+          "tool.requested": 196
+        },
+        "paired_tool_calls": 196,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 401
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a166e6-92ee-7da2-9803-c45f8953fc65",
+      "event_count": 85,
+      "corrected_baseline_results": 4,
+      "result_statuses": {
+        "unknown": 35,
+        "failed": 4
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 85,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 3,
+          "task.started": 3,
+          "tool.completed": 39,
+          "tool.requested": 39
+        },
+        "paired_tool_calls": 39,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 85,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 3,
+          "task.started": 3,
+          "tool.completed": 35,
+          "tool.failed": 4,
+          "tool.requested": 39
+        },
+        "paired_tool_calls": 39,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 85
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a166dc-ad9e-7d81-b16b-fda154816d58",
+      "event_count": 18,
+      "corrected_baseline_results": 1,
+      "result_statuses": {
+        "unknown": 5,
+        "failed": 1
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 18,
+        "event_counts": {
+          "session.started": 2,
+          "task.completed": 1,
+          "task.started": 3,
+          "tool.completed": 6,
+          "tool.requested": 6
+        },
+        "paired_tool_calls": 6,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 18,
+        "event_counts": {
+          "session.started": 2,
+          "task.completed": 1,
+          "task.started": 3,
+          "tool.completed": 5,
+          "tool.failed": 1,
+          "tool.requested": 6
+        },
+        "paired_tool_calls": 6,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 18
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a166d6-5965-7740-857c-03ab6422fba7",
+      "event_count": 602,
+      "corrected_baseline_results": 34,
+      "result_statuses": {
+        "failed": 34,
+        "unknown": 251,
+        "completed": 10
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 602,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 5,
+          "task.started": 6,
+          "tool.completed": 295,
+          "tool.requested": 295
+        },
+        "paired_tool_calls": 295,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 602,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 5,
+          "task.started": 6,
+          "tool.completed": 261,
+          "tool.failed": 34,
+          "tool.requested": 295
+        },
+        "paired_tool_calls": 295,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 602
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a166b1-d665-7cf1-96a5-29555d5cb7da",
+      "event_count": 333,
+      "corrected_baseline_results": 17,
+      "result_statuses": {
+        "failed": 17,
+        "unknown": 144
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 333,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 5,
+          "task.started": 5,
+          "tool.completed": 161,
+          "tool.requested": 161
+        },
+        "paired_tool_calls": 161,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 333,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 5,
+          "task.started": 5,
+          "tool.completed": 144,
+          "tool.failed": 17,
+          "tool.requested": 161
+        },
+        "paired_tool_calls": 161,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 333
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a16693-ae37-73a1-a8d8-c4e7dd19c788",
+      "event_count": 1,
+      "corrected_baseline_results": 0,
+      "result_statuses": {},
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 1,
+        "event_counts": {
+          "session.started": 1
+        },
+        "paired_tool_calls": 0,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 1,
+        "event_counts": {
+          "session.started": 1
+        },
+        "paired_tool_calls": 0,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 1
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    },
+    {
+      "session_id": "01a16694-8ae2-7ad3-8a69-065a558949ed",
+      "event_count": 39,
+      "corrected_baseline_results": 0,
+      "result_statuses": {
+        "unknown": 16,
+        "completed": 1
+      },
+      "before_reconciliation": {
+        "schema_version": 3,
+        "event_count": 39,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 2,
+          "task.started": 2,
+          "tool.completed": 17,
+          "tool.requested": 17
+        },
+        "paired_tool_calls": 17,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "after_reconciliation": {
+        "schema_version": 3,
+        "event_count": 39,
+        "event_counts": {
+          "session.started": 1,
+          "task.completed": 2,
+          "task.started": 2,
+          "tool.completed": 17,
+          "tool.requested": 17
+        },
+        "paired_tool_calls": 17,
+        "unresolved_tool_requests": 0,
+        "orphaned_tool_results": 0,
+        "state_observation_count": 0,
+        "reason_codes": []
+      },
+      "verification_counts": {
+        "verified": 39
+      },
+      "audit_findings": [],
+      "legacy_bytes_preserved": true,
+      "fresh_equals_mixed": true,
+      "idempotent": true
+    }
+  ],
+  "totals": {
+    "unknown": 705,
+    "failed": 68,
+    "completed": 13
+  },
+  "corrected_baseline_results": 68,
+  "limitations": [
+    "Current instruction-surface inventory was omitted; detector execution and source verification were unchanged.",
+    "Command classification and test-freshness coverage were not expanded.",
+    "Findings remain heuristic leads, not demonstrated agent misconduct."
+  ],
+  "watcher_comparison": {
+    "schema_version": 1,
+    "limitations": "Analytical diagnosis fixtures use captured parser signals/settings only, without operator assertions or current instruction surfaces. No intervention ran.",
+    "sessions": [
+      {
+        "session_id": "01a16afa-c649-7f71-9e07-e1ba356b30dc",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a16716-8113-7113-a054-293cfe4b8a67",
+        "before_signals": [
+          "reversible-choice-escalation"
+        ],
+        "after_signals": [
+          "reversible-choice-escalation"
+        ],
+        "before_diagnosis": "likely-autonomy-loss",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a1673f-5ea1-7f10-97d4-9ce1f0588be2",
+        "before_signals": [],
+        "after_signals": [],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a16725-35bc-7b31-8bbb-c157327bec37",
+        "before_signals": [
+          "reversible-choice-escalation"
+        ],
+        "after_signals": [
+          "reversible-choice-escalation",
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "likely-autonomy-loss",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a166e6-92ee-7da2-9803-c45f8953fc65",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a166dc-ad9e-7d81-b16b-fda154816d58",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a166d6-5965-7740-857c-03ab6422fba7",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a166b1-d665-7cf1-96a5-29555d5cb7da",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a16693-ae37-73a1-a8d8-c4e7dd19c788",
+        "before_signals": [],
+        "after_signals": [],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a16694-8ae2-7ad3-8a69-065a558949ed",
+        "before_signals": [],
+        "after_signals": [],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      }
+    ]
+  }
+}

@@ -515,7 +515,7 @@ def test_claude_incident_flow_is_provider_bound_private_and_resumable(
     assert incident["evidence_plane"]["provider"] == "claude-code"
     evidence_path = Path(incident["evidence_plane"]["evidence_path"])
     assert evidence_path.parent.name == "claude-code"
-    assert evidence_path.parent.parent.name == "v2"
+    assert evidence_path.parent.parent.name == "v3"
     assert {
         json.loads(line)["provider"]
         for line in evidence_path.read_text(encoding="utf-8").splitlines()

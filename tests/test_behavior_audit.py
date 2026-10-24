@@ -227,7 +227,7 @@ def test_source_byte_cap_stops_selection_before_ingestion(tmp_path: Path) -> Non
         for item in report["selection"]["skipped"]
     )
     evidence_files = list(
-        (state / "behavior" / "evidence" / "v2" / "codex").glob("*.jsonl")
+        (state / "behavior" / "evidence" / "v3" / "codex").glob("*.jsonl")
     )
     assert len(evidence_files) == 1
     assert not list(
@@ -262,7 +262,7 @@ def test_audit_can_use_complete_v1_writer_during_rollback(tmp_path: Path) -> Non
     )
     assert len(
         list(
-            (state / "behavior" / "evidence" / "v2" / "codex").glob("*.jsonl")
+            (state / "behavior" / "evidence" / "v3" / "codex").glob("*.jsonl")
         )
     ) == 1
 
