@@ -556,7 +556,7 @@
       "chipId": "apu:structured-codex-results",
       "projectId": "apu",
       "title": "Recognize structured Codex command results",
-      "summary": "Read typed result blocks and explicit command exit codes without copying output text; preserve existing evidence and make history audits reflect recorded failures.",
+      "summary": "Align Codex evidence and watcher result parsing; define replay compatibility and inspect detector changes without treating nonzero exits as agent misconduct.",
       "stage": "ready",
       "sequence": 160,
       "prereqs": [
@@ -567,7 +567,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-10-23T23:12:24.264936Z",
-        "updatedAt": "2026-10-23T23:12:24.264936Z"
+        "updatedAt": "2026-10-24T01:47:41.603Z"
       },
       "evidence": [
         {
@@ -575,6 +575,12 @@
           "at": "2026-10-23T23:12:24.264936Z",
           "kind": "note",
           "message": "Ready for local implementation: 68 misclassified command results identified. Preserve replay compatibility; no live gate, external configuration, or manual observation needed."
+        },
+        {
+          "entryId": "apu:structured-codex-results:argon-incorporated-2026-10-24",
+          "at": "2026-10-24T01:47:41.603Z",
+          "kind": "note",
+          "message": "Argon review incorporated: align both parsers, define safe replay, and inspect detector effects. Runtime code is unchanged; Claude review is next."
         }
       ]
     }

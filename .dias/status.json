@@ -8,13 +8,13 @@
   "milestonePhase": "closeout",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-10-23T23:12:24.264936Z",
+  "assessedAt": "2026-10-24T01:47:41.603Z",
   "confidence": "reported",
   "currentMilestone": "Release 0.9.0: provider-neutral incident attribution, the proven start-of-turn gate intervention with its I3 detector, and the wtf and ezpz diagnosis and recovery workflows.",
-  "remainingSummary": "History analysis selected structured Codex result ingestion as the next local fix. I3 is closed by operator acceptance. The separate Dias exemption remains open.",
+  "remainingSummary": "Structured Codex results remain the next fix; Argon review adds replay, watcher alignment, and detector checks. Claude will review the revised analysis.",
   "nextChipId": "apu:structured-codex-results",
   "source": {
-    "label": "Recent-history audit and operator preference for work requiring minimal interaction.",
-    "updatedAt": "2026-10-23"
+    "label": "History analysis revised after independent Argon review.",
+    "updatedAt": "2026-10-24"
   }
 }

@@ -8,7 +8,9 @@
     "max_file_bytes": 20971520,
     "exclude_modified_within_minutes": 10,
     "ordering": "newest modified first per provider",
-    "note": "Includes operator and automated sessions; idle time is not proof of completion."
+    "note": "Includes operator and automated sessions; idle time is not proof of completion.",
+    "workspace_base": "MyDocs",
+    "source_byte_cap_note": "The skip reason combines per-file and aggregate limits; the skipped file size was not retained."
   },
   "summary": {
     "ingested_sessions": 20,
@@ -787,5 +789,14 @@
     "One recently modified Claude transcript had older events and was outside the audit window.",
     "No incident assertions were imported; current surface hashes do not prove causal instructions."
   ],
-  "privacy": "No raw chats, prompts, tool inputs, commands, tool output bodies, or credentials are included."
+  "privacy": "No raw chats, prompts, tool inputs, commands, tool output bodies, or credentials are included.",
+  "audit_execution": {
+    "source_kind": "evidence",
+    "providers_preingested": [
+      "codex",
+      "claude-code"
+    ],
+    "raw_discovery_enabled": false,
+    "gate_log_supplied": false
+  }
 }
