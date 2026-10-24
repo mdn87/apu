@@ -19,6 +19,7 @@ from apu.behavior_cli import add_shortcut_parsers, run_shortcut
 from apu.evidence_cli import add_evidence_parser, run_evidence
 from apu.models import Inventory, Plan, canonical_json
 from apu.outcomes import append_outcome, read_outcomes, summarize_outcomes
+from apu.package_upgrade_cli import add_package_parser, run_packages
 from apu.planning import (
     approve_all_recommended,
     build_skill_install_operations,
@@ -183,6 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
     guidance_diff.add_argument("after", type=Path)
     guidance_diff.add_argument("--output", type=Path)
 
+    add_package_parser(commands)
     research = commands.add_parser(
         "research", help="compare tracked packages with immutable upstream candidates"
     )
@@ -389,6 +391,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _intake(args)
     if args.command == "research":
         return _research(args)
+    if args.command == "packages":
+        return run_packages(args, home=_home())
     if args.command == "snapshot":
         return _snapshot(args)
     if args.command == "propose":

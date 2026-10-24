@@ -201,10 +201,8 @@ explicitly unclassified dynamic surfaces—never instruction bodies. Package
 caches and provider-managed installation metadata remain read-only. Archive
 links are never created or followed on disk: a versioned manifest records
 validated package-internal links, and analysis reads the bound target blob
-through that virtual view. Until a provider exposes documented exact-version
-installation and restoration, research emits `hold`
-or `work-order` and reports upgrade mutation as unavailable instead of
-claiming an unverified install.
+through that virtual view. Research emits `hold` or `work-order`; applying a
+package update is a separate, explicit operation with a verified restore point.
 
 The `apu.package_transactions` library coordinates trusted provider adapters:
 it journals before update, verifies the exact version and tree, restores and
@@ -212,9 +210,37 @@ verifies the pre-state on failure, and returns a durable receipt. Retries never
 repeat an interrupted update. Ambiguous state and failed rollback require
 explicit recovery bound to a fresh observation. Per-package locks serialize
 APU transactions; adapters must also protect against concurrent provider changes.
-The installed Claude plugin CLI offers latest-only updates, so its live upgrade
-adapter remains unavailable. The coordinator is tested with controlled adapters;
-this does not constitute a live Claude package upgrade or rollback.
+Claude updates use the official CLI and APU's existing snapshot/restore journal.
+The rule permits APU-managed restoration of Claude files; it does not require an
+official provider downgrade command. Before updating, APU captures the plugin
+store (cache, installation records, and marketplaces), user settings, relevant
+project/local settings, and the selected marketplace checkout if stored outside
+the plugin store. Restore points remain protected from snapshot retention.
+
+```bash
+apu packages upgrade sample@marketplace --target-version 2.0.0 --target-tree ./reviewed-plugin --operation-id sample-update
+apu packages status TRANSACTION_ID
+apu packages rollback TRANSACTION_ID
+```
+
+`--target-tree` names the reviewed plugin directory, including its manifest.
+Alternatively, `--target-sha256` accepts the installed-tree digest, not a research
+candidate artifact digest. Claude selects its latest version; APU keeps it only
+if both the installed version and tree match the requested target. A failed or
+different update triggers restoration and verification of the captured state.
+Use `--claude-home HOME` for an isolated home containing `.claude`.
+
+Keep Claude and other writers idle during update and restore. The plugin store
+is restored as a unit, so later changes to any captured surface stop automatic
+restoration. After inspecting those changes, explicit recovery can bind to the
+`current_state_sha256` from `packages status` using
+`packages rollback TRANSACTION_ID --expected-state DIGEST`. This authorizes
+replacing that observed state with the backup, including later edits. Interrupted
+restore journals can resume; unknown state after a crash requires reconciliation.
+Linked paths, ambiguous installations, and managed installations are refused.
+Restoration covers captured files, not external effects of plugin commands or
+Windows ACLs. Restart Claude to load restored plugins; configured automatic
+updates can subsequently install a newer version again.
 
 ## Isolated dispatch and efficacy
 

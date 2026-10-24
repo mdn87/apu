@@ -367,7 +367,7 @@ def _recommendation(
         reason_codes.extend(
             (
                 "static-classifier-improved",
-                "provider-pin-unsupported",
+                "upgrade-capability-check-required",
                 "candidate-fixtures-unverified",
             )
         )
@@ -390,7 +390,7 @@ def _recommendation(
         "decision": decision,
         "reason_codes": sorted(set(reason_codes)),
         "eligible_for_pin_plan": False,
-        "mutation_status": "unavailable-provider-pin-unsupported",
+        "mutation_status": "requires-explicit-upgrade-with-restore-point",
     }
 
 

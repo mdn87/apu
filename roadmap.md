@@ -434,11 +434,16 @@ Version detection from plugin caches/marketplace metadata; upstream check;
 candidate-version classifier diff; upgrade/pin operations with receipts;
 research report with efficacy evidence attached.
 
-The journaled upgrade coordinator is implemented, including exact-state checks,
-automatic verified rollback, idempotent retries, and explicit interrupted-state
-recovery. Live Claude package execution remains blocked by the provider's lack
-of documented exact-version install and restore operations. No latest-only
-update is substituted for this contract.
+The journaled upgrade coordinator and live Claude adapter are implemented,
+including exact-state checks, automatic verified rollback, idempotent retries,
+and explicit interrupted-state recovery. Updates use the official Claude CLI;
+rollback uses APU's existing snapshots and restore journal. The rule now permits
+APU-managed restoration of provider files and metadata. Claude's latest-only
+result must match the requested version and tree or APU restores the backup.
+The restore unit includes the plugin store, relevant settings, and any external
+marketplace checkout. Later drift requires explicit reconciliation; external
+writers must be idle. A real isolated CLI upgrade and rollback verified both
+the restored files and Claude's installed-version listing.
 
 ### M9 — Efficacy-gated automation and dispatch
 Extended outcome schema (campaign, categories-installed vs

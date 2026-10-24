@@ -171,6 +171,14 @@ def _finish(path, journal, status, state):
     return receipt
 
 
+def _restore_verified(executor):
+    verifier = getattr(executor, "verify_rollback", None)
+    try:
+        return verifier is None or verifier() is True
+    except Exception:  # noqa: BLE001 - verification failure cannot imply success
+        return False
+
+
 def _rollback(path, journal, coordinate, request, executor):
     journal.pop("receipt", None)
     _save(path, journal, "rollback-requested")
@@ -182,7 +190,8 @@ def _rollback(path, journal, coordinate, request, executor):
         observed = _observe(executor, coordinate)
     except PackageUpgradeRecoveryRequired:
         observed = None
-    status = "rolled-back" if observed == request.pre_state else "rollback-failed"
+    verified = observed == request.pre_state and _restore_verified(executor)
+    status = "rolled-back" if verified else "rollback-failed"
     return _finish(path, journal, status, observed)
 
 
@@ -211,7 +220,9 @@ def execute_package_upgrade(
                 expected = (
                     _target(request) if status == "verified" else request.pre_state
                 )
-                if observed != expected:
+                if observed != expected or (
+                    status == "rolled-back" and not _restore_verified(executor)
+                ):
                     raise PackageUpgradeRecoveryRequired(
                         "package changed after the completed transaction"
                     )
@@ -221,6 +232,10 @@ def execute_package_upgrade(
                     "failed rollback requires explicit recovery"
                 )
             if observed == request.pre_state:
+                if not _restore_verified(executor):
+                    raise PackageUpgradeRecoveryRequired(
+                        "package restore requires explicit recovery"
+                    )
                 return _finish(path, journal, "rolled-back", observed)
             if observed == _target(request) and status != "rollback-requested":
                 return _finish(path, journal, "verified", observed)
@@ -261,7 +276,7 @@ def recover_package_upgrade(
     executor: PackageUpgradeExecutor,
     expected_current: PackageStateIdentity,
 ) -> dict[str, Any]:
-    """Explicitly retry official restoration, only for the caller-observed state."""
+    """Explicitly retry restoration, only for the caller-observed state."""
     _preflight(state_home, coordinate, request, capability, executor)
     directory = _directory(state_home, request)
     with PackageLock(state_home, request.package_id):
@@ -274,6 +289,26 @@ def recover_package_upgrade(
                 "package changed before explicit recovery"
             )
         path = directory / f"{request.transaction_id}.json"
-        if observed == request.pre_state:
+        if observed == request.pre_state and _restore_verified(executor):
             return _finish(path, journal, "rolled-back", observed)
         return _rollback(path, journal, coordinate, request, executor)
+
+
+def record_package_restoration(state_home, coordinate, request, *, executor):
+    """Reconcile a manual snapshot restoration only after complete verification."""
+    directory = _directory(state_home, request)
+    with PackageLock(state_home, request.package_id):
+        journal = _load(directory, request)
+        if journal is None:
+            return None
+        observed = _observe(executor, coordinate)
+        if observed != request.pre_state or executor.verify_rollback() is not True:
+            raise PackageUpgradeRecoveryRequired(
+                "captured package state has not been restored"
+            )
+        return _finish(
+            directory / f"{request.transaction_id}.json",
+            journal,
+            "rolled-back",
+            observed,
+        )
