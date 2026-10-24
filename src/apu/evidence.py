@@ -11,6 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from .behavior_lock import serialized_behavior
 from .codex_results import codex_result_status
 from .models import canonical_json, sha256_bytes
 from .state import ensure_private_directory, ensure_state_home
@@ -528,6 +529,7 @@ def _projection_comparable(
     return selected
 
 
+@serialized_behavior
 def append_evidence_events(
     state_home: Path, events: Iterable[Mapping[str, Any]]
 ) -> tuple[Path | None, tuple[dict[str, Any], ...]]:

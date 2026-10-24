@@ -517,9 +517,30 @@ Reports live under `APU_HOME/behavior/audits`. They store detector codes, safe
 labels, hashes, evidence references, counts, and explicit incident-time versus
 current-at-audit surface bindings. They do not store messages, reasoning,
 commands, tool input/output bodies, environment content, changed path names, or
-raw provider records. APU does not delete or archive provider logs. Detailed APU
-events are marked as candidates for expiry after thirty days or when their linked
-monitoring window closes; automated pruning remains a separate future operation.
+raw provider records. APU does not delete or archive provider logs.
+
+Preview evidence retention, then explicitly apply the saved plan:
+
+```console
+apu behavior prune --out retention-plan.json
+apu behavior prune --apply retention-plan.json
+```
+
+Save the preview outside `APU_HOME`. The default policy requires every event and
+the file modification time to be older than thirty days. A reference to a session,
+event ID, or evidence file in any saved APU JSON record pins all versions of that
+session. This conservatively retains closed monitoring-window references too;
+window closure alone does not establish safe early expiry. Unknown or malformed
+evidence stays. Malformed reference records, links, or exceeded scan bounds stop
+the operation. Bounds default to 20,000 directory entries and 256 MiB of data.
+
+Apply rechecks the preview, journals intent, and deletes only whole eligible APU
+evidence files. Repeating the same plan resumes interrupted deletion or returns
+its completed receipt under `APU_HOME/.behavior-retention`. Audits, incident
+recording, outcome appends, and evidence appends share an OS lock with pruning.
+Do not run older APU versions or external state writers concurrently with apply.
+Referenced reports and provider logs are preserved. Pruning is an explicit
+operation; audits and the watcher never delete history automatically.
 
 ## Orca behavior evidence boundary
 

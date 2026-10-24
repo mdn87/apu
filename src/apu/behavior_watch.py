@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from . import __version__
 from .audit import build_inventory
+from .behavior_lock import serialized_behavior
 from .codex_results import codex_result_status
 from .evidence import (
     EVIDENCE_SCHEMA_VERSION,
@@ -1894,6 +1895,7 @@ def configure_watcher(
     return watcher_status(state_home)
 
 
+@serialized_behavior
 def mark_incident(
     state_home: Path,
     description: str,
@@ -2120,6 +2122,7 @@ def _surface_sources(incident: Mapping[str, Any]) -> list[dict[str, Any]]:
     return sources
 
 
+@serialized_behavior
 def diagnose_incident(
     state_home: Path,
     *,
@@ -2435,6 +2438,7 @@ def intervention_prompt(
     return prompt
 
 
+@serialized_behavior
 def record_intervention_result(
     state_home: Path,
     result: str,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,7 +14,7 @@ from .behavior_audit import (
 )
 from .gate_decisions import DEFAULT_GATE_LOG, gate_cost_report
 from .models import canonical_json
-from .state import resolve_state_home
+from .state import resolve_state_home, write_json_atomic
 
 _DURATION = re.compile(r"^(?P<value>[1-9][0-9]*)(?P<unit>[hdw])$", re.IGNORECASE)
 _BYTE_SIZE = re.compile(
@@ -133,8 +134,21 @@ def add_behavior_parser(commands: argparse._SubParsersAction) -> None:
     gate.add_argument("--session-id", help="report one exact session")
     gate.add_argument("--json", action="store_true")
 
+    prune = subcommands.add_parser(
+        "prune", help="preview or explicitly apply evidence retention"
+    )
+    plan = prune.add_mutually_exclusive_group()
+    plan.add_argument("--out", type=Path, help="save the preview outside APU state")
+    plan.add_argument("--apply", type=Path, help="apply a saved, unchanged preview")
+    prune.add_argument("--days", type=_positive_integer, default=30)
+    prune.add_argument("--max-files", type=_positive_integer, default=20_000)
+    prune.add_argument("--max-bytes", type=_parse_byte_size, default=256 * 1024 * 1024)
+    prune.add_argument("--json", action="store_true")
+
 
 def run_behavior(args: argparse.Namespace) -> int:
+    if args.behavior_command == "prune":
+        return _run_prune(args)
     if args.behavior_command == "gate-cost":
         return _run_gate_cost(args)
     if args.behavior_command != "audit":
@@ -220,3 +234,40 @@ def _print_gate_summary(report: dict) -> None:
         f"I3 max {summary['i3_max']} (target {report['i3_target']}), "
         f"{len(summary['sessions_over_target'])} over target"
     )
+
+
+def _run_prune(args: argparse.Namespace) -> int:
+    from .evidence_retention import apply_retention, preview_retention
+
+    home = resolve_state_home()
+    if args.apply is not None:
+        with args.apply.open("rb") as stream:
+            data = stream.read(16 * 1024 * 1024 + 1)
+        if len(data) > 16 * 1024 * 1024:
+            raise ValueError("retention plan exceeds the size limit")
+        result = apply_retention(home, json.loads(data))
+    else:
+        result = preview_retention(
+            home, days=args.days, max_files=args.max_files, max_bytes=args.max_bytes
+        )
+        if args.out is not None:
+            if args.out.resolve().is_relative_to(home.resolve()):
+                raise ValueError("save retention previews outside APU state")
+            write_json_atomic(args.out, result)
+    if args.json:
+        print(canonical_json(result))
+    elif args.apply is not None:
+        print(
+            f"Removed {result['removed_files']} evidence files ({result['removed_bytes']} bytes). Receipt: {result['plan_id']}"
+        )
+    else:
+        print(
+            f"Preview: {len(result['candidates'])} eligible files; {len(result['retained'])} retained. Nothing deleted."
+        )
+        if args.out is not None:
+            print(
+                f"Saved preview: {args.out}. Apply it with apu behavior prune --apply {args.out}"
+            )
+        else:
+            print("Use --out PLAN.json to save a preview for explicit application.")
+    return 0
