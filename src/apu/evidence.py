@@ -396,6 +396,14 @@ def _event(
     }
     if schema_version in {2, 3}:
         identity["attribution"] = body["attribution"]
+    if (
+        schema_version == 3
+        and _codex_exec_request(body)
+        and body["observation"]["command_class"] is not None
+    ):
+        # Classifying an old request must append a new projection, not silently
+        # collide with its historical ID or overwrite its stored observation.
+        identity["command_class"] = body["observation"]["command_class"]
     event_id = (
         f"evidence-{sha256(canonical_json(identity).encode('utf-8')).hexdigest()}"
     )
@@ -459,8 +467,49 @@ def _codex_result(event: Mapping[str, Any]) -> bool:
     )
 
 
+_CODEX_EXEC_NAMES = frozenset({"exec_command", "functions.exec_command"})
+_COMMAND_CLASSES = frozenset({"test", "git-read", "git-write", "network", "shell"})
+
+
+def _codex_exec_request(event: Mapping[str, Any]) -> bool:
+    name = event["observation"]["tool_name"]
+    return (
+        event["provider"] == "codex"
+        and event["source_kind"] == "transcript"
+        and event["event_type"] == "tool.requested"
+        and event["source"]["record_sha256"] is not None
+        and isinstance(name, str)
+        and name.lower() in _CODEX_EXEC_NAMES
+    )
+
+
+def _command_correction(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool:
+    """Only an absent exec classification may be enriched; known values cannot drift."""
+    classes = {
+        first["observation"]["command_class"],
+        second["observation"]["command_class"],
+    }
+    return (
+        _codex_exec_request(first)
+        and _codex_exec_request(second)
+        and None in classes
+        and len(classes) == 2
+        and classes - {None} <= _COMMAND_CLASSES
+    )
+
+
+def codex_command_classification_pending(events: Iterable[Mapping[str, Any]]) -> bool:
+    requests = [event for event in events if _codex_exec_request(event)]
+    classified = {
+        _logical_event_key(event)
+        for event in requests
+        if event["observation"]["command_class"] is not None
+    }
+    return any(_logical_event_key(event) not in classified for event in requests)
+
+
 def _projection_comparable(
-    event: Mapping[str, Any], *, result_status: bool
+    event: Mapping[str, Any], *, result_status: bool, command_class: bool = False
 ) -> dict[str, Any]:
     selected = _version_neutral_event(event)
     # The record hash identifies the immutable line. A later ingestion can
@@ -468,9 +517,12 @@ def _projection_comparable(
     selected["source"] = dict(selected["source"])
     selected["source"].pop("snapshot_bytes")
     selected["source"].pop("snapshot_sha256")
+    if result_status or command_class:
+        selected["observation"] = dict(selected["observation"])
+    if command_class:
+        selected["observation"].pop("command_class")
     if result_status:
         selected.pop("event_type")
-        selected["observation"] = dict(selected["observation"])
         selected["observation"].pop("status")
         selected["observation"].pop("exit_code")
     return selected
@@ -603,9 +655,9 @@ def read_evidence(
 ) -> list[dict[str, Any]]:
     """Read one effective projection per source event, retaining stored history.
 
-    V3 permits only Codex result status/exit corrections and changed snapshot
-    boundaries. Other disagreements still fail closed. V1/v2-only reads keep
-    their historical strict comparison.
+    V3 permits Codex result status/exit corrections, previously absent exec
+    command classifications, and changed snapshot boundaries. Other disagreements
+    still fail closed. V1/v2-only reads keep their historical strict comparison.
     """
 
     selected: dict[tuple[Any, ...], dict[str, Any]] = {}
@@ -619,7 +671,13 @@ def read_evidence(
     }
     # Process the newest projection first so old projections cannot conflict
     # with each other before their explicit v3 replacement is considered.
-    for event in sorted(records, key=lambda item: -item["schema_version"]):
+    for event in sorted(
+        records,
+        key=lambda item: (
+            -item["schema_version"],
+            _codex_exec_request(item) and item["observation"]["command_class"] is None,
+        ),
+    ):
         key = _logical_event_key(event)
         source_key = key[:3] + key[4:]
         if _codex_result(event) and source_key in revised_results:
@@ -628,9 +686,12 @@ def read_evidence(
         if current is not None:
             if current["schema_version"] == 3:
                 correction = event["schema_version"] < 3 and _codex_result(current)
+                command_correction = _command_correction(current, event)
                 agree = _projection_comparable(
-                    current, result_status=correction
-                ) == _projection_comparable(event, result_status=correction)
+                    current, result_status=correction, command_class=command_correction
+                ) == _projection_comparable(
+                    event, result_status=correction, command_class=command_correction
+                )
             else:
                 agree = _version_neutral_event(current) == _version_neutral_event(event)
             if not agree:
@@ -707,8 +768,12 @@ def _correlation(value: str | None) -> str | None:
     return sha256(value.encode("utf-8")).hexdigest() if value else None
 
 
-def _command_class(tool_name: str | None, arguments: Any) -> str | None:
-    if not tool_name or tool_name.lower() not in {"bash", "shell", "shell_command"}:
+def _command_class(
+    tool_name: str | None, arguments: Any, *, codex_exec: bool = False
+) -> str | None:
+    name = tool_name.lower() if tool_name else ""
+    execution = codex_exec and name in _CODEX_EXEC_NAMES
+    if not execution and name not in {"bash", "shell", "shell_command"}:
         return None
     value = arguments
     if isinstance(arguments, str):
@@ -716,7 +781,8 @@ def _command_class(tool_name: str | None, arguments: Any) -> str | None:
             value = json.loads(arguments)
         except json.JSONDecodeError:
             value = {"command": arguments}
-    command = value.get("command") if isinstance(value, Mapping) else None
+    key = "cmd" if execution else "command"
+    command = value.get(key) if isinstance(value, Mapping) else None
     if not isinstance(command, str):
         return "shell"
     lowered = command.strip().lower()
@@ -776,7 +842,9 @@ def _codex_event(
                 "tool_name": tool_name
                 if tool_name and _SAFE_LABEL.fullmatch(tool_name)
                 else None,
-                "command_class": _command_class(tool_name, arguments),
+                "command_class": _command_class(
+                    tool_name, arguments, codex_exec=schema_version == 3
+                ),
                 "status": "requested",
                 "input_sha256": _digest(arguments),
             }
