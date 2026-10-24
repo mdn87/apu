@@ -13,10 +13,11 @@ from typing import Any
 from uuid import uuid4
 
 from .audit import build_inventory
-from .behavior_watch import codex_trace_root, normalized_cwd_key
+from .behavior_watch import claude_code_trace_root, codex_trace_root, normalized_cwd_key
 from .evidence import (
     EVIDENCE_READER_VERSIONS,
     EVIDENCE_SCHEMA_VERSION,
+    ingest_claude_code_trace,
     ingest_codex_trace,
     read_evidence,
     read_evidence_version,
@@ -140,6 +141,42 @@ def _peek_codex_trace(path: Path) -> tuple[str, Path] | None:
     return None
 
 
+def _peek_claude_trace(path: Path) -> tuple[str, Path] | None:
+    """Read bounded tail metadata; never fall back to scanning a whole transcript."""
+    with path.open("rb") as stream:
+        size = stream.seek(0, 2)
+        offset = max(0, size - 1024 * 1024)
+        stream.seek(offset)
+        tail = stream.read(size - offset)
+    lines = tail.splitlines()
+    if offset:
+        lines = lines[1:]
+    session_id: str | None = None
+    cwd: Path | None = None
+    for raw in reversed(lines[-512:]):
+        try:
+            record = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(record, Mapping):
+            continue
+        if record.get("isSidechain") is True:
+            return None
+        selected_id = record.get("sessionId")
+        if isinstance(selected_id, str) and selected_id:
+            if session_id is not None and selected_id != session_id:
+                return None
+            session_id = selected_id
+        selected_cwd = record.get("cwd")
+        if (
+            cwd is None
+            and isinstance(selected_cwd, str)
+            and Path(selected_cwd).is_absolute()
+        ):
+            cwd = Path(selected_cwd).resolve(strict=False)
+    return (session_id, cwd) if session_id is not None and cwd is not None else None
+
+
 def _incident_context(state_home: Path) -> dict[str, list[dict[str, Any]]]:
     directory = Path(state_home) / "behavior" / "incidents"
     result: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -157,8 +194,9 @@ def _incident_context(state_home: Path) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
-def _discover_codex_candidates(
+def _discover_trace_candidates(
     *,
+    provider: str,
     trace_root: Path,
     cwd: Path,
     cutoff: datetime,
@@ -170,7 +208,7 @@ def _discover_codex_candidates(
     if not root.is_dir():
         return [], [
             {
-                "provider": "codex",
+                "provider": provider,
                 "session_id": None,
                 "reason": "source-root-unavailable",
                 "source_path_sha256": sha256_bytes(str(root).encode("utf-8")),
@@ -182,6 +220,12 @@ def _discover_codex_candidates(
     discovered: list[tuple[Path, os.stat_result]] = []
     for path in root.rglob("*.jsonl"):
         if not path.is_file() or not _within(root, path):
+            continue
+        if provider == "claude-code" and any(
+            part.casefold() == "subagents"
+            for relative in (path.relative_to(root), path.resolve().relative_to(root))
+            for part in relative.parts
+        ):
             continue
         try:
             stat = path.stat()
@@ -201,7 +245,7 @@ def _discover_codex_candidates(
     if len(discovered) > _DISCOVERY_FILE_LIMIT:
         skipped.append(
             {
-                "provider": "codex",
+                "provider": provider,
                 "session_id": None,
                 "reason": "discovery-file-limit",
                 "source_path_sha256": sha256_bytes(str(root).encode("utf-8")),
@@ -211,13 +255,17 @@ def _discover_codex_candidates(
         )
     for path, stat in discovered[:_DISCOVERY_FILE_LIMIT]:
         try:
-            peeked = _peek_codex_trace(path)
+            peeked = (
+                _peek_claude_trace(path)
+                if provider == "claude-code"
+                else _peek_codex_trace(path)
+            )
         except OSError:
             continue
         if peeked is None:
             skipped.append(
                 {
-                    "provider": "codex",
+                    "provider": provider,
                     "session_id": None,
                     "reason": "session-metadata-unavailable",
                     "source_path_sha256": sha256_bytes(
@@ -240,7 +288,7 @@ def _discover_codex_candidates(
         ):
             skipped.append(
                 {
-                    "provider": "codex",
+                    "provider": provider,
                     "session_id": selected_id,
                     "reason": "outside-lookback",
                     "source_path_sha256": sha256_bytes(
@@ -252,7 +300,7 @@ def _discover_codex_candidates(
             continue
         candidates.append(
             AuditCandidate(
-                provider="codex",
+                provider=provider,
                 session_id=selected_id,
                 cwd=selected_cwd,
                 source_path=path.resolve(),
@@ -1100,6 +1148,7 @@ def audit_behavior(
     source_byte_limit: int = DEFAULT_SOURCE_BYTE_LIMIT,
     session_id: str | None = None,
     trace_root: Path | None = None,
+    claude_trace_root: Path | None = None,
     now: datetime | None = None,
     evidence_schema_version: int = EVIDENCE_SCHEMA_VERSION,
     gate_log: Path | None = DEFAULT_GATE_LOG,
@@ -1135,7 +1184,8 @@ def audit_behavior(
     candidates: list[AuditCandidate] = []
     discovery_skipped: list[dict[str, Any]] = []
     if "codex" in selected_providers:
-        codex_candidates, codex_skipped = _discover_codex_candidates(
+        codex_candidates, codex_skipped = _discover_trace_candidates(
+            provider="codex",
             trace_root=trace_root or codex_trace_root(),
             cwd=selected_cwd,
             cutoff=cutoff,
@@ -1145,6 +1195,18 @@ def audit_behavior(
         )
         candidates.extend(codex_candidates)
         discovery_skipped.extend(codex_skipped)
+    if "claude-code" in selected_providers:
+        claude_candidates, claude_skipped = _discover_trace_candidates(
+            provider="claude-code",
+            trace_root=claude_trace_root or claude_code_trace_root(),
+            cwd=selected_cwd,
+            cutoff=cutoff,
+            marked_sessions=marked_sessions,
+            marked_trace_paths=marked_trace_paths,
+            session_id=session_id,
+        )
+        candidates.extend(claude_candidates)
+        discovery_skipped.extend(claude_skipped)
     evidence_candidates, evidence_skipped = _discover_evidence_candidates(
         state_home,
         providers=selected_providers,
@@ -1172,6 +1234,7 @@ def audit_behavior(
 
     session_reports: list[dict[str, Any]] = []
     all_findings: list[dict[str, Any]] = []
+    ingestion_skipped: list[dict[str, Any]] = []
     for candidate in selected:
         ingest_status = "existing-evidence"
         if candidate.source_kind == "transcript":
@@ -1182,11 +1245,35 @@ def audit_behavior(
             ):
                 ingest_status = "unchanged-reused"
             else:
-                ingest_codex_trace(
-                    state_home,
-                    candidate.source_path,
-                    schema_version=evidence_schema_version,
-                )
+                if candidate.provider == "claude-code":
+                    try:
+                        ingest_claude_code_trace(
+                            state_home,
+                            candidate.source_path,
+                            schema_version=evidence_schema_version,
+                            expected_session_id=candidate.session_id,
+                            expected_cwd=candidate.cwd,
+                            max_source_bytes=candidate.source_bytes,
+                        )
+                    except (OSError, ValueError):
+                        ingestion_skipped.append(
+                            {
+                                "provider": candidate.provider,
+                                "session_id": candidate.session_id,
+                                "reason": "source-ingestion-failed",
+                                "source_path_sha256": sha256_bytes(
+                                    str(candidate.source_path).encode("utf-8")
+                                ),
+                                "source_bytes": candidate.source_bytes,
+                            }
+                        )
+                        continue
+                else:
+                    ingest_codex_trace(
+                        state_home,
+                        candidate.source_path,
+                        schema_version=evidence_schema_version,
+                    )
                 ingest_status = "ingested"
         events = read_evidence(
             state_home,
@@ -1212,7 +1299,9 @@ def audit_behavior(
         )
         gate_session = gate_over_target.get(candidate.session_id)
         if gate_session is not None:
-            findings.append(_gate_cost_finding(gate_session, provider=candidate.provider))
+            findings.append(
+                _gate_cost_finding(gate_session, provider=candidate.provider)
+            )
         findings = _deduplicate_findings(findings)
         all_findings.extend(findings)
         counts = Counter(item["status"] for item in findings)
@@ -1263,10 +1352,10 @@ def audit_behavior(
         },
         "selection": {
             "discovered_session_count": len(unique),
-            "audited_session_count": len(selected),
+            "audited_session_count": len(session_reports),
             "source_bytes": source_bytes,
             "skipped": sorted(
-                discovery_skipped + bounded_skipped,
+                discovery_skipped + bounded_skipped + ingestion_skipped,
                 key=lambda item: (
                     item["reason"],
                     item["provider"],
@@ -1278,7 +1367,9 @@ def audit_behavior(
             session_reports, key=lambda item: (item["provider"], item["session_id"])
         ),
         "findings": findings,
-        "gate_decisions": gate_report if gate_report is not None else {"status": "skipped"},
+        "gate_decisions": gate_report
+        if gate_report is not None
+        else {"status": "skipped"},
         "summary": {
             "reportable_finding_count": len(reportable),
             "suppressed_finding_count": len(suppressed),

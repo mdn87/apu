@@ -99,6 +99,11 @@ def add_behavior_parser(commands: argparse._SubParsersAction) -> None:
         help="override Codex trace discovery root for testing or recovery",
     )
     audit.add_argument(
+        "--claude-trace-root",
+        type=Path,
+        help="override Claude Code projects discovery root for testing or recovery",
+    )
+    audit.add_argument(
         "--evidence-schema-version", type=int, choices=(1, 2, 3), default=3
     )
     audit.add_argument(
@@ -144,6 +149,7 @@ def run_behavior(args: argparse.Namespace) -> int:
         source_byte_limit=args.max_bytes,
         session_id=args.session_id,
         trace_root=args.trace_root,
+        claude_trace_root=args.claude_trace_root,
         evidence_schema_version=args.evidence_schema_version,
         gate_log=None if args.no_gate_log else args.gate_log,
     )

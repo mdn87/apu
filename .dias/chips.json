@@ -601,6 +601,33 @@
           "message": "Implemented and verified: all 68 results corrected; ten sessions replay safely with old bytes preserved. 583 tests pass; no extra autonomy diagnoses."
         }
       ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:claude-history-discovery",
+      "projectId": "apu",
+      "title": "Discover Claude history directly in behavior audits",
+      "summary": "Find and ingest bounded primary Claude transcripts automatically, with exact project attribution and source verification.",
+      "stage": "done",
+      "sequence": 170,
+      "prereqs": [
+        "apu:behavior-audits"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-24T02:55:19.274400Z",
+        "updatedAt": "2026-10-24T03:01:33.354007Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:claude-history-discovery:verified-2026-10-24",
+          "at": "2026-10-24T03:01:33.354007Z",
+          "kind": "stage-change",
+          "message": "Direct Claude history discovery implemented. All 594 tests pass; one real project session yielded 18 verified events. Shared bounds and source changes are checked."
+        }
+      ]
     }
   ]
 }

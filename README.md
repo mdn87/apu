@@ -428,6 +428,7 @@ provider log directory into permanent memory:
 ```console
 apu behavior audit
 apu behavior audit --provider codex --since 12h --sessions 10 --max-bytes 64MiB
+apu behavior audit --provider claude-code --since 7d
 apu behavior audit --session-id SESSION_ID --json
 apu behavior gate-cost --since 7d
 ```
@@ -450,10 +451,28 @@ bypass age; there is intentionally no unbounded all-history option. At most
 1,000 files per provider are opened for metadata inspection, with exact and
 incident-marked sources considered first.
 
+Both Codex and Claude Code history are discovered directly; no separate ingest
+step is required. Claude discovery reads `CLAUDE_CONFIG_DIR/projects` (default:
+`~/.claude/projects`), or `--claude-trace-root PATH`. `--trace-root` remains the
+Codex override. Existing normalized evidence is also considered, with one audit
+per provider/session and shared session and byte limits across providers.
+
+Claude project attribution uses the latest explicit absolute `cwd` in transcript
+records, never the directory slug. Only records bound to that working directory
+contribute evidence. Subagent logs are excluded. Metadata discovery inspects at
+most the last 1 MiB and 512 lines per Claude file; missing or conflicting metadata
+is recorded as unavailable rather than triggering an unbounded fallback scan.
+Selected transcripts are checked again before ingestion and hashed before any
+evidence is appended. Files that grow beyond their selected byte budget, change
+identity, or fail ingestion are skipped with a content-free reason. Their reserved
+bytes still count toward the limit for that audit. Unchanged evidence is reused
+and verified against its source.
+
 The audit checks correlated tool requests/results, repeated identical failures,
 permission denials, activity after completion, repository state at completion,
-and whether a mutation made the last passing test stale. Replayable Codex
-records are verified against their captured transcript prefix. Hook records are
+and whether a mutation made the last passing test stale. Replayable Codex and
+Claude Code records are verified against their captured transcript prefix. Hook
+records are
 labeled `observed`, not promoted to `verified` merely because APU stored them.
 Recorded credential, permission, destructive-action, external-side-effect, and
 material-information barriers suppress behavioral incident findings rather than

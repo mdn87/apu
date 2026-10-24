@@ -892,16 +892,24 @@ def ingest_codex_trace(
     return destination, tuple(events), boundary
 
 
-def _claude_code_snapshot(path: Path) -> tuple[str, Path, int, str]:
-    if path.stat().st_size > _MAX_TRACE_BYTES:
+def _claude_code_snapshot(
+    path: Path, *, max_source_bytes: int | None = None
+) -> tuple[str, Path, int, str]:
+    snapshot_bytes = path.stat().st_size
+    if max_source_bytes is not None and snapshot_bytes > max_source_bytes:
+        raise ValueError("Claude Code trace exceeds selected source byte budget")
+    if snapshot_bytes > _MAX_TRACE_BYTES:
         raise ValueError(f"Claude Code trace exceeds {_MAX_TRACE_BYTES} bytes: {path}")
     digest = sha256()
-    snapshot_bytes = 0
+    consumed = 0
     session_id: str | None = None
     cwd: Path | None = None
     with path.open("rb") as stream:
-        for raw in stream:
-            snapshot_bytes += len(raw)
+        while consumed < snapshot_bytes:
+            raw = stream.readline(snapshot_bytes - consumed)
+            if not raw:
+                raise ValueError("Claude Code trace truncated during snapshot")
+            consumed += len(raw)
             digest.update(raw)
             try:
                 record = json.loads(raw.decode("utf-8"))
@@ -909,6 +917,8 @@ def _claude_code_snapshot(path: Path) -> tuple[str, Path, int, str]:
                 continue
             if not isinstance(record, Mapping):
                 continue
+            if record.get("isSidechain") is True:
+                raise ValueError("Claude Code trace is a subagent session")
             selected_id = record.get("sessionId")
             selected_cwd = record.get("cwd")
             if isinstance(selected_id, str) and selected_id:
@@ -1079,6 +1089,7 @@ def ingest_claude_code_trace(
     schema_version: int = EVIDENCE_SCHEMA_VERSION,
     expected_session_id: str | None = None,
     expected_cwd: Path | None = None,
+    max_source_bytes: int | None = None,
 ) -> tuple[Path | None, tuple[dict[str, Any], ...], dict[str, Any]]:
     """Normalize a bounded Claude Code JSONL snapshot into evidence events."""
 
@@ -1087,7 +1098,9 @@ def ingest_claude_code_trace(
     selected = Path(path).expanduser().resolve()
     selected_attribution = dict(attribution or _attribution("exact_trace_path"))
     _validate_attribution(selected_attribution)
-    session_id, cwd, snapshot_bytes, snapshot_sha256 = _claude_code_snapshot(selected)
+    session_id, cwd, snapshot_bytes, snapshot_sha256 = _claude_code_snapshot(
+        selected, max_source_bytes=max_source_bytes
+    )
     if expected_session_id is not None and session_id != expected_session_id:
         raise ValueError("Claude Code trace session changed before evidence ingestion")
     if expected_cwd is not None and (
@@ -1098,11 +1111,16 @@ def ingest_claude_code_trace(
     selected_cwd_key = os.path.normcase(os.path.realpath(str(cwd)))
     events: list[dict[str, Any]] = []
     consumed = 0
+    digest = sha256()
+    line_number = 0
     with selected.open("rb") as stream:
-        for line_number, raw in enumerate(stream, start=1):
-            if consumed + len(raw) > snapshot_bytes:
-                break
+        while consumed < snapshot_bytes:
+            raw = stream.readline(snapshot_bytes - consumed)
+            if not raw:
+                raise ValueError("Claude Code trace truncated during ingestion")
             consumed += len(raw)
+            line_number += 1
+            digest.update(raw)
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -1131,6 +1149,8 @@ def ingest_claude_code_trace(
                     schema_version=schema_version,
                 )
             )
+    if digest.hexdigest() != snapshot_sha256:
+        raise ValueError("Claude Code trace changed during ingestion")
     destination, appended = append_evidence_events(state_home, events)
     boundary = {
         "path": str(selected),
