@@ -212,8 +212,22 @@ Dispatch accepts only a work order inside APU's private campaign state. On
 Windows, the Codex adapter first proves that its confined context can write the
 disposable stage but cannot open the live target for writing. If that probe
 fails, dispatch is unavailable and the work order stays in the hand-run queue.
-Claude dispatch currently fails closed because an equivalent enforced
-isolation adapter is not implemented.
+Claude dispatch uses the installed Codex CLI as an OS sandbox broker and the
+installed Claude CLI as the model provider. It requires a fresh successful
+write-denial probe for the exact stage before each invocation. Both CLIs are
+required; Windows npm wrappers must expose the native Claude executable.
+A per-invocation profile inherits workspace protection and permits only
+`api.anthropic.com` through the network proxy, with managed requirements applied.
+The Claude process receives staged content through stdin with tools, hooks,
+customizations, MCP servers, and session persistence disabled. Only successful
+structured edits bound to the staged logical paths are accepted. Authentication
+and network access remain subject to the installed provider and sandbox policy;
+failures leave the work order unapplied. Timeouts terminate the launched process
+tree. APU does not change global profiles or bypass managed requirements.
+
+Select it with `apu dispatch WORK_ORDER --runner claude`. The adapter follows
+Claude's [programmatic CLI contract](https://code.claude.com/docs/en/headless);
+it does not install a provider or modify live-file permissions.
 
 ```console
 apu dispatch %LOCALAPPDATA%\apu\campaigns\CAMPAIGN_ID\work-orders\WORK_ORDER_ID.md
