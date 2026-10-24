@@ -238,7 +238,7 @@ class PackageUpgradeCapability:
 
 
 class PackageUpgradeExecutor(Protocol):
-    """Future executable adapter boundary; all operations must be provider-owned."""
+    """Trusted executable adapter boundary; operations must be provider-owned."""
 
     provider: str
 
@@ -336,6 +336,7 @@ def require_package_upgrade(
     capability: PackageUpgradeCapability,
     *,
     state_home: Path,
+    executor: PackageUpgradeExecutor | None = None,
 ) -> None:
     """Refuse before state creation unless an executable safe adapter exists."""
 
@@ -352,9 +353,17 @@ def require_package_upgrade(
         raise PackageUpgradeUnavailable(
             "package upgrade is unavailable: " + ",".join(capability.reason_codes)
         )
-    raise PackageUpgradeUnavailable(
-        "package upgrade executor is not implemented for this provider"
-    )
+    if executor is None:
+        raise PackageUpgradeUnavailable(
+            "package upgrade executor is not implemented for this provider"
+        )
+    if executor.provider != capability.provider or not all(
+        callable(getattr(executor, method, None))
+        for method in ("observe", "update_exact", "rollback_exact")
+    ):
+        raise PackageUpgradeUnavailable(
+            "package upgrade executor does not match capability"
+        )
 
 
 def _documents_exact_version(help_text: str) -> bool:
