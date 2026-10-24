@@ -201,10 +201,20 @@ explicitly unclassified dynamic surfaces—never instruction bodies. Package
 caches and provider-managed installation metadata remain read-only. Archive
 links are never created or followed on disk: a versioned manifest records
 validated package-internal links, and analysis reads the bound target blob
-through that virtual view. Until a provider exposes a documented exact-version
-pin or APU gains a journaled provider-update protocol, research emits `hold`
+through that virtual view. Until a provider exposes documented exact-version
+installation and restoration, research emits `hold`
 or `work-order` and reports upgrade mutation as unavailable instead of
 claiming an unverified install.
+
+The `apu.package_transactions` library coordinates trusted provider adapters:
+it journals before update, verifies the exact version and tree, restores and
+verifies the pre-state on failure, and returns a durable receipt. Retries never
+repeat an interrupted update. Ambiguous state and failed rollback require
+explicit recovery bound to a fresh observation. Per-package locks serialize
+APU transactions; adapters must also protect against concurrent provider changes.
+The installed Claude plugin CLI offers latest-only updates, so its live upgrade
+adapter remains unavailable. The coordinator is tested with controlled adapters;
+this does not constitute a live Claude package upgrade or rollback.
 
 ## Isolated dispatch and efficacy
 

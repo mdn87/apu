@@ -695,7 +695,7 @@
       "projectId": "apu",
       "title": "Implement package upgrade execution",
       "summary": "Journal provider upgrades, verify the target, and support verifiable rollback and retry.",
-      "stage": "planned",
+      "stage": "blocked",
       "sequence": 200,
       "prereqs": [
         "apu:deterministic-core"
@@ -705,7 +705,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-10-24T03:29:48.768233Z",
-        "updatedAt": "2026-10-24T03:29:48.768233Z"
+        "updatedAt": "2026-10-24T03:54:02.693956Z"
       },
       "evidence": [
         {
@@ -713,6 +713,12 @@
           "at": "2026-10-24T03:29:48.768233Z",
           "kind": "note",
           "message": "Matt authorized completing this implementation as part of the three-item APU goal."
+        },
+        {
+          "entryId": "apu:package-upgrade-execution:coordinator-implemented-2026-10-24",
+          "at": "2026-10-24T03:54:02.693956Z",
+          "kind": "stage-change",
+          "message": "Coordinator implemented; 636 tests pass. Live Claude upgrades still need documented exact-version install and restore operations."
         }
       ]
     },
