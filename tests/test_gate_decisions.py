@@ -172,6 +172,7 @@ def test_audit_joins_gate_log_and_reports_i3_finding(
     state = tmp_path / "state"
     log = _write_log(tmp_path / "latency.log", _session_a_lines())
     monkeypatch.setenv("APU_HOME", str(state))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
     _, report = audit_behavior(state, cwd=tmp_path, gate_log=log)
     gate = report["gate_decisions"]
     assert gate["status"] == "measured"

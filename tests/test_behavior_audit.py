@@ -15,6 +15,11 @@ from apu.evidence import ingest_hook_event
 _NOW = datetime(2026, 8, 14, 16, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def isolated_claude_history(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
+
+
 def _write_trace(
     path: Path,
     cwd: Path,

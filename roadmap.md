@@ -502,13 +502,21 @@ age. Neither path bypasses the source-byte limit, and no all-history option is
 provided. At most 1,000 files per provider are opened for metadata inspection,
 with exact and incident-marked sources prioritized before recency.
 
+Direct Claude Code history discovery is implemented alongside Codex discovery.
+The audit reads primary transcripts from the Claude projects root, binds the
+latest explicit working directory, excludes subagents, and reuses or ingests
+content-free evidence under the same session and source-byte caps. Metadata
+inspection uses a bounded tail; source changes before ingestion produce an
+explicit skip. `--claude-trace-root` overrides the Claude root independently
+of Codex's `--trace-root`.
+
 The deterministic detector set covers repeated identical tool failures,
 repeated permission denials, unresolved or orphaned request/result pairs,
 post-completion activity, stale or dirty state at completion, and completion
 after a mutation invalidated the last successful test. Operator incident signals
 remain `asserted`; lifecycle-hook facts remain `observed`; replayable Codex
-records become `verified` only when their transcript prefix and source record
-still match. Known legitimate barriers suppress incident findings.
+and Claude Code records become `verified` only when their transcript prefix and
+source record still match. Known legitimate barriers suppress incident findings.
 
 The report binds incident-time surfaces separately from current-at-audit
 surfaces and stores only safe metadata, hashes, references, counts, and detector
