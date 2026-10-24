@@ -16,6 +16,7 @@ from .audit import build_inventory
 from .behavior_watch import codex_trace_root, normalized_cwd_key
 from .evidence import (
     EVIDENCE_READER_VERSIONS,
+    EVIDENCE_SCHEMA_VERSION,
     ingest_codex_trace,
     read_evidence,
     read_evidence_version,
@@ -344,6 +345,7 @@ def _discover_evidence_candidates(
         versioned_provider_dirs = (
             (1, root / provider),
             (2, root / "v2" / provider),
+            (3, root / "v3" / provider),
         )
         if not any(directory.is_dir() for _, directory in versioned_provider_dirs):
             continue
@@ -933,6 +935,7 @@ def _evidence_findings(
                 request is not None
                 and request["observation"]["command_class"] == "test"
                 and result["event_type"] == "tool.completed"
+                and result["observation"]["status"] == "completed"
                 and segment_start < positions[result["event_id"]] < completion_position
             ):
                 successful_tests.append(result)
@@ -1098,7 +1101,7 @@ def audit_behavior(
     session_id: str | None = None,
     trace_root: Path | None = None,
     now: datetime | None = None,
-    evidence_schema_version: int = 2,
+    evidence_schema_version: int = EVIDENCE_SCHEMA_VERSION,
     gate_log: Path | None = DEFAULT_GATE_LOG,
 ) -> tuple[Path, dict[str, Any]]:
     """Audit bounded session evidence; ``gate_log=None`` skips the gate-cost join."""

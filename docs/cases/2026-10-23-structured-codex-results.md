@@ -73,9 +73,8 @@ adapter alone would leave this observer inconsistent.
 
 ## Selected intervention
 
-The ready board item `apu:structured-codex-results` will teach the Codex
-evidence adapter to interpret typed result blocks and recognized command
-result envelopes. It must retain only safe status metadata and hashes.
+The board item `apu:structured-codex-results` implements typed result blocks
+and recognized command-result envelopes in the Codex evidence adapter. It must retain only safe status metadata and hashes.
 Align the evidence adapter and live watcher on the same supported result
 contract, covering both function and custom tool outputs.
 
@@ -107,11 +106,11 @@ of stored evidence:
 - `behavior_audit._already_ingested_unchanged` compares byte boundaries, not
   adapter semantics. An unchanged source can reuse the old projection.
 
-Before implementation, specify how a reader selects one effective result
-while retaining the old evidence, and how replay bypasses unchanged-source
-reuse deliberately. A fresh state directory is suitable for baseline
-comparison, but does not solve compatibility for existing installations.
-No schema change or historical rewrite is authorized by this case revision.
+The implemented v3 reader selects one effective Codex result by source record,
+retaining old records while permitting only status and exit-code corrections.
+Transcript ingestion uses a version-specific reuse check. Matt approved this
+format change on 2026-10-24; existing files are never rewritten. Fresh and
+mixed-version replay are both covered by acceptance checks.
 
 ### Detector implications and scope
 
@@ -148,9 +147,8 @@ Recognize envelopes by their supported producer format and typed fields;
 never search recursively through command stdout or stderr for status. Keep
 the digest of the full result while retaining only allowed status metadata.
 A missing exit code alone does not prove that a process is running, and an
-outer tool response completing does not establish command success. The exact
-unknown/running representation and sibling aggregation rule still need a
-compatibility decision. Argon's proposed exact key allowlist and a
+outer tool response completing does not establish command success. V3 stores unknown/running in observation status. Nonzero siblings dominate;
+otherwise unknown siblings dominate running, and running dominates success. Argon's proposed exact key allowlist and a
 `tool.completed` fallback for missing status are suggestions, not an adopted
 contract: they could reject valid evolving envelopes or imply success.
 
@@ -175,8 +173,57 @@ This revision incorporates the duplicate parser, JSON-format mismatch,
 replay hazards, downstream interpretation risks, and documentation corrections.
 It qualifies the review's claim of corruption as a projection/reader risk,
 without asserting physical evidence damage or a measured failure probability.
-The review's parser and schema suggestions remain design inputs. No runtime
-code changed and no new history audit was performed for this revision.
+The review's parser and schema suggestions were design inputs; that documentation
+revision did not change runtime code. The implementation below followed it.
 
-This selection is complete; the importer change has not been implemented.
+## Implementation and replay results
+
+Claude Opus accepted the revised case with minor corrections in Autowork run
+`20261024-014842-8120547bffed`. Its main additions were a complete status
+baseline and comparison of watcher diagnoses. Matt subsequently approved the
+v3 evidence format. The implementation uses one shared parser for evidence
+and the live watcher; v1/v2 writers retain their historical interpretation.
+
+The captured ten Codex transcript prefixes were verified against their saved
+hashes. Across 786 result records, direct command envelopes contain 494 zero
+exits, 68 nonzero exits (all exactly 1), and 169 missing exits. The 169 missing
+exits also carry a valid session ID and are recognized as running commands.
+Some records contain multiple envelopes. The 68 image blocks are a separate
+count. See [the extended baseline](2026-10-24-structured-result-baseline.json).
+
+All 68 baseline failures now retain exit code 1 and become `tool.failed`.
+At the outer response level, the 786 results aggregate to 68 failed, 13
+completed, and 705 unknown. Opaque sibling text prevents a claim that the
+whole response succeeded or describes only a running process; individual
+recognized envelopes still have explicit status. Zero, running, missing,
+boolean, negative, and mixed statuses have focused fixture coverage.
+
+Replay into fresh and mixed v2/v3 state produces identical effective events
+across all ten sessions. Repeating ingestion appends nothing; existing v2
+bytes remain unchanged. Observation-only corrections, growing transcript
+snapshots, and unrelated projection conflicts have regression coverage.
+Unknown/running responses pair with their tool request as returned responses,
+but never count as successful tests. Process-lifecycle correlation across
+subsequent polling calls remains outside this case.
+
+The final watcher comparison adds a failure signal in six sessions and changes
+zero diagnostic labels. Codex single and repeated command-failure signals
+remain visible, but cannot alone establish autonomy loss or permit recovery.
+Independent behavioral signals, explicit recovery requests, and legitimate
+barriers retain their existing precedence. This prevents the five extra
+heuristic diagnoses observed in the partial implementation.
+
+The comparison used analytical incidents with captured settings and signals,
+without operator assertions, current instruction surfaces, or interventions.
+The audit replay also omitted current instruction-surface inventory; source
+verification and detector execution were unchanged. All 1,641 Codex events
+verified against their captured source boundaries. No new Codex audit findings
+appeared. Zero findings still reflect incomplete command-classification and
+test-freshness coverage and are not proof that the sessions had no problems.
+
+See [the implementation replay](2026-10-24-structured-result-replay.json) for
+per-session results, preservation checks, detector counts, and diagnosis
+comparison. Runtime changes preserve content minimization. Legacy evidence,
+provider transcripts, and live global configuration were not modified.
+
 The separate Dias note-path exemption remains open and was not applied.

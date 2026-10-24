@@ -93,7 +93,7 @@ def _event_parser() -> argparse.ArgumentParser:
     parser.add_argument("--trace-root", type=Path)
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
     parser.add_argument(
-        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+        "--evidence-schema-version", type=int, choices=(1, 2, 3), default=3
     )
     parser.add_argument("--json", action="store_true")
     return parser
@@ -165,9 +165,9 @@ def _add_selection_arguments(
     parser.add_argument(
         "--evidence-schema-version",
         type=int,
-        choices=(1, 2),
-        default=2,
-        help="saved evidence format (default: 2)",
+        choices=(1, 2, 3),
+        default=3,
+        help="saved evidence format (default: 3)",
     )
     output = parser.add_mutually_exclusive_group() if prompt_output else parser
     output.add_argument(

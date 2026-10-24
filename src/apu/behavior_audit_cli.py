@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import argparse
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
-from datetime import UTC, datetime
 
 from .behavior_audit import (
     DEFAULT_LOOKBACK,
@@ -101,7 +99,7 @@ def add_behavior_parser(commands: argparse._SubParsersAction) -> None:
         help="override Codex trace discovery root for testing or recovery",
     )
     audit.add_argument(
-        "--evidence-schema-version", type=int, choices=(1, 2), default=2
+        "--evidence-schema-version", type=int, choices=(1, 2, 3), default=3
     )
     audit.add_argument(
         "--gate-log",

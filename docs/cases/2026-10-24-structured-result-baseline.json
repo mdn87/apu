@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "status": "partial-implementation",
+  "baseline": {
+    "schema_version": 1,
+    "source": "Verified captured Codex transcript prefixes; direct top-level envelopes only.",
+    "sessions": [
+      {
+        "session_id": "01a16afa-c649-7f71-9e07-e1ba356b30dc",
+        "snapshot_sha256": "e2bda7ce2713145470d3befe0128a45635fdeb8afb373d131f51922d6a7fba93",
+        "counts": {
+          "result_records": 41,
+          "non_envelope_text_blocks": 56,
+          "records_without_envelope": 9,
+          "envelopes_zero": 26,
+          "records_with_envelope": 32,
+          "envelopes_nonzero": 5,
+          "envelopes_missing": 1
+        },
+        "tool_names": {
+          "other_or_unpaired": 32
+        }
+      },
+      {
+        "session_id": "01a16716-8113-7113-a054-293cfe4b8a67",
+        "snapshot_sha256": "c4e152e230e6f3458ac880c936b200541c156b98e922fe2871d79f858afb95d5",
+        "counts": {
+          "result_records": 31,
+          "non_envelope_text_blocks": 72,
+          "records_without_envelope": 30,
+          "envelopes_zero": 1,
+          "records_with_envelope": 1
+        },
+        "tool_names": {
+          "other_or_unpaired": 1
+        }
+      },
+      {
+        "session_id": "01a1673f-5ea1-7f10-97d4-9ce1f0588be2",
+        "snapshot_sha256": "a514135097818fad2641bfd5a1c948ad11e8b5932ce4528ce7171657fbc9dfcc",
+        "counts": {},
+        "tool_names": {}
+      },
+      {
+        "session_id": "01a16725-35bc-7b31-8bbb-c157327bec37",
+        "snapshot_sha256": "fb89344004f57ac856d9628410d67ffb1162c9f8d92fd0d9158635825c818226",
+        "counts": {
+          "result_records": 196,
+          "non_envelope_text_blocks": 364,
+          "envelopes_zero": 117,
+          "records_with_envelope": 129,
+          "records_without_envelope": 67,
+          "envelopes_nonzero": 7,
+          "envelopes_missing": 18,
+          "nontext_blocks": 34
+        },
+        "tool_names": {
+          "other_or_unpaired": 142
+        }
+      },
+      {
+        "session_id": "01a166e6-92ee-7da2-9803-c45f8953fc65",
+        "snapshot_sha256": "52d5a354bbccad6d4f7bf8642ec9ea0067651b9db55452f177c553a35d9e6d7b",
+        "counts": {
+          "result_records": 39,
+          "non_envelope_text_blocks": 49,
+          "envelopes_zero": 22,
+          "records_with_envelope": 37,
+          "records_without_envelope": 2,
+          "envelopes_nonzero": 4,
+          "envelopes_missing": 20
+        },
+        "tool_names": {
+          "other_or_unpaired": 46
+        }
+      },
+      {
+        "session_id": "01a166dc-ad9e-7d81-b16b-fda154816d58",
+        "snapshot_sha256": "749fc77f0da605ff376cf18217aef4289d3a4c60a2eef27846b29b76cf29911a",
+        "counts": {
+          "result_records": 6,
+          "non_envelope_text_blocks": 6,
+          "envelopes_zero": 3,
+          "records_with_envelope": 4,
+          "records_without_envelope": 2,
+          "envelopes_nonzero": 1
+        },
+        "tool_names": {
+          "other_or_unpaired": 4
+        }
+      },
+      {
+        "session_id": "01a166d6-5965-7740-857c-03ab6422fba7",
+        "snapshot_sha256": "8d06bab8b6ccc086067d304b170a8d58d3ed05f406ef2d6aed971f8f20c40033",
+        "counts": {
+          "result_records": 295,
+          "non_envelope_text_blocks": 351,
+          "envelopes_nonzero": 34,
+          "records_with_envelope": 267,
+          "records_without_envelope": 28,
+          "envelopes_zero": 209,
+          "envelopes_missing": 88,
+          "nontext_blocks": 21
+        },
+        "tool_names": {
+          "other_or_unpaired": 331
+        }
+      },
+      {
+        "session_id": "01a166b1-d665-7cf1-96a5-29555d5cb7da",
+        "snapshot_sha256": "a8c715443f5ac9a74031b9be3b15f4c47f64992d3c6b34132d2336bef2bfad3a",
+        "counts": {
+          "result_records": 161,
+          "non_envelope_text_blocks": 214,
+          "envelopes_nonzero": 17,
+          "records_with_envelope": 142,
+          "records_without_envelope": 19,
+          "envelopes_zero": 102,
+          "envelopes_missing": 42,
+          "nontext_blocks": 13
+        },
+        "tool_names": {
+          "other_or_unpaired": 161
+        }
+      },
+      {
+        "session_id": "01a16693-ae37-73a1-a8d8-c4e7dd19c788",
+        "snapshot_sha256": "de4c80b74f4c76aafcbe2c8cc16a08c2788a2710acfb74eafe86fd9e370dd070",
+        "counts": {},
+        "tool_names": {}
+      },
+      {
+        "session_id": "01a16694-8ae2-7ad3-8a69-065a558949ed",
+        "snapshot_sha256": "0633896bf6d507dfca3369bf6d07556649a89d2a0d2a99a8e5ddaad6d5eadc8f",
+        "counts": {
+          "result_records": 17,
+          "non_envelope_text_blocks": 24,
+          "envelopes_zero": 14,
+          "records_with_envelope": 14,
+          "records_without_envelope": 3
+        },
+        "tool_names": {
+          "other_or_unpaired": 14
+        }
+      }
+    ],
+    "totals": {
+      "result_records": 786,
+      "non_envelope_text_blocks": 1136,
+      "records_without_envelope": 160,
+      "envelopes_zero": 494,
+      "records_with_envelope": 626,
+      "envelopes_nonzero": 68,
+      "envelopes_missing": 169,
+      "nontext_blocks": 68
+    }
+  },
+  "watcher_comparison": {
+    "schema_version": 1,
+    "limitations": "Analytical diagnosis fixtures use captured parser signals/settings only, without operator assertions or current instruction surfaces. No intervention ran.",
+    "sessions": [
+      {
+        "session_id": "01a16afa-c649-7f71-9e07-e1ba356b30dc",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a16716-8113-7113-a054-293cfe4b8a67",
+        "before_signals": [
+          "reversible-choice-escalation"
+        ],
+        "after_signals": [
+          "reversible-choice-escalation"
+        ],
+        "before_diagnosis": "likely-autonomy-loss",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a1673f-5ea1-7f10-97d4-9ce1f0588be2",
+        "before_signals": [],
+        "after_signals": [],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a16725-35bc-7b31-8bbb-c157327bec37",
+        "before_signals": [
+          "reversible-choice-escalation"
+        ],
+        "after_signals": [
+          "reversible-choice-escalation",
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "likely-autonomy-loss",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a166e6-92ee-7da2-9803-c45f8953fc65",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a166dc-ad9e-7d81-b16b-fda154816d58",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a166d6-5965-7740-857c-03ab6422fba7",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a166b1-d665-7cf1-96a5-29555d5cb7da",
+        "before_signals": [],
+        "after_signals": [
+          "tool-failure-observed"
+        ],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "likely-autonomy-loss"
+      },
+      {
+        "session_id": "01a16693-ae37-73a1-a8d8-c4e7dd19c788",
+        "before_signals": [],
+        "after_signals": [],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      },
+      {
+        "session_id": "01a16694-8ae2-7ad3-8a69-065a558949ed",
+        "before_signals": [],
+        "after_signals": [],
+        "before_diagnosis": "insufficient-evidence",
+        "after_diagnosis": "insufficient-evidence"
+      }
+    ]
+  },
+  "limitations": [
+    "The evidence importer is unchanged pending format-change approval.",
+    "Watcher diagnosis changes are heuristic outcomes, not established agent misconduct.",
+    "Result records can contain several envelopes, so envelope totals exceed record totals."
+  ]
+}

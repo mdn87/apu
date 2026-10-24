@@ -11,11 +11,12 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from .codex_results import codex_result_status
 from .models import canonical_json, sha256_bytes
 from .state import ensure_private_directory, ensure_state_home
 
-EVIDENCE_SCHEMA_VERSION = 2
-EVIDENCE_READER_VERSIONS = frozenset({1, 2})
+EVIDENCE_SCHEMA_VERSION = 3
+EVIDENCE_READER_VERSIONS = frozenset({1, 2, 3})
 EVIDENCE_STATUSES = frozenset(
     {"asserted", "observed", "verified", "stale", "contradicted", "unverifiable"}
 )
@@ -151,7 +152,9 @@ def validate_evidence_event(event: Mapping[str, Any]) -> None:
     if not isinstance(event, Mapping):
         raise TypeError("evidence event must be an object")
     schema_version = event.get("schema_version")
-    expected = base_fields | {"attribution"} if schema_version == 2 else base_fields
+    expected = (
+        base_fields | {"attribution"} if schema_version in {2, 3} else base_fields
+    )
     if not isinstance(event, Mapping) or set(event) != expected:
         missing = sorted(expected - set(event)) if isinstance(event, Mapping) else []
         extra = sorted(set(event) - expected) if isinstance(event, Mapping) else []
@@ -178,7 +181,7 @@ def validate_evidence_event(event: Mapping[str, Any]) -> None:
     _validate_observation(event["observation"])
     _validate_state(event["state"])
     _validate_source(event["source"])
-    if schema_version == 2:
+    if schema_version in {2, 3}:
         _validate_attribution(event["attribution"])
 
 
@@ -228,7 +231,7 @@ def _validate_observation(value: Any) -> None:
     for field in ("tool_name", "command_class", "status"):
         _optional_label(value[field], f"observation.{field}")
     exit_code = value["exit_code"]
-    if exit_code is not None and not isinstance(exit_code, int):
+    if exit_code is not None and type(exit_code) is not int:
         raise TypeError("evidence observation.exit_code must be an integer or null")
     duration = value["duration_ms"]
     if duration is not None and (not isinstance(duration, int) or duration < 0):
@@ -375,7 +378,7 @@ def _event(
         "state": dict(state or _empty_state()),
         "source": dict(source),
     }
-    if schema_version == 2:
+    if schema_version in {2, 3}:
         body["attribution"] = dict(attribution)
     identity = {
         "schema_version": body["schema_version"],
@@ -391,7 +394,7 @@ def _event(
             "record_sha256": body["source"]["record_sha256"],
         },
     }
-    if schema_version == 2:
+    if schema_version in {2, 3}:
         identity["attribution"] = body["attribution"]
     event_id = (
         f"evidence-{sha256(canonical_json(identity).encode('utf-8')).hexdigest()}"
@@ -420,8 +423,8 @@ def evidence_path(
     selected_session = _required_string(session_id, "session_id")
     session_digest = sha256(selected_session.encode("utf-8")).hexdigest()
     root = Path(state_home) / "behavior" / "evidence"
-    if schema_version == 2:
-        root = root / "v2"
+    if schema_version in {2, 3}:
+        root = root / f"v{schema_version}"
     return root / selected_provider / f"{session_digest}.jsonl"
 
 
@@ -444,6 +447,32 @@ def _version_neutral_event(event: Mapping[str, Any]) -> dict[str, Any]:
     selected.pop("event_id", None)
     selected.pop("schema_version", None)
     selected.pop("attribution", None)
+    return selected
+
+
+def _codex_result(event: Mapping[str, Any]) -> bool:
+    return (
+        event["provider"] == "codex"
+        and event["source_kind"] == "transcript"
+        and event["event_type"] in {"tool.completed", "tool.failed"}
+        and event["source"]["record_sha256"] is not None
+    )
+
+
+def _projection_comparable(
+    event: Mapping[str, Any], *, result_status: bool
+) -> dict[str, Any]:
+    selected = _version_neutral_event(event)
+    # The record hash identifies the immutable line. A later ingestion can
+    # attest to a longer transcript prefix without changing that line.
+    selected["source"] = dict(selected["source"])
+    selected["source"].pop("snapshot_bytes")
+    selected["source"].pop("snapshot_sha256")
+    if result_status:
+        selected.pop("event_type")
+        selected["observation"] = dict(selected["observation"])
+        selected["observation"].pop("status")
+        selected["observation"].pop("exit_code")
     return selected
 
 
@@ -470,7 +499,19 @@ def append_evidence_events(
         schema_version=schema_version,
     )
     existing_events = _read_evidence_records(state_home, provider, session_id)
-    existing = {event["event_id"] for event in existing_events}
+    existing = {event["event_id"]: event for event in existing_events}
+    for event in stored_events:
+        previous = existing.get(event["event_id"])
+        if (
+            schema_version == 3
+            and event["source_kind"] == "transcript"
+            and previous is not None
+            and (
+                _projection_comparable(previous, result_status=False)
+                != _projection_comparable(event, result_status=False)
+            )
+        ):
+            raise ValueError("same-version evidence projections disagree")
     pending = tuple(
         event for event in stored_events if event["event_id"] not in existing
     )
@@ -560,19 +601,40 @@ def read_evidence(
     *,
     cwd: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Read logical evidence, preferring v2 for a cross-version replay."""
+    """Read one effective projection per source event, retaining stored history.
+
+    V3 permits only Codex result status/exit corrections and changed snapshot
+    boundaries. Other disagreements still fail closed. V1/v2-only reads keep
+    their historical strict comparison.
+    """
 
     selected: dict[tuple[Any, ...], dict[str, Any]] = {}
     records = _events_for_cwd(
         _read_evidence_records(state_home, provider, session_id), cwd
     )
-    for event in records:
+    revised_results = {
+        _logical_event_key(event)[:3] + _logical_event_key(event)[4:]
+        for event in records
+        if event["schema_version"] == 3 and _codex_result(event)
+    }
+    # Process the newest projection first so old projections cannot conflict
+    # with each other before their explicit v3 replacement is considered.
+    for event in sorted(records, key=lambda item: -item["schema_version"]):
         key = _logical_event_key(event)
+        source_key = key[:3] + key[4:]
+        if _codex_result(event) and source_key in revised_results:
+            key = (*key[:3], "codex.result", *key[4:])
         current = selected.get(key)
-        if current is not None and _version_neutral_event(
-            current
-        ) != _version_neutral_event(event):
-            raise ValueError("cross-version evidence projections disagree")
+        if current is not None:
+            if current["schema_version"] == 3:
+                correction = event["schema_version"] < 3 and _codex_result(current)
+                agree = _projection_comparable(
+                    current, result_status=correction
+                ) == _projection_comparable(event, result_status=correction)
+            else:
+                agree = _version_neutral_event(current) == _version_neutral_event(event)
+            if not agree:
+                raise ValueError("cross-version evidence projections disagree")
         if current is None or event["schema_version"] > current["schema_version"]:
             selected[key] = event
     return sorted(
@@ -728,14 +790,19 @@ def _codex_event(
     }:
         output = payload.get("output") or payload.get("result")
         failed = isinstance(output, str) and bool(_FAILURE_OUTPUT.search(output))
+        exit_match = _EXIT_CODE.search(output) if isinstance(output, str) else None
+        status = "failed" if failed else "completed"
+        exit_code = int(exit_match.group(1)) if exit_match else None
+        if schema_version == 3:
+            status, exit_code = codex_result_status(output)
+            failed = status == "failed"
         event_type, evidence_class = (
             ("tool.failed", "result") if failed else ("tool.completed", "result")
         )
-        exit_match = _EXIT_CODE.search(output) if isinstance(output, str) else None
         observation.update(
             {
-                "status": "failed" if failed else "completed",
-                "exit_code": int(exit_match.group(1)) if exit_match else None,
+                "status": status,
+                "exit_code": exit_code,
                 "result_sha256": _digest(output),
             }
         )

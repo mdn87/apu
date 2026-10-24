@@ -94,7 +94,7 @@ def test_codex_ingestion_is_content_minimized_correlated_and_replayable(
     path, events, boundary = ingest_codex_trace(state, trace)
 
     assert path is not None and path.is_file()
-    assert {event["schema_version"] for event in events} == {2}
+    assert {event["schema_version"] for event in events} == {3}
     assert {event["attribution"]["selector_mode"] for event in events} == {
         "exact_trace_path"
     }
@@ -192,7 +192,7 @@ def test_v2_reader_accepts_legacy_v1_and_rejects_partial_v2(
     cwd = tmp_path / "repo"
     cwd.mkdir()
     trace = _codex_trace(tmp_path / "sessions" / "rollout.jsonl", cwd)
-    v2_path, events, _ = ingest_codex_trace(state, trace)
+    v2_path, events, _ = ingest_codex_trace(state, trace, schema_version=2)
     legacy = dict(events[0])
     legacy["schema_version"] = 1
     legacy["event_id"] = "legacy-" + legacy["event_id"]

@@ -8,13 +8,13 @@
   "milestonePhase": "closeout",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-10-24T01:47:41.603Z",
+  "assessedAt": "2026-10-24T02:40:45.971785Z",
   "confidence": "reported",
   "currentMilestone": "Release 0.9.0: provider-neutral incident attribution, the proven start-of-turn gate intervention with its I3 detector, and the wtf and ezpz diagnosis and recovery workflows.",
-  "remainingSummary": "Structured Codex results remain the next fix; Argon review adds replay, watcher alignment, and detector checks. Claude will review the revised analysis.",
-  "nextChipId": "apu:structured-codex-results",
+  "remainingSummary": "Structured Codex results are implemented and replay-verified. The separate Dias note-path exemption remains open.",
+  "nextChipId": "apu:apply-dias-note-paths",
   "source": {
-    "label": "History analysis revised after independent Argon review.",
+    "label": "Implementation, captured-history replay, and passing regression checks.",
     "updatedAt": "2026-10-24"
   }
 }

@@ -556,8 +556,8 @@
       "chipId": "apu:structured-codex-results",
       "projectId": "apu",
       "title": "Recognize structured Codex command results",
-      "summary": "Align Codex evidence and watcher result parsing; define replay compatibility and inspect detector changes without treating nonzero exits as agent misconduct.",
-      "stage": "ready",
+      "summary": "Structured Codex results now retain command status. Versioned replay preserves old evidence; process exits alone cannot diagnose autonomy loss.",
+      "stage": "done",
       "sequence": 160,
       "prereqs": [
         "apu:second-intervention-case"
@@ -567,7 +567,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-10-23T23:12:24.264936Z",
-        "updatedAt": "2026-10-24T01:47:41.603Z"
+        "updatedAt": "2026-10-24T02:40:45.971785Z"
       },
       "evidence": [
         {
@@ -581,6 +581,24 @@
           "at": "2026-10-24T01:47:41.603Z",
           "kind": "note",
           "message": "Argon review incorporated: align both parsers, define safe replay, and inspect detector effects. Runtime code is unchanged; Claude review is next."
+        },
+        {
+          "entryId": "apu:structured-codex-results:format-approval-pending-2026-10-24",
+          "at": "2026-10-24T02:27:43.778131Z",
+          "kind": "stage-change",
+          "message": "Parser and watcher checks pass; full status baseline captured. Safe replay needs approval for a versioned evidence format before ingestion can change."
+        },
+        {
+          "entryId": "apu:structured-codex-results:format-approved-2026-10-24",
+          "at": "2026-10-24T02:35:15.390853Z",
+          "kind": "note",
+          "message": "Matt approved the versioned evidence format. Implementing safe replay and consumer checks while preserving existing records."
+        },
+        {
+          "entryId": "apu:structured-codex-results:verified-2026-10-24",
+          "at": "2026-10-24T02:40:45.971785Z",
+          "kind": "stage-change",
+          "message": "Implemented and verified: all 68 results corrected; ten sessions replay safely with old bytes preserved. 583 tests pass; no extra autonomy diagnoses."
         }
       ]
     }
