@@ -129,6 +129,14 @@ successful test before it can report a later mutation. Correcting result
 status alone cannot establish complete command or test-freshness coverage.
 The present review does not quantify their impact on this sample.
 
+Update, 2026-10-24: direct `exec_command` and `functions.exec_command` requests
+now use `cmd` for command classification. Existing missing classifications can
+be replayed without rewriting stored evidence or duplicating effective events.
+The successful-test prerequisite remains unchanged. The available APU transcript
+uses orchestration calls named `exec`, so it provides no direct execution-command
+sample for measuring this change; detector effects are covered by controlled
+regression cases.
+
 ## Acceptance evidence
 
 Use synthetic, content-free examples to verify the supported formats, then

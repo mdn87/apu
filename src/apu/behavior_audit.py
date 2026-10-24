@@ -17,6 +17,7 @@ from .behavior_watch import claude_code_trace_root, codex_trace_root, normalized
 from .evidence import (
     EVIDENCE_READER_VERSIONS,
     EVIDENCE_SCHEMA_VERSION,
+    codex_command_classification_pending,
     ingest_claude_code_trace,
     ingest_codex_trace,
     read_evidence,
@@ -604,6 +605,12 @@ def _already_ingested_unchanged(
         schema_version=schema_version,
         cwd=candidate.cwd,
     )
+    if schema_version == 3 and codex_command_classification_pending(
+        event
+        for event in events
+        if event["source"]["path"] == str(candidate.source_path)
+    ):
+        return False
     boundaries = [
         event["source"]["snapshot_bytes"]
         for event in events

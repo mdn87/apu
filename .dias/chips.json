@@ -628,6 +628,33 @@
           "message": "Direct Claude history discovery implemented. All 594 tests pass; one real project session yielded 18 verified events. Shared bounds and source changes are checked."
         }
       ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:codex-command-classification",
+      "projectId": "apu",
+      "title": "Classify Codex execution commands",
+      "summary": "Recognize exec_command inputs and preserve existing evidence during replay, then verify test freshness detection.",
+      "stage": "done",
+      "sequence": 180,
+      "prereqs": [
+        "apu:structured-codex-results"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-24T03:14:36.783737Z",
+        "updatedAt": "2026-10-24T03:19:11.263758Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:codex-command-classification:verified-2026-10-24",
+          "at": "2026-10-24T03:19:11.263758Z",
+          "kind": "stage-change",
+          "message": "Codex execution commands are classified. Replay preserves old bytes and avoids duplicate events. All 616 tests pass; failed and unknown results cannot count as passing tests."
+        }
+      ]
     }
   ]
 }

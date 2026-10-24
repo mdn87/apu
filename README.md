@@ -378,12 +378,23 @@ is still running, so consumers use observation status as well as event type.
 
 V1, v2, and v3 records remain in separate append-only routes; v3 uses
 `behavior/evidence/v3`. Readers select v3's result status for the same Codex
-source record without double-counting older interpretations. Changes outside
-the allowed result-status correction still fail closed. Snapshot boundaries
-may grow while the immutable source record stays the same. Existing evidence
-files are never rewritten. Auditing raw Codex traces reingests them once per
-writer version; evidence-only audits retain their existing projections until
-an explicit ingestion is performed.
+source record without double-counting older interpretations. V3 also classifies
+Codex `exec_command` and `functions.exec_command` requests using their `cmd`
+argument. Existing `bash`, `shell`, and `shell_command` inputs still use
+`command`. These are coarse test, Git, network, and shell labels; the classifier
+does not interpret shell control flow or commands embedded in `exec` orchestration
+code. Failed, running, and unknown results cannot count as passing tests.
+
+Replaying an unclassified Codex execution request appends a distinct v3 record.
+The reader selects one effective classification for the same source record;
+only an absent classification may be filled in. Conflicting known classifications
+or unrelated differences still fail closed. Snapshot boundaries may grow while
+the immutable source record stays the same. Existing evidence bytes are never
+rewritten. Audits reingest raw Codex traces when the requested writer version or
+execution-command classification is missing, then reuse the evidence on later
+runs. Evidence-only audits retain their existing projections until explicit
+ingestion. Older v3 application builds that lack this correction rule reject
+mixed legacy/corrected requests; use the current reader after replay.
 
 For rollback, ingestion commands accept `--schema-version 1` or `2` with the
 historical projection behavior. `apu-event`, `apu-wtf`, and `apu behavior audit`
