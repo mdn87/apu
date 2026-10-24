@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from . import __version__
 from .audit import build_inventory
+from .codex_results import codex_result_status
 from .evidence import (
     EVIDENCE_SCHEMA_VERSION,
     ingest_claude_code_trace,
@@ -680,13 +681,9 @@ def _parse_session(path: Path) -> SessionTrace:
                     name = payload.get("name")
                     if isinstance(name, str) and name:
                         tool_calls[name] += 1
-                elif payload_type == "function_call_output":
-                    output = payload.get("output")
-                    if isinstance(output, str) and re.search(
-                        r"(?:exit code: [1-9]|script failed|command failed)",
-                        output,
-                        re.IGNORECASE,
-                    ):
+                elif payload_type in {"function_call_output", "custom_tool_call_output"}:
+                    output = payload.get("output", payload.get("result"))
+                    if codex_result_status(output)[0] == "failed":
                         signal_codes.add("tool-failure-observed")
 
             message = _message_text(record)

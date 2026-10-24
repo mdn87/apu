@@ -178,5 +178,40 @@ without asserting physical evidence damage or a measured failure probability.
 The review's parser and schema suggestions remain design inputs. No runtime
 code changed and no new history audit was performed for this revision.
 
+## Claude review and implementation progress
+
+Claude Opus accepted the revised case with minor corrections in Autowork run
+`20261024-014842-8120547bffed`. Its main additions were a complete status
+baseline and an explicit comparison of watcher diagnoses, not only audit
+findings. The zero Codex findings above reflect incomplete detector coverage
+and must not be read as evidence that Codex sessions had no problems.
+
+The captured ten Codex transcript prefixes were reverified against their
+saved hashes. Across 786 result records, direct command envelopes contain
+494 zero exits, 68 nonzero exits (all exactly 1), and 169 missing exits.
+Some records contain multiple envelopes. The 68 image blocks are a separate
+count. Metadata and per-session tool labels appear in
+[the extended baseline](2026-10-24-structured-result-baseline.json).
+
+A shared parser and live-watcher integration now have focused regression
+coverage. The evidence importer is unchanged: an explicit versioned evidence
+format awaits the operator's schema-change approval before safe replay can
+be implemented. The partial change is not ready to land.
+
+The watcher comparison adds `tool-failure-observed` in six sessions. With
+analytical diagnosis inputs containing captured settings and signals, five
+sessions change diagnostic status. This comparison supplied no operator
+assertions or current instruction surfaces and ran no interventions. A single
+benign nonzero exit can trigger the existing heuristic; these changed labels
+are not validated autonomy failures. Diagnosis weighting remains separate
+from status capture and requires an explicit treatment before rollout.
+
+Replay implementation must also account for transcript-only unchanged-source
+reuse, schema-specific reuse checks, and the fact that v2 preference cannot
+resolve completed/failed records whose logical keys differ. A running or
+unknown response must not count as a successful test merely because the
+outer tool invocation returned. The current schema has no running event type;
+consumer checks must respect status as well as event type.
+
 This selection is complete; the importer change has not been implemented.
 The separate Dias note-path exemption remains open and was not applied.
