@@ -652,8 +652,7 @@ def _validate_installed_target(
             return CheckResult(
                 name,
                 "passed",
-                f"{target} superseded by {installation_id} "
-                f"(drift acknowledged: {reason})",
+                f"{target} superseded by {installation_id} ({reason})",
             )
         return CheckResult(name, "failed", f"{target} does not match receipt")
     return CheckResult(name, "passed", f"{target} matches receipt")
@@ -672,18 +671,25 @@ def _drift_acknowledgments(
     root: Path,
     active: list[tuple[str, Mapping[str, Any]]],
 ) -> dict[str, dict[tuple[str, str], tuple[str, str]]]:
-    """Index acknowledged chain gaps by the installation they excuse.
+    """Index what later active installations say about earlier ones.
 
-    Only active installations count: a rolled-back or retired superseder no
-    longer excuses anything.
+    A later installation supersedes an earlier one on a file when its recorded
+    original equals the earlier one's recorded installed hash (the receipts
+    prove an unbroken chain), or when its receipt carries an operator
+    acknowledgment of the gap. Only active installations count: a rolled-back
+    or retired superseder no longer excuses anything.
     """
 
     index: dict[str, dict[tuple[str, str], tuple[str, str]]] = {}
+    loaded: list[tuple[str, str, list[Mapping[str, Any]]]] = []
     for installation_id, entry in active:
         try:
             receipt = load_receipt(_registry_receipt_path(root, installation_id, entry))
         except (OSError, TypeError, ValueError):
             continue
+        loaded.append(
+            (installation_id, str(receipt.get("created_at", "")), receipt["operations"])
+        )
         for item in receipt.get("drift_acknowledgments") or ():
             if not isinstance(item, dict):
                 continue
@@ -695,8 +701,38 @@ def _drift_acknowledgments(
                 continue
             index.setdefault(prior, {})[(normalized_target(target), installed)] = (
                 installation_id,
-                reason,
+                f"drift acknowledged: {reason}",
             )
+    for later_id, later_created, later_operations in loaded:
+        for operation in later_operations:
+            target = operation.get("target")
+            original = operation.get("original_sha256")
+            if (
+                not isinstance(target, str)
+                or original is None
+                or original == operation.get("installed_sha256")
+            ):
+                continue
+            key = normalized_target(target)
+            for prior_id, prior_created, prior_operations in loaded:
+                if prior_id == later_id or prior_created >= later_created:
+                    continue
+                for prior_operation in prior_operations:
+                    prior_target = prior_operation.get("target")
+                    if (
+                        isinstance(prior_target, str)
+                        and normalized_target(prior_target) == key
+                        and prior_operation.get("installed_sha256") == original
+                        and original != prior_operation.get("original_sha256")
+                    ):
+                        index.setdefault(prior_id, {}).setdefault(
+                            (key, original),
+                            (
+                                later_id,
+                                "continuous chain: it started from the file as "
+                                "the earlier installation left it",
+                            ),
+                        )
     return index
 
 

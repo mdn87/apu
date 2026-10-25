@@ -27,6 +27,9 @@
   and `--force`), leaves the receipt, backup and outcomes untouched, and shows
   the entry as a passing `retired` row in `apu status` and `apu validate`.
   Monitoring display stops at the retirement time.
+- Report an earlier installation as superseded when a later active installation
+  started from exactly the hash the earlier one installed, so a second install
+  of the same file no longer turns `apu status` red.
 - Check at install time that a new installation continues the recorded chain.
   When a file was changed outside APU since the latest active installation
   wrote it, `apu apply` now stops before any write and names the file, the

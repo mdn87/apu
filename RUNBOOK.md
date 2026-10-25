@@ -90,9 +90,11 @@ recommended operations; unresolved operations leave the plan in draft.
 checks the recorded precondition, stages the transaction, creates backups, and
 writes a receipt.
 
-`apu apply` also checks that the install continues the recorded chain. If the
-latest active installation that wrote a file recorded a different hash than the
-file has now, something other than APU changed it in between. The apply stops
+`apu apply` also checks that the install continues the recorded chain. An
+install that starts from exactly what the earlier one wrote needs nothing: the
+earlier receipt validates as `superseded by INSTALLATION_ID (continuous chain:
+...)`. If the latest active installation that wrote a file recorded a different
+hash than the file has now, something other than APU changed it in between. The apply stops
 before any write and names the file, the earlier installation and both hashes.
 If the change was intended, say so and the install proceeds:
 

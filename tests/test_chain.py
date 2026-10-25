@@ -79,6 +79,50 @@ def test_a_contiguous_chain_installs_without_acknowledgment(world) -> None:
     assert world["target"].read_bytes() == b"two"
 
 
+def test_a_continuous_chain_leaves_status_green_and_the_older_receipt_superseded(
+    world, capsys
+) -> None:
+    _install(world["tmp"], world["state"], "install-1", world["target"], b"one")
+    _install(world["tmp"], world["state"], "install-2", world["target"], b"two")
+
+    code, output = _status(capsys)
+
+    assert code == 0
+    checks = {c["name"]: c for c in output["validation"]["checks"]}
+    assert checks["installation:install-2"]["status"] == "passed"
+    assert checks["installation:install-1"]["status"] == "passed"
+    assert "superseded by install-2" in checks["installation:install-1"]["reason"]
+    assert "continuous" in checks["installation:install-1"]["reason"]
+
+
+def test_a_continuous_chain_is_undone_by_rolling_back_the_newer_install(
+    world, capsys
+) -> None:
+    _install(world["tmp"], world["state"], "install-1", world["target"], b"one")
+    new = _install(world["tmp"], world["state"], "install-2", world["target"], b"two")
+
+    assert rollback_receipt(new)["status"] == "rolled_back"
+
+    code, output = _status(capsys)
+    assert code == 0
+    checks = {c["name"]: c for c in output["validation"]["checks"]}
+    assert checks["installation:install-1"]["reason"] == "receipt and installed targets are valid"
+
+
+def test_a_continuous_chain_does_not_excuse_a_later_unacknowledged_edit(
+    world, capsys
+) -> None:
+    _install(world["tmp"], world["state"], "install-1", world["target"], b"one")
+    _install(world["tmp"], world["state"], "install-2", world["target"], b"two")
+    world["target"].write_bytes(b"edited with no acknowledgment")
+
+    code, output = _status(capsys)
+
+    assert code == 1
+    checks = {c["name"]: c["status"] for c in output["validation"]["checks"]}
+    assert checks["installation:install-2"] == "failed"
+
+
 def test_a_chain_gap_is_refused_before_anything_changes(world) -> None:
     _install(world["tmp"], world["state"], "install-1", world["target"], b"one")
     world["target"].write_bytes(b"edited elsewhere")
