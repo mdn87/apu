@@ -586,6 +586,14 @@ def _validate_installed_target(
             return CheckResult(name, "failed", f"{target} does not match receipt")
         return CheckResult(name, "passed", f"{target} matches receipt")
 
+    original_sha256 = operation.get("original_sha256")
+    if installed_sha256 is not None and installed_sha256 == original_sha256:
+        # APU wrote nothing here; the file was adopted as found, so later edits
+        # by anyone else are not installation drift.
+        return CheckResult(
+            name, "passed", f"{target} was adopted unchanged; drift is not tracked"
+        )
+
     if installed_sha256 is None:
         if target.exists() or target.is_symlink():
             return CheckResult(name, "failed", f"{target} should be absent")

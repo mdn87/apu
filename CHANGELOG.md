@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Add `apu packages upgrade`, `status`, and `rollback`. Claude plugin updates
+  are journaled, verified against the exact expected version and tree, and
+  restored through APU snapshots on failure or mismatch.
+- Add previewed, resumable evidence retention: `apu behavior prune` writes a
+  preview and applies only a saved, unchanged plan.
+- Run the Claude dispatch runner inside verified workspace isolation
+  (`apu dispatch --runner claude`).
+- Discover Claude session history directly during audits.
+- Classify Codex execution commands safely when normalizing evidence, and
+  preserve structured Codex results with versioned replay.
+- Install the Dias board note-path exemption into the live Claude start-of-turn
+  gate hook through an APU receipt; the gate stays off.
+- Stop reporting drift for a file that APU adopted unchanged. `apu status` no
+  longer fails when such a file, for example `~/.codex/AGENTS.md`, is edited
+  later; files APU wrote still fail on drift.
+
 ## 0.9.0 — 2026-10-18
 
 - Add the optional `apu-session` Claude Code plugin (0.1.0) with

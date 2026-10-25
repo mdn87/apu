@@ -131,6 +131,19 @@ Behavioral results distinguish passed, failed, skipped, and unavailable
 checks. Runner-specific metadata that the selected CLI cannot observe is
 skipped rather than treated as a failure.
 
+Receipt validation re-hashes each installed file. A file APU wrote fails when it
+later differs from the receipt. A file APU adopted unchanged (recorded installed
+hash equal to original hash) is not tracked for drift, so later edits by other
+tools do not turn `apu status` red.
+
+An installed gate-hook change can also be checked directly. After the Dias
+note-path exemption was applied, this reports `applied (already applied)` and
+would report `not applied` if a later edit to the live hook dropped it:
+
+```console
+python incidents/scripts/gate_intervention_2026_09_23_dias.py --check
+```
+
 ## Dispatch a campaign work order
 
 Use only the private path printed by `apu system propose`; exported prompts are
@@ -146,6 +159,42 @@ apu apply reviewed-plan.json
 Dispatch creates or reuses the campaign snapshot before invoking the runner.
 It fails closed if live-root write denial cannot be demonstrated. Accepted
 runner output is still only a draft plan; review and apply remain separate.
+
+Select the runner with `--runner codex` or `--runner claude`. The Claude runner
+runs inside verified workspace isolation. `--attempt` and `--timeout` are
+available for both.
+
+## Update a Claude plugin with a restore point
+
+Package updates are explicit and recoverable. APU captures the plugin store,
+settings, and marketplace checkout, updates, then verifies the exact installed
+version and tree; a failed or different result is restored and re-verified.
+
+```console
+apu packages upgrade PLUGIN@MARKETPLACE --target-version VERSION \
+  --target-tree ./reviewed-plugin --operation-id OPERATION_ID
+apu packages status TRANSACTION_ID
+apu packages rollback TRANSACTION_ID
+```
+
+Use `--target-sha256` instead of `--target-tree` when you hold the installed-tree
+digest (not a candidate artifact digest). `--claude-home HOME` targets an
+isolated home. `rollback --expected-state DIGEST` reconciles an interrupted or
+later-changed state against a reviewed digest. See the README for the full
+contract.
+
+## Prune retained evidence
+
+Retention is previewed first and applied only from the saved, unchanged preview:
+
+```console
+apu behavior prune --out retention-plan.json
+apu behavior prune --apply retention-plan.json
+```
+
+Save the preview outside the APU state directory. `--days`, `--max-files`, and
+`--max-bytes` adjust the policy. A session referenced by any saved APU record is
+retained. See the README for the pinning rules.
 
 ## Roll back
 
@@ -256,8 +305,9 @@ point production automation at an unpinned branch.
   attached to the GitHub Release.
 - Live Codex and Claude behavioral checks depend on locally available,
   authenticated CLIs and are not part of the deterministic release gate.
-- Provider-managed package upgrades remain unavailable unless the provider can
-  select an exact version and prove rollback to the captured version and tree.
+- Package upgrades are supported for Claude plugins through APU's own restore
+  points. Other providers remain unavailable unless the provider can select an
+  exact version and prove rollback to the captured version and tree.
 
 Use APU first on a non-critical repository, retain the generated plan and
 receipt, and promote it more broadly only after structural validation passes

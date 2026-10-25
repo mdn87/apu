@@ -94,6 +94,72 @@ def test_structural_validation_accepts_valid_plan_and_detects_drifted_receipt(
     assert any("does not match receipt" in check.reason for check in drifted.checks)
 
 
+def _adoption_receipt(
+    state_home: Path,
+    installation_id: str,
+    target: Path,
+    *,
+    installed_sha256: str,
+    original_sha256: str,
+) -> Path:
+    return write_receipt(
+        state_home,
+        {
+            "schema_version": 1,
+            "installation_id": installation_id,
+            "created_at": "2026-08-06T12:00:00Z",
+            "operations": [
+                {
+                    "id": "op-1",
+                    "action": "merge",
+                    "target": str(target),
+                    "original_sha256": original_sha256,
+                    "installed_sha256": installed_sha256,
+                    "backup_path": None,
+                }
+            ],
+            "rollback_status": "available",
+        },
+    )
+
+
+def test_unchanged_adoption_is_not_drift_when_the_file_is_edited_later(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "AGENTS.md"
+    target.write_text("adopted as found", encoding="utf-8")
+    adopted = sha256_bytes(target.read_bytes())
+    receipt_path = _adoption_receipt(
+        tmp_path / "state",
+        "adopt-1",
+        target,
+        installed_sha256=adopted,
+        original_sha256=adopted,
+    )
+    assert validate_receipt_path(receipt_path).status == "passed"
+
+    target.write_text("edited by someone else", encoding="utf-8")
+    edited = validate_receipt_path(receipt_path)
+    assert edited.status == "passed"
+    assert any("adopted unchanged" in check.reason for check in edited.checks)
+
+
+def test_a_file_apu_wrote_still_fails_on_later_edit(tmp_path: Path) -> None:
+    target = tmp_path / "AGENTS.md"
+    target.write_text("apu wrote this", encoding="utf-8")
+    receipt_path = _adoption_receipt(
+        tmp_path / "state",
+        "install-2",
+        target,
+        installed_sha256=sha256_bytes(target.read_bytes()),
+        original_sha256=sha256_bytes(b"what was there before"),
+    )
+    assert validate_receipt_path(receipt_path).status == "passed"
+
+    target.write_text("edited by someone else", encoding="utf-8")
+    assert validate_receipt_path(receipt_path).status == "failed"
+
+
 def test_registry_validation_checks_only_active_installations(
     tmp_path: Path,
 ) -> None:
