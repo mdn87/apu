@@ -425,6 +425,13 @@ def _intervene_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--result", choices=("completed", "blocked", "failed"))
     parser.add_argument("--intervention")
+    parser.add_argument("--native-action", choices=(
+        "claim", "admit", "queued", "started", "turn-ended", "dropped", "outcome-unknown"
+    ))
+    parser.add_argument("--session-id")
+    parser.add_argument("--cwd", type=Path)
+    parser.add_argument("--turn-id")
+    parser.add_argument("--reason", choices=("answer", "aborted", "refusal", "error"))
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -432,6 +439,37 @@ def _intervene_parser() -> argparse.ArgumentParser:
 def intervene_main(argv: Sequence[str] | None = None) -> int:
     def command(args: argparse.Namespace) -> int:
         state_home = resolve_state_home()
+        if args.native_action:
+            from .native_continuation import admit, claim, observe
+
+            if args.provider != "claude-code" or args.dry_run or args.execute or args.result:
+                raise ValueError("native actions require --provider claude-code and cannot execute a resume command or attest a result")
+            if args.native_action in {"claim", "admit"}:
+                if not args.session_id or args.cwd is None:
+                    raise ValueError("native claim/admit requires exact --session-id and --cwd")
+                if args.native_action == "claim":
+                    if not args.diagnosis:
+                        raise ValueError("native claim requires --diagnosis")
+                    result = claim(state_home, diagnosis_id=args.diagnosis,
+                                   session_id=args.session_id, cwd=args.cwd)
+                else:
+                    if not args.intervention:
+                        raise ValueError("native admission requires --intervention")
+                    result = admit(state_home, intervention_id=args.intervention,
+                                   session_id=args.session_id, cwd=args.cwd)
+            else:
+                if not args.intervention:
+                    raise ValueError("native observation requires --intervention")
+                result = observe(state_home, intervention_id=args.intervention,
+                                 observation=args.native_action, turn_id=args.turn_id, reason=args.reason)
+            if args.json:
+                _emit(result)
+            else:
+                print(f"Native delivery: {result['native_delivery']['state']}; recovery outcome remains unverified.")
+                print(f"Intervention: {result['intervention_id']}")
+            return 0
+        if args.session_id or args.cwd or args.turn_id or args.reason:
+            raise ValueError("native selectors require --native-action")
         if args.result:
             path, result = record_intervention_result(
                 state_home,

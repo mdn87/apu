@@ -337,6 +337,7 @@ class SessionTrace:
     settings: Mapping[str, str | None]
     base_instructions_sha256: str | None
     dynamic_tools_sha256: str | None
+    native_evidence_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -829,13 +830,41 @@ def _claude_record_cwd(record: Mapping[str, Any]) -> Path | None:
     return Path(value).resolve(strict=False)
 
 
-def _claude_trace_snapshot(path: Path) -> tuple[str, Path, int, str]:
+def _native_command_bookkeeping(record: Mapping[str, Any]) -> bool:
+    """Recognize only APU's inert local command records (Claude Code 2.1.296).
+
+    User/model text resembling these markers remains evidence. Unknown records,
+    permission changes and malformed rows remain bound byte-for-byte. This is
+    an evidence projection, not an authorization source or a transcript editor.
+    """
+    if (record.get("type") != "system" or record.get("subtype") != "local_command"
+            or "message" in record or "toolDenialKind" in record
+            or record.get("isSidechain") is not False or record.get("level") != "info"
+            or record.get("isMeta") is not False):
+        return False
+    content = record.get("content")
+    if not isinstance(content, str):
+        return False
+    commands = {"apu-diagnose", "apu-prepare", "apu-continue"}
+    run = record.get("commandRun")
+    if isinstance(run, Mapping):
+        return (isinstance(run.get("command"), str)
+                and run["command"] in commands and run.get("args") == ""
+                and re.fullmatch(r"<local-command-stdout>apu-session: [\s\S]*</local-command-stdout>", content) is not None)
+    return any(re.fullmatch(
+        rf"<command-name>/{command}</command-name>\s*"
+        rf"<command-message>{command}</command-message>\s*"
+        r"<command-args></command-args>", content) is not None for command in commands)
+
+
+def _claude_trace_snapshot(path: Path) -> tuple[str, Path, int, str, str]:
     """Freeze the trace identity at its latest explicit working directory."""
 
     snapshot_bytes = path.stat().st_size
     if snapshot_bytes > _MAX_TRACE_BYTES:
         raise ValueError(f"Claude Code trace exceeds {_MAX_TRACE_BYTES} bytes: {path}")
     digest = sha256()
+    native_digest = sha256()
     consumed = 0
     session_id: str | None = None
     cwd: Path | None = None
@@ -849,9 +878,13 @@ def _claude_trace_snapshot(path: Path) -> tuple[str, Path, int, str]:
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
+                native_digest.update(raw)
                 continue
             if not isinstance(record, Mapping):
+                native_digest.update(raw)
                 continue
+            if not _native_command_bookkeeping(record):
+                native_digest.update(raw)
             selected_id = record.get("sessionId")
             if isinstance(selected_id, str) and selected_id:
                 if session_id is not None and session_id != selected_id:
@@ -864,7 +897,7 @@ def _claude_trace_snapshot(path: Path) -> tuple[str, Path, int, str]:
         raise ValueError(f"Claude Code trace has no session id: {path}")
     if cwd is None:
         raise ValueError(f"Claude Code trace has no absolute cwd: {path}")
-    return session_id, cwd, snapshot_bytes, digest.hexdigest()
+    return session_id, cwd, snapshot_bytes, digest.hexdigest(), native_digest.hexdigest()
 
 
 def _parse_claude_session(path: Path) -> SessionTrace:
@@ -880,7 +913,7 @@ def _parse_claude_session(path: Path) -> SessionTrace:
     and only records carrying that exact normalized cwd contribute evidence.
     """
 
-    session_id, cwd, snapshot_bytes, trace_sha256 = _claude_trace_snapshot(path)
+    session_id, cwd, snapshot_bytes, trace_sha256, native_evidence_sha256 = _claude_trace_snapshot(path)
     selected_cwd_key = normalized_cwd_key(cwd)
     recent: deque[dict[str, Any]] = deque(maxlen=_RECENT_EVENT_LIMIT)
     event_counts: Counter[str] = Counter()
@@ -1027,6 +1060,7 @@ def _parse_claude_session(path: Path) -> SessionTrace:
         non_interactive=False,
         last_event_at=last_event_at,
         trace_sha256=trace_sha256,
+        native_evidence_sha256=native_evidence_sha256,
         record_count=records,
         invalid_record_count=invalid,
         task_started_count=started,
@@ -1987,6 +2021,7 @@ def mark_incident(
             "session_id": session.session_id,
             "trace_path": str(session.path),
             "trace_sha256": session.trace_sha256,
+            "native_evidence_sha256": session.native_evidence_sha256,
             "cwd": str(session.cwd),
             "source": session.source,
             "originator": session.originator,
@@ -2294,19 +2329,13 @@ def _continuation_observations(stdout: str) -> tuple[bool, tuple[str, ...]]:
     return completed, tuple(sorted(signals))
 
 
-def intervene(
+def validated_intervention_context(
     state_home: Path,
     *,
     diagnosis_id: str | None = None,
     provider: str | None = None,
-    dry_run: bool = False,
-    force_execute: bool = False,
-    timeout_seconds: int = 900,
-    executable: str | None = None,
-    created_at: str | None = None,
-) -> tuple[Path, dict[str, Any]]:
-    if timeout_seconds < 1:
-        raise ValueError("intervention timeout must be positive")
+) -> tuple[dict[str, Any], dict[str, Any], str, SessionTrace, str]:
+    """Revalidate saved authority and attribution without creating or executing work."""
     diagnosis = load_diagnosis(state_home, diagnosis_id)
     if diagnosis["status"] == "possible-legitimate-barrier":
         raise ValueError("intervention refused because a legitimate barrier may exist")
@@ -2342,7 +2371,6 @@ def intervene(
         raise ValueError(
             f"intervention provider mismatch: expected {stored_provider}, got {provider}"
         )
-    selected_provider = _session_provider(stored_provider)
     session_id = _safe_component(str(stored_session["session_id"]), "session_id")
     stored_cwd = Path(str(stored_session["cwd"])).resolve(strict=False)
     binding = require_selected_session(
@@ -2356,7 +2384,29 @@ def intervene(
         operation="intervene",
     )
     session = binding.session
+    return diagnosis, incident, prompt, session, template_id
+
+
+def intervene(
+    state_home: Path,
+    *,
+    diagnosis_id: str | None = None,
+    provider: str | None = None,
+    dry_run: bool = False,
+    force_execute: bool = False,
+    timeout_seconds: int = 900,
+    executable: str | None = None,
+    created_at: str | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    if timeout_seconds < 1:
+        raise ValueError("intervention timeout must be positive")
+    diagnosis, incident, prompt, session, template_id = validated_intervention_context(
+        state_home, diagnosis_id=diagnosis_id, provider=provider
+    )
+    stored_provider = session.provider
+    session_id = session.session_id
     cwd = session.cwd
+    selected_provider = _session_provider(stored_provider)
     resume = selected_provider.build_resume(session, prompt, executable=executable)
     command = list(resume.command)
 

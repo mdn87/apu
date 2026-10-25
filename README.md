@@ -12,7 +12,8 @@ through an independently installed and authenticated Codex or Claude CLI.
 
 ### Optional Claude session commands
 
-After installing APU's CLI, load this checkout with
+After installing APU's CLI from this checkout (native continuation requires
+0.11.0 or later), load this checkout with
 `claude --plugin-dir /absolute/path/to/apu`. On Claude Code 2.1.287+,
 `/apu-diagnose` passes the current provider, session ID and working directory
 to `apu-wtf --fresh`. It saves an ordinary APU incident and diagnosis and prints
@@ -24,21 +25,47 @@ APU owns attribution, barrier checks, prompt integrity and policy-mutation
 checks. A refusal stays a refusal. A successful preparation prints the saved
 continuation argument vector and leaves its outcome unverified. Repeating the
 command returns the same preparation in the current mod instance. Neither
-command submits a prompt, resumes an agent, enables a watcher or changes policy.
+diagnosis nor preparation submits a prompt, enables a watcher or changes policy.
+
+`/apu-continue` opens a native panel. Its **Continue this session** button
+revalidates the diagnosis, provider, exact session and directory, current
+evidence, saved prompt and prohibition on durable policy mutation. It durably
+reserves the attempt before calling Claude's native submit API. It never runs
+the printed `claude --resume` command alongside the live session. Stay in the
+same idle main session until delivery settles; do not clear, resume, switch
+directories or reload while submitting. The API has no atomic expected-session
+argument, so that concurrent lifecycle case is not qualified.
+
+The panel records queued/started/turn-ended observations against the same APU
+incident. A turn ending is not proof of recovery: `outcome_verification` stays
+`unverified` until the operator records an ordinary intervention result.
+A repeated claim of the same evidence cannot return a prompt, including after
+reload or a lost response. No automatic resend occurs. Unknown delivery needs
+artifact inspection before any new diagnosis or manual recovery.
+
+APU keeps the full transcript hash for audit. A second evidence hash excludes
+only the recognized inert `/apu-diagnose`, `/apu-prepare`, and `/apu-continue`
+local command records emitted by Claude Code 2.1.296. New user/model/tool
+content, policy records, malformed rows and unknown records invalidate the
+diagnosis. An older incident without that hash must be captured again.
 
 Clear, resume, branch, reload and directory changes discard the adapter's
 cached diagnosis. Diagnose the current session again before preparing. Failed
 or timed-out calls are not retried automatically; inspect APU's saved artifacts.
-Commands are explicit and immediate, with a 15-second subprocess deadline and
-no background polling. The ordinary CLI remains available without the mod for
+Diagnosis and preparation are explicit immediate commands with a 15-second
+subprocess deadline. Continuation opens a panel and requires a separate button
+press: the native host forbids submission from a command handler. There is no
+background polling. The ordinary CLI remains available without the mod for
 both Codex and Claude. `apu-watch` controls the watcher and is separate from
 these commands.
 
 The pilot targets native Windows first. Run `claude plugin validate .` and
 `claude plugin test .`; the generated types and runtime were checked with
-Claude Code 2.1.296. macOS/Linux CLI launch and live Desktop remain separate
-qualification checks. Native prompt delivery and voice transport are outside
-this pilot; no UI event implies successful recovery.
+Claude Code 2.1.296. Windows CLI native delivery and exact turn correlation
+passed a controlled live fixture; [qualification evidence](docs/incidents/2026-10-25-native-continuation.md)
+distinguishes that from real recovery. macOS/Linux, live Desktop, operator-effort
+measurement, concurrent lifecycle changes and voice transport remain separate
+qualification work. No UI event implies successful recovery.
 
 ### Portable CLI
 
