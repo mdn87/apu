@@ -595,7 +595,9 @@ Selected real-world cases where an audit finding should change agent behavior
 live under `docs/cases/`. Each record names the measured repository, the
 intervention surface, the before state as content-free counts, and the
 definition of improvement the next step must prove against. The first case is
-`docs/cases/2026-09-09-start-of-turn-gate.md`.
+`docs/cases/2026-09-09-start-of-turn-gate.md`. Later cases are
+`docs/cases/2026-10-17-manual-user-work.md` (repetitive manual user work) and
+`docs/cases/2026-10-23-structured-codex-results.md` (structured Codex results).
 
 A proven intervention becomes durable through the ordinary plan path rather
 than a hand-run patch. The case's script renders the changed surface and a

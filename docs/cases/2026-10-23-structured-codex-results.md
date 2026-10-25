@@ -234,4 +234,4 @@ per-session results, preservation checks, detector counts, and diagnosis
 comparison. Runtime changes preserve content minimization. Legacy evidence,
 provider transcripts, and live global configuration were not modified.
 
-The separate Dias note-path exemption remains open and was not applied.
+The separate Dias note-path exemption remains open and was not applied. *(Update 2026-10-25: applied through `apu apply`; see "Part b installed" in the 2026-09-09 case.)*

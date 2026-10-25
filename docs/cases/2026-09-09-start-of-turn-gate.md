@@ -585,14 +585,34 @@ apu apply C:\Users\Matt\Desktop\MyDocs\apu\build\gate-dias\gate-dias-plan.json -
 
 Until then the live hook carries the 09-23 rules without `.dias/`.
 
+### Part b installed, 2026-10-25
+
+The plan was re-rendered against the live hook and applied through `apu apply
+... --provider claude-code --yes`. Receipt `install-20261025T160221877474Z`
+records the hook's SHA-256 moving from
+`b25ebf07dd05b279662e11e98c00b2bad8cc5a80f6d7fcce9c4fd56b461607d0` to
+`7905d6611717815c7c6ea2c73f8ce22a37087a6e9c22ce3887b68dad71e50502`; the backup
+hash equals the original. The rendered diff was the one `NOTE_PATHS` line. An
+isolated armed-gate proof (temporary configuration, the real gate left `off`)
+ran 12 cases: the installed hook before the change denied `.dias/chips.json` and
+`.dias/status.json`; the rendered hook allowed them and the existing note paths,
+and still denied source writes, `..` traversal, a `.diasx` lookalike, an
+outside-working-directory `.dias` path, and Bash. The 14 gate regression tests
+passed. Settings and gate mode were unchanged.
+
+The receipts for this file do not chain: the September receipt recorded
+`58c6abcc…`, and the file had been edited outside APU before this install. That
+stale receipt was retired (`apu retire`) rather than rewritten, and `apu apply`
+now refuses such a gap unless `--acknowledge-drift` is given.
+
 ### Residuals
 
 - I3 has a detector, a live producer, and a scripted end-to-end subject; a
   real operator session under an armed gate has not been measured yet.
-- Part b (`.dias/` in the note paths) is rendered, not applied.
+- Part b (`.dias/` in the note paths) is rendered, not applied. *(Applied 2026-10-25; see Part b installed.)*
 - The note exemption does not cover the Dias board files under `.dias/`, so a
   session under an armed gate still cannot update its own chip. Widening the
-  list is a one-line change to `NOTE_PATHS` if the operator wants it.
+  list is a one-line change to `NOTE_PATHS` if the operator wants it. *(Resolved by the 2026-10-25 install.)*
 - Leading "wait" as a noun still re-arms the gate (fails safe).
 - The live gate mode is `voice`; typed prompts are not gated at all right
   now. The rules above apply whenever the gate is armed, by voice or by mode.
@@ -636,4 +656,4 @@ measurement requirement waived. This is operator acceptance, not a detector
 measurement or evidence attributing the improvement to a specific technique.
 Real-session I3 remains unmeasured, and the retained evidence above is unchanged.
 No further gated session is required to close this item. The separate Dias
-exemption remains the board's next item; no second case was selected.
+exemption remains the board's next item; no second case was selected. *(The exemption was installed on 2026-10-25.)*

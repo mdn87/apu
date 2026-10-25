@@ -496,9 +496,11 @@ reasoning, command, tool-input, tool-output, and environment bodies are discarde
 before persistence.
 
 Schema v2 records selector provenance and live under a version-specific route.
-The current reader accepts strict v1 and v2 objects, and the producer can emit a
-complete v1 object for staged deployment or rollback without putting v2 data in
-the legacy route.
+The current reader accepts strict v1, v2, and v3 objects; v3 is the default
+producer version and adds structured Codex result status and command
+classification (see the README's evidence section). The producer can still emit
+a complete v1 object for staged deployment or rollback without putting newer
+data in the legacy route.
 
 `apu evidence` ingests Codex sessions or hook events, records optional independent
 Git state, correlates tool requests and results through hashed identifiers,
