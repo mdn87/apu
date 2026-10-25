@@ -271,6 +271,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     rollback = commands.add_parser("rollback", help="roll back an installation")
     rollback.add_argument("--receipt", required=True, type=Path)
+    rollback.add_argument(
+        "--allow-retired",
+        action="store_true",
+        help="roll back an installation that was retired",
+    )
+
+    retire = commands.add_parser(
+        "retire",
+        help="retire a stale installation record without touching its evidence",
+    )
+    retire.add_argument("--receipt", required=True, type=Path)
+    retire.add_argument("--reason", required=True)
+    retire.add_argument(
+        "--force",
+        action="store_true",
+        help="retire an installation that still validates",
+    )
+    retire.add_argument(
+        "--allow-uncovered",
+        action="store_true",
+        help="retire even when no other active installation covers its targets",
+    )
 
     commands.add_parser("status", help="show installations and drift")
 
@@ -407,6 +429,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _validate(args)
     if args.command == "rollback":
         return _rollback(args)
+    if args.command == "retire":
+        return _retire(args)
     if args.command == "status":
         return _status(args)
     if args.command == "outcome":
@@ -1063,9 +1087,35 @@ def _validate(args: argparse.Namespace) -> int:
 def _rollback(args: argparse.Namespace) -> int:
     from apu.rollback import rollback_receipt
 
-    result = rollback_receipt(args.receipt)
+    result = rollback_receipt(args.receipt, allow_retired=args.allow_retired)
     _emit(result)
     return 0 if result["status"] == "rolled_back" else 1
+
+
+def _retire(args: argparse.Namespace) -> int:
+    from apu.retire import retire_installation
+
+    _emit(
+        retire_installation(
+            args.receipt,
+            args.reason,
+            force=args.force,
+            allow_uncovered=args.allow_uncovered,
+        )
+    )
+    return 0
+
+
+def _retired_at(entry: Mapping[str, Any]) -> datetime | None:
+    """The retirement time that freezes an entry's monitoring display."""
+
+    value = entry.get("retired_at")
+    if entry.get("status") != "retired" or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _status(_args: argparse.Namespace) -> int:
@@ -1081,6 +1131,7 @@ def _status(_args: argparse.Namespace) -> int:
             monitoring_started_at=entry.get(
                 "monitoring_started_at", entry.get("applied_at")
             ),
+            now=_retired_at(entry),
         )
         installations[installation_id] = entry
     validation = validate_registered_installations(state_home)

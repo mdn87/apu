@@ -209,6 +209,33 @@ has drifted, APU refuses to overwrite it; inspect and reconcile that file
 manually. A successful rollback restores backups and removes the installation
 from the active registry.
 
+Rollback keeps the registry entry's earlier fields (`applied_at`,
+`monitoring_started_at`, and any retirement record). It refuses a retired
+installation unless you pass `--allow-retired`.
+
+## Retire a stale installation record
+
+When a file APU wrote is later changed by something else, and a newer
+installation now covers that file, the older receipt fails validation for good.
+Retire it to acknowledge the change; nothing on disk is restored or removed:
+
+```console
+apu retire --receipt /path/to/APU_HOME/installations/INSTALLATION_ID/receipt.json \
+  --reason "hook is edited in place by the voice stack"
+```
+
+Retirement sets the registry status to `retired` and records `retired_at`, the
+reason, the live hash of each target at that moment, and `superseded_by` (the
+active installations that cover the same targets). The receipt, backup and
+outcome records are not touched, and the entry never becomes active again.
+`apu status` and `apu validate` list it as a passing `retired` row. Its
+monitoring display stops at the retirement time.
+
+APU refuses to retire an installation when no other active installation covers
+its targets (`--allow-uncovered` overrides this and stops watching those files)
+or when it still validates (`--force` overrides this). Retiring twice changes
+nothing. A file APU wrote and has not retired still fails on any later edit.
+
 Run rollback before uninstalling the CLI if the APU-managed instruction
 changes should also be removed:
 

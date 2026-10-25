@@ -27,7 +27,11 @@ class RollbackError(RuntimeError):
     """Raised when a receipt cannot be rolled back safely."""
 
 
-def rollback_receipt(receipt_path: Path) -> dict[str, Any]:
+def rollback_receipt(
+    receipt_path: Path,
+    *,
+    allow_retired: bool = False,
+) -> dict[str, Any]:
     """Roll back unchanged installed objects described by *receipt_path*."""
 
     path = Path(receipt_path).expanduser().resolve()
@@ -48,6 +52,7 @@ def rollback_receipt(receipt_path: Path) -> dict[str, Any]:
                     path,
                     receipt,
                     campaign_id=campaign_id,
+                    allow_retired=allow_retired,
                 )
         except RuntimeError as error:
             if isinstance(error, RollbackError):
@@ -58,6 +63,7 @@ def rollback_receipt(receipt_path: Path) -> dict[str, Any]:
         path,
         receipt,
         campaign_id=None,
+        allow_retired=allow_retired,
     )
 
 
@@ -67,6 +73,7 @@ def _rollback_loaded_receipt(
     receipt: dict[str, Any],
     *,
     campaign_id: str | None,
+    allow_retired: bool = False,
 ) -> dict[str, Any]:
     try:
         validate_receipt_for_state(state_home, path, receipt)
@@ -79,6 +86,10 @@ def _rollback_loaded_receipt(
             registered = state_home / registered
         if registered.resolve() != path:
             raise ValueError("registry receipt does not match supplied receipt")
+        if entry.get("status") == "retired" and not allow_retired:
+            raise ValueError(
+                "installation is retired; pass --allow-retired to roll it back"
+            )
         if campaign_id is not None:
             committed = _committed_campaign_rollback(
                 state_home,
@@ -90,6 +101,7 @@ def _rollback_loaded_receipt(
                     state_home,
                     receipt["installation_id"],
                     {
+                        **entry,
                         "status": committed["status"],
                         "receipt": str(path.relative_to(state_home)),
                         "rolled_back_at": committed["recorded_at"],
@@ -184,6 +196,7 @@ def _rollback_loaded_receipt(
         state_home,
         receipt["installation_id"],
         {
+            **entry,
             "status": status,
             "receipt": str(path.relative_to(state_home)),
             "rolled_back_at": rolled_back_at,

@@ -231,7 +231,12 @@ def validate_registered_installations(state_home: Path) -> ValidationResult:
         for installation_id, entry in registry["installations"].items()
         if entry.get("status") == "active"
     ]
-    if not active:
+    retired = [
+        (installation_id, entry)
+        for installation_id, entry in registry["installations"].items()
+        if entry.get("status") == "retired"
+    ]
+    if not active and not retired:
         return ValidationResult(
             kind="registry",
             target=str(root / "registry.json"),
@@ -263,6 +268,17 @@ def validate_registered_installations(state_home: Path) -> ValidationResult:
                     reason=_safe_error("invalid registry receipt reference", error),
                 )
             )
+    for installation_id, entry in sorted(retired):
+        checks.append(
+            CheckResult(
+                name=f"installation:{installation_id}",
+                status="passed",
+                reason=(
+                    f"retired {entry.get('retired_at', 'at an unrecorded time')}: "
+                    f"{entry.get('retire_reason', 'no reason recorded')}"
+                ),
+            )
+        )
     return ValidationResult(
         kind="registry",
         target=str(root / "registry.json"),

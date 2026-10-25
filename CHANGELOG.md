@@ -14,6 +14,15 @@
   preserve structured Codex results with versioned replay.
 - Install the Dias board note-path exemption into the live Claude start-of-turn
   gate hook through an APU receipt; the gate stays off.
+- Add `apu retire --receipt PATH --reason TEXT` to acknowledge a stale
+  installation record. It refuses when no other active installation covers the
+  targets or when the record still validates (override with `--allow-uncovered`
+  and `--force`), leaves the receipt, backup and outcomes untouched, and shows
+  the entry as a passing `retired` row in `apu status` and `apu validate`.
+  Monitoring display stops at the retirement time.
+- Make `apu rollback` keep the registry entry's earlier fields (`applied_at`,
+  `monitoring_started_at`) instead of replacing the entry, and refuse a retired
+  installation unless `--allow-retired` is given.
 - Stop reporting drift for a file that APU adopted unchanged. `apu status` no
   longer fails when such a file, for example `~/.codex/AGENTS.md`, is edited
   later; files APU wrote still fail on drift.
