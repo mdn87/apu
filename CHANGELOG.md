@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.11.0 — 2026-10-25
+
+- Add an opt-in Claude native continuation panel after exact-session diagnosis
+  and preparation. Its button reserves and revalidates a durable attempt before
+  native delivery; it never launches a second provider process.
+- Persist duplicate prevention and separate queued/started/turn-ended/unknown
+  delivery observations from operator-attested recovery. Hide the action in
+  subagent, busy, stale and already-submitted views.
+- Bind native attempts to diagnosed evidence while retaining the full transcript
+  hash. Recognized APU local command bookkeeping does not invalidate its own
+  diagnosis or create a fresh replay identity.
+- Qualify a controlled Windows Claude Code 2.1.296 native turn. Live Desktop,
+  other operating systems, concurrent session switching and actual recovery
+  effectiveness remain unqualified; see the native continuation evidence.
+
 ## 0.10.0 — 2026-10-25
 
 - Add `apu packages upgrade`, `status`, and `rollback`. Claude plugin updates
