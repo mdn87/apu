@@ -610,6 +610,28 @@ apu apply build/gate-intervention/gate-intervention-plan.json --provider claude-
 apu rollback RECEIPT
 ```
 
+## Installation records and drift
+
+`apu status` and `apu validate` re-hash every file an active installation wrote.
+A file APU wrote fails when something else changes it later; a file APU only
+adopted unchanged is not tracked for drift.
+
+- **Install past an outside change.** `apu apply` stops before any write when
+  the latest active installation of a file recorded a different hash than the
+  file has now, naming the file and both hashes. If the change was intended,
+  `apu apply PLAN --acknowledge-drift REASON` proceeds and records the reason on
+  the new receipt.
+- **Supersession.** While a later installation is active, an earlier one it
+  continues (its recorded original equals the earlier installed hash) or
+  acknowledged validates as `superseded by ...` instead of failing.
+- **Retire a stale record.** `apu retire --receipt RECEIPT --reason TEXT` marks
+  an installation `retired` without touching its receipt, backup or outcomes. It
+  refuses when no other active installation covers the files (`--allow-uncovered`)
+  or when the record still validates (`--force`). A retired installation can be
+  rolled back only with `apu rollback --allow-retired`.
+
+The RUNBOOK has the procedures and the exact reporting.
+
 ## Development
 
 ```console

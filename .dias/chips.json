@@ -429,7 +429,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-27T19:55:12.874Z",
-        "updatedAt": "2026-10-18T12:00:00Z"
+        "updatedAt": "2026-10-25T18:59:30.574Z"
       },
       "evidence": [
         {
@@ -449,6 +449,12 @@
           "at": "2026-10-18T12:00:00Z",
           "kind": "note",
           "message": "Cut 2026-10-18: changelog closed as 0.9.0 with the PR 17 apu-session plugin entry, runbook pins repointed to v0.9.0, tag v0.9.0 pushed on main."
+        },
+        {
+          "entryId": "apu:release-0-9-0:release-note-2026-10-25",
+          "at": "2026-10-25T18:59:30.574Z",
+          "kind": "note",
+          "message": "Tag v0.9.0 was pushed but never published as a GitHub release; those changes shipped in the v0.10.0 release."
         }
       ]
     },
@@ -481,7 +487,7 @@
           "entryId": "apu:apply-dias-note-paths:installed-2026-10-25",
           "at": "2026-10-25T16:05:00.000Z",
           "kind": "stage-change",
-          "message": "Installed with backup and receipt. Hash b25ebf07...607d0 -> 7905d661...50502; backup hash equals the original. Isolated armed-gate proof: installed-before denied .dias/chips.json and .dias/status.json; rendered hook allowed them and still denied source writes, .. traversal, a .diasx lookalike, an outside-cwd .dias path, and Bash. Gate regression tests 14 passed. Live gate remains off; settings.json and tts.json hashes unchanged."
+          "message": "Installed with backup and receipt: hook b25ebf07 to 7905d661, backup equals original. Isolated armed-gate proof passed 12 cases; gate left off."
         }
       ]
     },
@@ -770,6 +776,73 @@
           "at": "2026-10-24T04:03:43.212695Z",
           "kind": "stage-change",
           "message": "Preview and pruning implemented with reference protection, writer locks, and crash recovery. Real-state preview succeeded; no live evidence was deleted."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:registry-supersession",
+      "projectId": "apu",
+      "title": "Acknowledge and supersede stale installation receipts",
+      "summary": "apu retire acknowledges a stale receipt; apply refuses an unacknowledged outside change without --acknowledge-drift; a continuous or acknowledged chain supersedes the old receipt.",
+      "stage": "done",
+      "sequence": 220,
+      "prereqs": [
+        "apu:apply-dias-note-paths"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-25T18:59:30.574Z",
+        "updatedAt": "2026-10-25T18:59:30.574Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:registry-supersession:created-2026-10-25",
+          "at": "2026-10-25T18:59:30.574Z",
+          "kind": "created",
+          "message": "Authored after the Dias install left install-20260924 red in apu status; reviewed by Fable, verified against the code."
+        },
+        {
+          "entryId": "apu:registry-supersession:done-2026-10-25",
+          "at": "2026-10-25T18:59:30.574Z",
+          "kind": "stage-change",
+          "message": "Shipped in 0.10.0 (5269f3d, 467876b, 0ddc016). 700 tests pass; live apply and rollback of a hook change left the hook byte-identical."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:release-0-10-0",
+      "projectId": "apu",
+      "title": "Cut the 0.10.0 release",
+      "summary": "Close the changelog as 0.10.0, tag it, publish a GitHub release with a wheel and sdist built from the tag, and repoint the runbook install pins.",
+      "stage": "done",
+      "sequence": 230,
+      "prereqs": [
+        "apu:registry-supersession",
+        "apu:release-0-9-0"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-25T18:59:30.574Z",
+        "updatedAt": "2026-10-25T18:59:30.574Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:release-0-10-0:created-2026-10-25",
+          "at": "2026-10-25T18:59:30.574Z",
+          "kind": "created",
+          "message": "Chosen over backfilling 0.9.0, which had no GitHub release and sat 25 commits behind the working tree."
+        },
+        {
+          "entryId": "apu:release-0-10-0:done-2026-10-25",
+          "at": "2026-10-25T18:59:30.574Z",
+          "kind": "stage-change",
+          "message": "Published v0.10.0 at 0ddc016; CI passed 6 of 6 jobs. Wheel installed in a clean venv and reported 0.10.0."
         }
       ]
     }
