@@ -251,6 +251,12 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--session-id")
     apply.add_argument("--trace-root", type=Path)
     apply.add_argument("--cwd", type=Path, default=Path.cwd())
+    apply.add_argument(
+        "--acknowledge-drift",
+        metavar="REASON",
+        help="install past a change made outside APU since the latest active "
+        "installation wrote the same file; the reason is recorded on the receipt",
+    )
 
     dispatch = commands.add_parser(
         "dispatch",
@@ -998,6 +1004,7 @@ def _apply(args: argparse.Namespace) -> int:
             state_home,
             plan,
             installation_id=installation_id,
+            acknowledge_drift=args.acknowledge_drift,
         )
     else:
         receipt = apply_plan(
@@ -1005,6 +1012,7 @@ def _apply(args: argparse.Namespace) -> int:
             state_home=state_home,
             installation_id=installation_id,
             confirmed=True,
+            acknowledge_drift=args.acknowledge_drift,
         )
     print(receipt)
     return 0

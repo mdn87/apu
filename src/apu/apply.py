@@ -49,10 +49,20 @@ def apply_plan(
     confirmed: bool = False,
     campaign_id: str | None = None,
     snapshot_id: str | None = None,
+    acknowledge_drift: str | None = None,
 ) -> Path:
-    """Apply the approved operations in *plan* as one recoverable transaction."""
+    """Apply the approved operations in *plan* as one recoverable transaction.
+
+    An operation whose target was changed outside APU since the latest active
+    installation wrote it is refused unless *acknowledge_drift* gives a reason;
+    the acknowledgment is recorded on the new receipt.
+    """
 
     del confirmed  # Final confirmation is a CLI concern, never an approval bypass.
+    if acknowledge_drift is not None:
+        acknowledge_drift = acknowledge_drift.strip()
+        if not acknowledge_drift:
+            raise ApplyError("a drift acknowledgment needs a non-empty reason")
     try:
         plan.validate()
     except ValidationError as error:
@@ -81,6 +91,12 @@ def apply_plan(
     root = Path(state_home).expanduser().resolve()
     _ensure_unused_installation(root, installation_id)
     root = ensure_state_home(root)
+    drift_acknowledgments = _drift_acknowledgments(
+        root,
+        operations,
+        installation_id=installation_id,
+        reason=acknowledge_drift,
+    )
     transaction_root = root / "transactions"
     ensure_private_directory(transaction_root)
     transaction = Path(
@@ -113,6 +129,7 @@ def apply_plan(
             created_directories=created_directories,
             campaign_id=campaign_id,
             snapshot_id=snapshot_id,
+            drift_acknowledgments=drift_acknowledgments,
         )
         receipt_file = write_receipt(root, receipt)
         update_registry(
@@ -427,6 +444,7 @@ def _build_receipt(
     created_directories: list[Path],
     campaign_id: str | None,
     snapshot_id: str | None,
+    drift_acknowledgments: list[dict] | None = None,
 ) -> dict:
     created_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     parent_strings = [str(path) for path in created_directories]
@@ -462,6 +480,8 @@ def _build_receipt(
         "validation": dict(plan.validation),
         "rollback_status": "available",
     }
+    if drift_acknowledgments:
+        receipt["drift_acknowledgments"] = drift_acknowledgments
     if campaign_id is not None and snapshot_id is not None:
         receipt.update(
             {
@@ -529,6 +549,27 @@ def _remove_object(path: Path) -> None:
         path.unlink()
     elif path.is_dir():
         shutil.rmtree(path)
+
+
+def _drift_acknowledgments(
+    state_home: Path,
+    operations: Iterable[PlanOperation],
+    *,
+    installation_id: str,
+    reason: str | None,
+) -> list[dict]:
+    from .chain import describe_gaps, find_chain_gaps
+
+    gaps = find_chain_gaps(state_home, operations, installation_id=installation_id)
+    if not gaps:
+        return []
+    if reason is None:
+        raise ApplyError(
+            "the install would continue past a change made outside APU ("
+            + describe_gaps(gaps)
+            + "); if that change was intended, re-run with --acknowledge-drift REASON"
+        )
+    return [gap.acknowledgment(reason) for gap in gaps]
 
 
 def _ensure_unused_installation(state_home: Path, installation_id: str) -> None:

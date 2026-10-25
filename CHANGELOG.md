@@ -20,6 +20,14 @@
   and `--force`), leaves the receipt, backup and outcomes untouched, and shows
   the entry as a passing `retired` row in `apu status` and `apu validate`.
   Monitoring display stops at the retirement time.
+- Check at install time that a new installation continues the recorded chain.
+  When a file was changed outside APU since the latest active installation
+  wrote it, `apu apply` now stops before any write and names the file, the
+  earlier installation and both hashes. `--acknowledge-drift REASON` proceeds
+  and records the acknowledgment on the new receipt; the older installation's
+  mismatch on that file then validates as superseded for as long as the new
+  installation is active. Adopted-unchanged files and retired installations do
+  not trigger the check.
 - Make `apu rollback` keep the registry entry's earlier fields (`applied_at`,
   `monitoring_started_at`) instead of replacing the entry, and refuse a retired
   installation unless `--allow-retired` is given.

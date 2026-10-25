@@ -33,7 +33,12 @@ def _operation(target: Path, source: Path, before: bytes, after: bytes) -> PlanO
 
 
 def _install(
-    tmp_path: Path, state: Path, installation_id: str, target: Path, after: bytes
+    tmp_path: Path,
+    state: Path,
+    installation_id: str,
+    target: Path,
+    after: bytes,
+    **kwargs,
 ) -> Path:
     before = target.read_bytes()
     source = tmp_path / f"{installation_id}.src"
@@ -46,7 +51,9 @@ def _install(
         status="approved",
         operations=(_operation(target, source, before, after),),
     )
-    return apply_plan(plan, state_home=state, installation_id=installation_id)
+    return apply_plan(
+        plan, state_home=state, installation_id=installation_id, **kwargs
+    )
 
 
 @pytest.fixture
@@ -59,7 +66,19 @@ def chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     target.write_bytes(b"original")
     old = _install(tmp_path, state, "install-old", target, b"old-installed")
     target.write_bytes(b"out-of-band-edit")
-    new = _install(tmp_path, state, "install-new", target, b"new-installed")
+    new = _install(
+        tmp_path,
+        state,
+        "install-new",
+        target,
+        b"new-installed",
+        acknowledge_drift="fixture",
+    )
+    # Simulate a receipt written before the install-time check existed: the same
+    # install, without the recorded acknowledgment.
+    receipt = json.loads(new.read_text(encoding="utf-8"))
+    receipt.pop("drift_acknowledgments")
+    new.write_text(json.dumps(receipt), encoding="utf-8")
     return {"state": state, "target": target, "old": old, "new": new}
 
 

@@ -90,6 +90,24 @@ recommended operations; unresolved operations leave the plan in draft.
 checks the recorded precondition, stages the transaction, creates backups, and
 writes a receipt.
 
+`apu apply` also checks that the install continues the recorded chain. If the
+latest active installation that wrote a file recorded a different hash than the
+file has now, something other than APU changed it in between. The apply stops
+before any write and names the file, the earlier installation and both hashes.
+If the change was intended, say so and the install proceeds:
+
+```console
+apu apply plan.json --acknowledge-drift "hook is edited in place by other work"
+```
+
+The reason is recorded on the new receipt. While the new installation stays
+active, the older installation's mismatch on that file is reported as
+`superseded by INSTALLATION_ID (drift acknowledged: REASON)` instead of failing.
+Rolling back or retiring the new installation ends that exemption. Files APU
+only adopted unchanged, and installations that were retired, never trigger the
+check. A dispatched plan takes the flag through `apu apply` too; `apu system
+apply` has no such flag and stops on a gap.
+
 ## State and receipts
 
 APU stores private state in:

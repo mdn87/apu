@@ -15,15 +15,15 @@ from typing import Any
 from apu.filesystem import hash_object
 from apu.receipts import load_receipt
 from apu.state import load_registry, update_registry
-from apu.validate import _registry_receipt_path, validate_receipt_path
+from apu.validate import (
+    _registry_receipt_path,
+    normalized_target,
+    validate_receipt_path,
+)
 
 
 class RetireError(ValueError):
     """Raised when a retirement is refused."""
-
-
-def _normalized(target: str) -> str:
-    return os.path.normcase(os.path.abspath(target))
 
 
 def _covering_installations(
@@ -44,8 +44,8 @@ def _covering_installations(
             continue
         for operation in other_receipt["operations"]:
             target = operation.get("target")
-            if isinstance(target, str) and _normalized(target) in covered:
-                covered[_normalized(target)].add(other_id)
+            if isinstance(target, str) and normalized_target(target) in covered:
+                covered[normalized_target(target)].add(other_id)
     return covered
 
 
@@ -104,7 +104,7 @@ def retire_installation(
         )
 
     targets = {
-        _normalized(operation["target"]): operation["target"]
+        normalized_target(operation["target"]): operation["target"]
         for operation in receipt["operations"]
         if isinstance(operation.get("target"), str)
     }

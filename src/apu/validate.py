@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -168,8 +169,23 @@ def validate_plan_path(path: Path) -> ValidationResult:
     )
 
 
-def validate_receipt_path(path: Path) -> ValidationResult:
-    """Validate a receipt and any installed targets it identifies."""
+def normalized_target(target: str) -> str:
+    """The comparison form of a target path recorded in a receipt."""
+
+    return os.path.normcase(os.path.abspath(target))
+
+
+def validate_receipt_path(
+    path: Path,
+    *,
+    acknowledged_drift: Mapping[tuple[str, str], tuple[str, str]] | None = None,
+) -> ValidationResult:
+    """Validate a receipt and any installed targets it identifies.
+
+    *acknowledged_drift* maps ``(normalized target, installed hash)`` to the
+    superseding installation and the operator's reason. It is supplied only by
+    registry validation, from other active installations' receipts.
+    """
 
     receipt_path = Path(path)
     try:
@@ -202,6 +218,7 @@ def validate_receipt_path(path: Path) -> ValidationResult:
                 operation.get("installed_sha256"),
                 operation_id,
                 operation,
+                acknowledged_drift=acknowledged_drift,
             )
         )
     return ValidationResult(
@@ -245,16 +262,20 @@ def validate_registered_installations(state_home: Path) -> ValidationResult:
         )
 
     checks: list[CheckResult] = []
+    acknowledgments = _drift_acknowledgments(root, active)
     for installation_id, entry in sorted(active):
         try:
             receipt = _registry_receipt_path(root, installation_id, entry)
-            result = validate_receipt_path(receipt)
+            result = validate_receipt_path(
+                receipt,
+                acknowledged_drift=acknowledgments.get(installation_id),
+            )
             checks.append(
                 CheckResult(
                     name=f"installation:{installation_id}",
                     status=result.status,
                     reason=(
-                        "receipt and installed targets are valid"
+                        _passed_reason(result)
                         if result.status == "passed"
                         else _first_failure_reason(result)
                     ),
@@ -589,6 +610,8 @@ def _validate_installed_target(
     installed_sha256: Any,
     operation_id: str,
     operation: Mapping[str, Any],
+    *,
+    acknowledged_drift: Mapping[tuple[str, str], tuple[str, str]] | None = None,
 ) -> CheckResult:
     name = f"receipt:target:{operation_id}"
     expected_link = operation.get(
@@ -621,8 +644,60 @@ def _validate_installed_target(
     except OSError:
         return CheckResult(name, "failed", f"{target} could not be read")
     if actual != installed_sha256:
+        superseded = (acknowledged_drift or {}).get(
+            (normalized_target(str(target)), installed_sha256)
+        )
+        if superseded is not None:
+            installation_id, reason = superseded
+            return CheckResult(
+                name,
+                "passed",
+                f"{target} superseded by {installation_id} "
+                f"(drift acknowledged: {reason})",
+            )
         return CheckResult(name, "failed", f"{target} does not match receipt")
     return CheckResult(name, "passed", f"{target} matches receipt")
+
+
+def _passed_reason(result: ValidationResult) -> str:
+    """Say so when a passing receipt rests on an acknowledged supersession."""
+
+    for check in result.checks:
+        if "superseded by" in check.reason:
+            return check.reason
+    return "receipt and installed targets are valid"
+
+
+def _drift_acknowledgments(
+    root: Path,
+    active: list[tuple[str, Mapping[str, Any]]],
+) -> dict[str, dict[tuple[str, str], tuple[str, str]]]:
+    """Index acknowledged chain gaps by the installation they excuse.
+
+    Only active installations count: a rolled-back or retired superseder no
+    longer excuses anything.
+    """
+
+    index: dict[str, dict[tuple[str, str], tuple[str, str]]] = {}
+    for installation_id, entry in active:
+        try:
+            receipt = load_receipt(_registry_receipt_path(root, installation_id, entry))
+        except (OSError, TypeError, ValueError):
+            continue
+        for item in receipt.get("drift_acknowledgments") or ():
+            if not isinstance(item, dict):
+                continue
+            prior = item.get("prior_installation_id")
+            target = item.get("target")
+            installed = item.get("prior_installed_sha256")
+            reason = item.get("reason")
+            if not all(isinstance(v, str) and v for v in (prior, target, installed, reason)):
+                continue
+            index.setdefault(prior, {})[(normalized_target(target), installed)] = (
+                installation_id,
+                reason,
+            )
+    return index
 
 
 def _hash_installed_object(path: Path) -> str:

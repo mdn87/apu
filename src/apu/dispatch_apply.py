@@ -77,6 +77,7 @@ def apply_dispatched_plan(
     plan: Plan,
     *,
     installation_id: str,
+    acknowledge_drift: str | None = None,
 ) -> Path:
     binding = dispatch_plan_binding(state_home, plan)
     if binding is None:
@@ -93,6 +94,7 @@ def apply_dispatched_plan(
             confirmed=True,
             campaign_id=campaign_id,
             snapshot_id=binding["snapshot_id"],
+            acknowledge_drift=acknowledge_drift,
         )
         receipt = load_receipt(receipt_path)
         register_leaf_artifact(
