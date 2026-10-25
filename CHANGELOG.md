@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.0 — 2026-10-25
+
 - Add `apu packages upgrade`, `status`, and `rollback`. Claude plugin updates
   are journaled, verified against the exact expected version and tree, and
   restored through APU snapshots on failure or mismatch.
@@ -10,6 +12,11 @@
 - Run the Claude dispatch runner inside verified workspace isolation
   (`apu dispatch --runner claude`).
 - Discover Claude session history directly during audits.
+- Add evidence schema v3, now the default. It keeps v2's selector provenance,
+  interprets typed Codex command-result envelopes (explicit nonzero, zero,
+  running and unknown statuses), and classifies `exec_command` requests by their
+  `cmd` argument. V1, v2 and v3 records stay in separate append-only routes, and
+  failed, running or unknown results can no longer count as passing tests.
 - Classify Codex execution commands safely when normalizing evidence, and
   preserve structured Codex results with versioned replay.
 - Install the Dias board note-path exemption into the live Claude start-of-turn

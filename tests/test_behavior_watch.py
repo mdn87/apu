@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from apu import __version__
 from apu.behavior_watch import (
     WATCHER_ID,
     NoAttribution,
@@ -337,7 +338,7 @@ def test_watcher_configuration_defaults_enabled_and_can_fail_closed(
     assert initial["last_successful_attribution"] is None
     assert initial["ambiguity_count"] == 0
     assert initial["service_heartbeat"] is None
-    assert initial["package_version"] == "0.9.0"
+    assert initial["package_version"] == __version__
     assert initial["build_revision"].startswith("sha256:")
     status = configure_watcher(
         state,
