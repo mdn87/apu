@@ -111,3 +111,25 @@ operator attestation, live Desktop and other operating-system qualification,
 and operator-effort measurement. The 0.10.0 release milestone and waived I3
 measurement remain closed. Mobile approvals and the other Codex session's
 Autowork recovery/limits/attention/pilot batches are separate owners' work.
+
+## 4070pc rollout after merge
+
+PR 26 merged as `fa010d814d4e2458bdda8cd4237259d1ca4634ac`, with all 14 reported
+CI checks successful. The existing user-wide APU CLI was upgraded from 0.10.0
+to 0.11.0 using its recorded local-source uv tool installation. The existing
+enabled `apu-session@apu-local` plugin was updated from 0.1.0 to 0.2.0 through
+the official Claude CLI. Installed module hashes and plugin hooks match the
+merged source. Rollback copies remain locally under
+`MyDocs/.local/finishing-execution/apu-native-rollback`.
+
+The first plugin fetch failed because its GitHub source selected SSH without an
+available key. A process-local Git URL mapping used authenticated/verified HTTPS
+for the successful retry; no permanent Git or SSH settings were changed.
+The update requires a new Claude process. A fresh ordinary installed session,
+without `--plugin-dir` or `PYTHONPATH`, registered `/apu-continue` and correctly
+refused it without diagnosis/preparation. It was then exited. Other running
+sessions were not restarted or interrupted.
+
+4070pc installation is therefore complete. Existing sessions load the new plugin
+on restart. Genuine recovery attestation, live Desktop/other OS qualification,
+concurrent lifecycle changes and operator-effort measurement remain open.

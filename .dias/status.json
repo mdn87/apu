@@ -8,10 +8,10 @@
   "milestonePhase": "closeout",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-10-25T21:08:00Z",
+  "assessedAt": "2026-10-25T21:15:09.918658Z",
   "confidence": "reported",
   "currentMilestone": "Release 0.10.0: Claude dispatch, package updates with verified restoration, evidence retention, and receipts that can be retired or superseded instead of staying red.",
-  "remainingSummary": "The 0.10.0 release milestone is closed. A separate opt-in native continuation increment now has a controlled Windows CLI proof; installed rollout, genuine recovery attestation, live Desktop/other OS qualification and operator-effort measurement remain. Three existing monitoring windows still need operator outcomes.",
+  "remainingSummary": "The 0.10.0 release milestone is closed. Native continuation is implemented and installed on 4070pc with a controlled Windows CLI proof. Genuine recovery attestation, live Desktop/other OS qualification and operator-effort measurement remain; existing sessions need restart to load plugin 0.2.0. Three existing monitoring windows still need operator outcomes.",
   "source": {
     "label": "0.10.0 release evidence plus docs/incidents/2026-10-25-native-continuation.md; native delivery is distinct from verified recovery.",
     "updatedAt": "2026-10-25"
