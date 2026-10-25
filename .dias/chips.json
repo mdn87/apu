@@ -457,8 +457,8 @@
       "chipId": "apu:apply-dias-note-paths",
       "projectId": "apu",
       "title": "Apply the Dias board note-path exemption to the live gate",
-      "summary": "Operator runs the rendered part-b plan so a gated session may update its own chip files. The live hook was checked 2026-09-27 and still lacks the exemption.",
-      "stage": "ready",
+      "summary": "Applied 2026-10-25 through apu apply (install-20261025T160221877474Z): the live Claude gate hook now treats .dias/ as a note path. Gate mode stays off.",
+      "stage": "done",
       "sequence": 130,
       "prereqs": [
         "apu:gate-rule-gaps"
@@ -468,7 +468,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-09-24T03:20:00Z",
-        "updatedAt": "2026-09-27T19:55:12.874Z"
+        "updatedAt": "2026-10-25T16:05:00.000Z"
       },
       "evidence": [
         {
@@ -476,6 +476,12 @@
           "at": "2026-09-27T19:55:12.874Z",
           "kind": "created",
           "message": "Rendered and fixture-tested since 2026-09-23. Live hook note list read 2026-09-27: the Dias board folder is absent, so the apply has not run yet."
+        },
+        {
+          "entryId": "apu:apply-dias-note-paths:installed-2026-10-25",
+          "at": "2026-10-25T16:05:00.000Z",
+          "kind": "stage-change",
+          "message": "Installed with backup and receipt. Hash b25ebf07...607d0 -> 7905d661...50502; backup hash equals the original. Isolated armed-gate proof: installed-before denied .dias/chips.json and .dias/status.json; rendered hook allowed them and still denied source writes, .. traversal, a .diasx lookalike, an outside-cwd .dias path, and Bash. Gate regression tests 14 passed. Live gate remains off; settings.json and tts.json hashes unchanged."
         }
       ]
     },
