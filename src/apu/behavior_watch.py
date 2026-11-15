@@ -57,6 +57,15 @@ _NO_ATTRIBUTION_REASONS = frozenset(
 
 _SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
+        "user-verification-gate",
+        re.compile(
+            r"(?=.*\b(?:forc\w*|demand\w*|insist\w*|requir\w*|wait\w*)\b)"
+            r"(?=.*\b(?:user|human|me|my)\b)"
+            r"(?=.*\b(?:test\w*|verif\w*|validat\w*)\b).+",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "outcome-unverified",
         re.compile(
             r"(?:still (?:broken|does(?:n't| not) work)|"
@@ -145,6 +154,16 @@ _SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 _AGENT_MESSAGE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
+        "user-verification-gate",
+        re.compile(
+            r"(?:\b(?:please|can you|could you|you (?:must|need to)|I need you to)\s+"
+            r"(?:manually\s+)?(?:test|verify|validate|check)\b|"
+            r"\b(?:waiting for|awaiting|requires?|need)\s+(?:your|human|user)"
+            r"[- ](?:verified results|verification|validation|testing|test results)\b)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "redundant-context-request",
         re.compile(
             r"(?:please provide|can you provide|I need .* from you)", re.IGNORECASE
@@ -174,6 +193,16 @@ _AGENT_MESSAGE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 _BARRIER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "human-only-observation",
+        re.compile(
+            r"(?:requires? physical (?:interaction|access)|"
+            r"only you can (?:judge|feel|hear|inspect)|"
+            r"(?:cannot|can't) (?:access|operate) (?:the |your )?(?:device|hardware)|"
+            r"subjective (?:judgment|acceptance))",
+            re.IGNORECASE,
+        ),
+    ),
     (
         "credential-barrier",
         re.compile(r"(?:credential|API key|login|authentication)", re.IGNORECASE),
@@ -291,13 +320,40 @@ _EASY_DECISION_RESUME_INSTRUCTION = (
     "information that materially changes the result."
 )
 
-RESUME_TEMPLATE_ID = "primary-agent-autonomy-resume-v1"
+# Keep old prompt bytes addressable: saved diagnoses bind their template hash.
+_LEGACY_RESUME_TEMPLATE_ID = "primary-agent-autonomy-resume-v1"
+_LEGACY_RECOVERY_TEMPLATE_ID = "primary-agent-outcome-recovery-v1"
+_AGENT_OWNED_VERIFICATION = (
+    "Own implementation and validation across all task types, not only UX work. "
+    "Do not make user testing, human-verified results, or a manual acceptance "
+    "receipt the default prerequisite for continuing. First determine which "
+    "checks you can perform with available tools and existing authorization, "
+    "then run them yourself. Exercise the actual supported task surface: for "
+    "example a CLI command, API, data workflow, generated artifact, or rendered "
+    "interface. Inspect observable results and relevant failure/recovery paths; "
+    "an internal helper or mock alone does not prove the requested outcome. "
+    "Diagnose failures, make in-scope fixes, and re-run the affected checks.\n\n"
+    "Separate agent-owned verification from human acceptance. Ask for a human "
+    "check only for a specific capability you genuinely lack, such as physical "
+    "interaction, inaccessible equipment, user-controlled authentication, or "
+    "subjective judgment. State that limitation and the smallest observation "
+    "needed, not a generic 'please test'. A pending human check blocks only "
+    "work that truly depends on it; complete independent work and do not "
+    "repeatedly resubmit the same request. Preserve evidence of passed, failed, "
+    "and unrun checks, and label only the affected outcome unverified. Never "
+    "invent evidence, weaken tests, bypass permissions, or claim human acceptance "
+    "from automated checks. APU's operator recovery attestation is separate "
+    "bookkeeping, not a new gate on the underlying task."
+)
+RESUME_TEMPLATE_ID = "primary-agent-autonomy-resume-v2"
 EASY_DECISION_TEMPLATE_ID = "primary-agent-easy-decision-resume-v1"
-RECOVERY_TEMPLATE_ID = "primary-agent-outcome-recovery-v1"
+RECOVERY_TEMPLATE_ID = "primary-agent-outcome-recovery-v2"
 _RESUME_TEMPLATES: dict[str, str] = {
-    RESUME_TEMPLATE_ID: _RESUME_INSTRUCTION,
+    _LEGACY_RESUME_TEMPLATE_ID: _RESUME_INSTRUCTION,
+    _LEGACY_RECOVERY_TEMPLATE_ID: _RECOVERY_INSTRUCTION,
+    RESUME_TEMPLATE_ID: _RESUME_INSTRUCTION + "\n\n" + _AGENT_OWNED_VERIFICATION,
     EASY_DECISION_TEMPLATE_ID: _EASY_DECISION_RESUME_INSTRUCTION,
-    RECOVERY_TEMPLATE_ID: _RECOVERY_INSTRUCTION,
+    RECOVERY_TEMPLATE_ID: _RECOVERY_INSTRUCTION + "\n\n" + _AGENT_OWNED_VERIFICATION,
 }
 
 
@@ -591,15 +647,83 @@ def _message_text(record: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _affirmative_match(pattern: re.Pattern[str], text: str) -> bool:
+    for match in pattern.finditer(text):
+        if not re.search(
+            r"\b(?:not|never|no longer|no|don't|doesn't|won't|isn't|aren't|without)"
+            r"\b[^.!?;\n]{0,45}$",
+            text[max(0, match.start() - 60) : match.start()],
+            re.IGNORECASE,
+        ):
+            return True
+    return False
+
+
 def _signals(text: str, *, agent_message: bool = False) -> tuple[str, ...]:
     patterns = _AGENT_MESSAGE_PATTERNS if agent_message else _SIGNAL_PATTERNS
-    return tuple(sorted(code for code, pattern in patterns if pattern.search(text)))
+    return tuple(
+        sorted(
+            code
+            for code, pattern in patterns
+            if (
+                _affirmative_match(pattern, text)
+                if code == "user-verification-gate"
+                else pattern.search(text)
+            )
+        )
+    )
 
 
 def _barriers(text: str) -> tuple[str, ...]:
     return tuple(
         sorted(code for code, pattern in _BARRIER_PATTERNS if pattern.search(text))
     )
+
+
+def _handoff_barriers(text: str) -> tuple[str, ...]:
+    """Constraints in an assistant handoff, not merely the subject of a test.
+
+    Operator reports retain the existing conservative barrier classifier. A
+    transcript mentioning a login form or a delete-command fixture is not by
+    itself evidence of missing credentials or a destructive action.
+    """
+    barriers: set[str] = set()
+    human_only = next(
+        pattern
+        for code, pattern in _BARRIER_PATTERNS
+        if code == "human-only-observation"
+    )
+    if _affirmative_match(human_only, text):
+        barriers.add("human-only-observation")
+    constraints = (
+        (
+            "credential-barrier",
+            (
+                r"(?:authentication|login|credentials?|API key) "
+                r"(?:is |are )?(?:required|missing|unavailable)|"
+                r"(?:cannot|can't) (?:authenticate|log in)|missing credentials?"
+            ),
+        ),
+        (
+            "permission-barrier",
+            (
+                r"permission denied|access denied|not authorized|"
+                r"(?:requires?|awaiting|needs?) (?:explicit |user )?approval"
+            ),
+        ),
+        (
+            "destructive-side-effect",
+            (
+                r"(?:this|the action|the test) (?:is|would be) "
+                r"(?:destructive|irreversible)"
+            ),
+        ),
+        ("external-side-effect", r"(?:would|will) (?:charge|send email|publish)"),
+    )
+    for code, pattern in constraints:
+        if _affirmative_match(re.compile(pattern, re.IGNORECASE), text):
+            barriers.add(code)
+    return tuple(sorted(barriers))
 
 
 def _safe_setting(value: Any) -> str | None:
@@ -621,6 +745,7 @@ def _parse_session(path: Path) -> SessionTrace:
     event_counts: Counter[str] = Counter()
     tool_calls: Counter[str] = Counter()
     signal_codes: set[str] = set()
+    barrier_codes: set[str] = set()
     meta: dict[str, Any] = {}
     settings: dict[str, str | None] = {}
     started = 0
@@ -694,6 +819,8 @@ def _parse_session(path: Path) -> SessionTrace:
             message = _message_text(record)
             message_signals = _signals(message, agent_message=True) if message else ()
             signal_codes.update(message_signals)
+            if "user-verification-gate" in message_signals:
+                barrier_codes.update(_handoff_barriers(message))
             recent.append(
                 {
                     "line": line_number,
@@ -741,7 +868,7 @@ def _parse_session(path: Path) -> SessionTrace:
         tool_calls=dict(sorted(tool_calls.items())),
         evidence_events=tuple(recent),
         signal_codes=tuple(sorted(signal_codes)),
-        barrier_codes=(),
+        barrier_codes=tuple(sorted(barrier_codes)),
         settings=dict(sorted(settings.items())),
         base_instructions_sha256=base_instructions_sha256,
         dynamic_tools_sha256=dynamic_tools_sha256,
@@ -1012,6 +1139,8 @@ def _parse_claude_session(path: Path) -> SessionTrace:
                 if text:
                     message_signals = _signals(text, agent_message=True)
                     signal_codes.update(message_signals)
+                    if "user-verification-gate" in message_signals:
+                        barrier_codes.update(_handoff_barriers(text))
                     if (
                         last_operator_text
                         and re.match(
@@ -2475,7 +2604,10 @@ def intervention_prompt(
         prompt = _RESUME_TEMPLATES[template_id]
     except KeyError as error:
         raise ValueError(f"unknown intervention template: {template_id}") from error
-    if template_id == RECOVERY_TEMPLATE_ID and incident is not None:
+    if (
+        template_id in {RECOVERY_TEMPLATE_ID, _LEGACY_RECOVERY_TEMPLATE_ID}
+        and incident is not None
+    ):
         note = str(incident["description"])
         if len(note) > _MAX_DESCRIPTION_CHARS or find_secret_spans(note):
             raise ValueError(

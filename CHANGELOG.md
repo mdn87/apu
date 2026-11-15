@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Detect user-verification handoffs in Codex and Claude sessions and operator
+  reports. Distinguish affirmative physical/access/subjective barriers from
+  routine testing topics.
+- Version `wtf` and `ezpz` recovery guidance to require agent-owned validation
+  across CLI, API, data, artifact and UI tasks, without making human acceptance
+  a default gate. Preserve legacy prompt hashes and existing authorization.
+
 ## 0.11.0 — 2026-10-25
 
 - Add an opt-in Claude native continuation panel after exact-session diagnosis
