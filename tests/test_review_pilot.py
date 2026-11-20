@@ -236,6 +236,11 @@ def test_evaluation_is_due_with_coverage_and_delivery_denominators(
     assert stats["unique_handoffs_delivered"] == 6 and stats["covered_nights"] == 2
     assert stats["unlabeled_deliveries"] == 0 and stats["missed_nights"] == 12
     assert stats["useful_share"] == 0.6 and stats["unsure"] == 1
+    invalid = tmp_path / "damaged.json"
+    invalid.write_text("{}")
+    with pytest.raises(ValueError, match="ledger"):
+        pilot.evaluate(state, now=later, decision="stop", delivered=invalid)
+    assert pilot.evaluate(state, now=later)["review_due"]
     pilot.evaluate(state, now=later, decision="continue", useful_ref=refs[0])
     assert not pilot.read_summary(state)["actions"]
 

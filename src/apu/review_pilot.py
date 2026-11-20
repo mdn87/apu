@@ -6,6 +6,7 @@ import json
 import re
 import time
 from collections import Counter
+from contextlib import nullcontext
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -372,11 +373,23 @@ def evaluate(
     useful_ref: str | None = None,
 ) -> dict:
     now = now or datetime.now(UTC)
-    if decision is not None:
-        if decision not in ("continue", "narrow", "stop"):
-            raise ValueError("unknown pilot decision")
-        with behavior_lock(home):
-            state = _state(home)
+    if decision is not None and decision not in ("continue", "narrow", "stop"):
+        raise ValueError("unknown pilot decision")
+    if useful_ref and decision is None:
+        raise ValueError("--useful-ref requires an explicit pilot decision")
+    day = schedule_day(now)
+    with behavior_lock(home) if decision else nullcontext():
+        state = _state(home)
+        if delivered is None and state.get("delivery_ledger"):
+            configured = Path(state["delivery_ledger"])
+            if configured.is_file():
+                delivered = configured
+        shown = (
+            _delivered_handoffs(delivered, state["records"])
+            if delivered is not None
+            else None
+        )
+        if decision:
             if not state["summary"]:
                 raise ValueError("no pilot runs have been recorded")
             if useful_ref and (
@@ -390,22 +403,8 @@ def evaluate(
                 "useful_ref": useful_ref,
             }
             _publish(home, state)
-    else:
-        if useful_ref:
-            raise ValueError("--useful-ref requires an explicit pilot decision")
-        state = _state(home)
-    metrics = _metrics(state, schedule_day(now))
-    if delivered is None and state.get("delivery_ledger"):
-        configured = Path(state["delivery_ledger"])
-        if configured.is_file():
-            delivered = configured
-    shown = (
-        _delivered_handoffs(delivered, state["records"])
-        if delivered is not None
-        else None
-    )
     return {
-        **metrics,
+        **_metrics(state, day),
         "unique_handoffs_delivered": len(shown) if shown is not None else None,
         "unlabeled_deliveries": len(shown - state["labels"].keys())
         if shown is not None
