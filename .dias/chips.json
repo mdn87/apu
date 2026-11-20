@@ -1253,6 +1253,33 @@
     },
     {
       "schemaVersion": 1,
+      "chipId": "apu:nightly-midnight-check",
+      "projectId": "apu",
+      "title": "Verify Friday's 03:15 Dias audit at midnight",
+      "summary": "At 00:00 Eastern on Nov 21, check the Nov 20 audit, eligible sessions, Taskmaster's mirrored summary and any new report receipt. Use the 02:28 setup run as the baseline.",
+      "stage": "ready",
+      "sequence": 365,
+      "prereqs": [
+        "apu:nightly-pilot-proof"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T07:54:54.437Z",
+        "updatedAt": "2026-11-20T07:54:54.437Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-midnight-check:scheduled-20261120",
+          "at": "2026-11-20T07:54:54.437Z",
+          "kind": "created",
+          "message": "Windows confirmed a one-time check for Nov 21 at 00:00 Eastern (05:00 UTC). The preview excluded the setup run. Evidence from the regular run is still pending."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "chipId": "apu:nightly-pilot-evaluation",
       "projectId": "apu",
       "title": "Evaluate whether the nudges help",

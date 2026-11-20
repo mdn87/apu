@@ -11,10 +11,10 @@
   "assessedAt": "2026-10-31T02:29:30.000Z",
   "confidence": "reported",
   "currentMilestone": "Native Claude continuation qualification: released as 0.11.0 and installed; recovery attestation, live Desktop and other-OS checks and effort measurement remain.",
-  "remainingSummary": "Delivery is proven on a controlled Windows turn; recovery is unverified. Open: an attested real recovery, Desktop and other-OS checks, effort measurement, two monitoring windows.",
+  "remainingSummary": "At 00:00 Eastern Nov 21, verify Friday's 03:15 Dias audit and what reached Taskmaster. Native continuation delivery was proven on a controlled Windows turn. Real recovery, Desktop and other-OS checks, effort measurement and two monitoring windows remain open.",
   "source": {
-    "label": "Native continuation qualification record, 0.11.0 changelog and release, and the APU status view read on 2026-10-30; delivery is distinct from verified recovery.",
-    "updatedAt": "2026-10-30"
+    "label": "Native continuation record, 0.11.0 release and Oct 30 status view for the score. Nov 20 commissioning receipt and confirmed midnight schedule for the pilot.",
+    "updatedAt": "2026-11-20"
   },
-  "nextChipId": "apu:recovery-attestation"
+  "nextChipId": "apu:nightly-midnight-check"
 }
