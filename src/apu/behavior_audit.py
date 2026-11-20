@@ -27,6 +27,7 @@ from .evidence import (
     validate_evidence_event,
 )
 from .gate_decisions import DEFAULT_GATE_LOG, gate_cost_report, gate_findings
+from .manual_review import inspect_turns
 from .models import canonical_json, sha256_bytes
 from .state import ensure_state_home, write_json_atomic
 
@@ -116,12 +117,13 @@ def _within(root: Path, candidate: Path) -> bool:
 
 
 def _peek_codex_trace(path: Path) -> tuple[str, Path] | None:
-    consumed = 0
     with path.open("rb") as stream:
-        for raw in stream:
-            consumed += len(raw)
-            if consumed > 1024 * 1024:
-                return None
+        remaining = 1024 * 1024
+        while remaining > 0:
+            raw = stream.readline(remaining)
+            if not raw:
+                break
+            remaining -= len(raw)
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -205,6 +207,7 @@ def _discover_trace_candidates(
     marked_sessions: set[str],
     marked_trace_paths: set[Path],
     session_id: str | None,
+    recent_only: bool = False,
 ) -> tuple[list[AuditCandidate], list[dict[str, Any]]]:
     root = Path(trace_root).expanduser().resolve()
     if not root.is_dir():
@@ -232,6 +235,8 @@ def _discover_trace_candidates(
         try:
             stat = path.stat()
         except OSError:
+            continue
+        if recent_only and stat.st_mtime < cutoff.timestamp():
             continue
         discovered.append((path, stat))
     discovered.sort(
@@ -591,6 +596,16 @@ def _select_candidates(
             }
         )
     return selected, skipped, consumed
+
+
+def _source_skip(candidate: AuditCandidate, reason: str) -> dict[str, Any]:
+    return {
+        "provider": candidate.provider,
+        "session_id": candidate.session_id,
+        "source_path_sha256": sha256_bytes(str(candidate.source_path).encode("utf-8")),
+        "source_bytes": candidate.source_bytes,
+        "reason": reason,
+    }
 
 
 def _already_ingested_unchanged(
@@ -1161,6 +1176,7 @@ def audit_behavior(
     now: datetime | None = None,
     evidence_schema_version: int = EVIDENCE_SCHEMA_VERSION,
     gate_log: Path | None = DEFAULT_GATE_LOG,
+    review_handoffs: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
     """Audit bounded session evidence; ``gate_log=None`` skips the gate-cost join."""
 
@@ -1178,7 +1194,7 @@ def audit_behavior(
     selected_now = datetime.now(UTC) if now is None else _aware(now)
     selected_cwd = Path.cwd().resolve() if cwd is None else Path(cwd).resolve()
     cutoff = selected_now - lookback
-    incidents = _incident_context(state_home)
+    incidents = {} if review_handoffs else _incident_context(state_home)
     marked_sessions = set(incidents)
     marked_trace_paths = {
         Path(trace_path).resolve(strict=False)
@@ -1201,6 +1217,7 @@ def audit_behavior(
             marked_sessions=marked_sessions,
             marked_trace_paths=marked_trace_paths,
             session_id=session_id,
+            recent_only=review_handoffs,
         )
         candidates.extend(codex_candidates)
         discovery_skipped.extend(codex_skipped)
@@ -1213,19 +1230,21 @@ def audit_behavior(
             marked_sessions=marked_sessions,
             marked_trace_paths=marked_trace_paths,
             session_id=session_id,
+            recent_only=review_handoffs,
         )
         candidates.extend(claude_candidates)
         discovery_skipped.extend(claude_skipped)
-    evidence_candidates, evidence_skipped = _discover_evidence_candidates(
-        state_home,
-        providers=selected_providers,
-        cwd=selected_cwd,
-        cutoff=cutoff,
-        marked_sessions=marked_sessions,
-        session_id=session_id,
-    )
-    candidates.extend(evidence_candidates)
-    discovery_skipped.extend(evidence_skipped)
+    if not review_handoffs:
+        evidence_candidates, evidence_skipped = _discover_evidence_candidates(
+            state_home,
+            providers=selected_providers,
+            cwd=selected_cwd,
+            cutoff=cutoff,
+            marked_sessions=marked_sessions,
+            session_id=session_id,
+        )
+        candidates.extend(evidence_candidates)
+        discovery_skipped.extend(evidence_skipped)
     unique = _deduplicate_candidates(candidates)
     selected, bounded_skipped, source_bytes = _select_candidates(
         unique,
@@ -1242,6 +1261,7 @@ def audit_behavior(
         gate_over_target = gate_findings(gate_report)
 
     session_reports: list[dict[str, Any]] = []
+    manual_review: list[dict[str, Any]] = []
     all_findings: list[dict[str, Any]] = []
     ingestion_skipped: list[dict[str, Any]] = []
     for candidate in selected:
@@ -1254,9 +1274,14 @@ def audit_behavior(
             ):
                 ingest_status = "unchanged-reused"
             else:
-                if candidate.provider == "claude-code":
+                if candidate.provider == "claude-code" or review_handoffs:
+                    ingest = (
+                        ingest_claude_code_trace
+                        if candidate.provider == "claude-code"
+                        else ingest_codex_trace
+                    )
                     try:
-                        ingest_claude_code_trace(
+                        ingest(
                             state_home,
                             candidate.source_path,
                             schema_version=evidence_schema_version,
@@ -1266,15 +1291,7 @@ def audit_behavior(
                         )
                     except (OSError, ValueError):
                         ingestion_skipped.append(
-                            {
-                                "provider": candidate.provider,
-                                "session_id": candidate.session_id,
-                                "reason": "source-ingestion-failed",
-                                "source_path_sha256": sha256_bytes(
-                                    str(candidate.source_path).encode("utf-8")
-                                ),
-                                "source_bytes": candidate.source_bytes,
-                            }
+                            _source_skip(candidate, "source-ingestion-failed")
                         )
                         continue
                 else:
@@ -1290,7 +1307,38 @@ def audit_behavior(
             candidate.session_id,
             cwd=candidate.cwd,
         )
-        verification = _verify_events(events)
+        if review_handoffs:
+            # Other source paths in a saved session were never selected against this run's budget.
+            events = [
+                event
+                for event in events
+                if event["source_kind"] == "transcript"
+                and event["source"]["path"] == str(candidate.source_path)
+            ]
+            try:
+                if (
+                    candidate.source_path.stat().st_size != candidate.source_bytes
+                    or any(
+                        e["source"]["snapshot_bytes"] is None
+                        or e["source"]["snapshot_bytes"] > candidate.source_bytes
+                        for e in events
+                    )
+                ):
+                    raise ValueError("review source size changed")
+                verification = _verify_events(events)
+                if any(
+                    result["status"] != "verified" for result in verification.values()
+                ):
+                    raise ValueError("review source failed replay")
+                reviewed, completed_turns = inspect_turns(
+                    candidate, events, verification, cutoff, selected_now
+                )
+                manual_review.extend(reviewed)
+            except (OSError, ValueError):
+                ingestion_skipped.append(_source_skip(candidate, "source-changed"))
+                continue
+        else:
+            verification = _verify_events(events)
         reconciliation = reconcile_evidence(events)
         findings = _evidence_findings(
             events,
@@ -1327,6 +1375,11 @@ def audit_behavior(
                 "marked_incident_count": len(incidents.get(candidate.session_id, ())),
                 "ingest_status": ingest_status,
                 "event_count": len(events),
+                **(
+                    {"review_completed_turns": completed_turns}
+                    if review_handoffs
+                    else {}
+                ),
                 "verification_counts": dict(
                     sorted(
                         Counter(
@@ -1409,6 +1462,8 @@ def audit_behavior(
             "content, changed path names, or raw provider records."
         ),
     }
+    if review_handoffs:
+        artifact["manual_review"] = manual_review
     ensure_state_home(state_home)
     path = Path(state_home) / "behavior" / "audits" / f"{audit_id}.json"
     write_json_atomic(path, artifact)

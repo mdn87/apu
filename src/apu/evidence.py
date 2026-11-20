@@ -726,31 +726,53 @@ def read_evidence_version(
     return [event for event in records if event["schema_version"] == schema_version]
 
 
-def _codex_snapshot(path: Path) -> tuple[str, Path, int, str]:
-    if path.stat().st_size > _MAX_TRACE_BYTES:
+def _codex_snapshot(
+    path: Path, *, max_source_bytes: int | None = None
+) -> tuple[str, Path, int, str]:
+    size = path.stat().st_size
+    if max_source_bytes is not None and size > max_source_bytes:
+        raise ValueError("Codex trace exceeds selected source byte budget")
+    if size > _MAX_TRACE_BYTES:
         raise ValueError(f"Codex trace exceeds {_MAX_TRACE_BYTES} bytes: {path}")
     digest = sha256()
     snapshot_bytes = 0
     session_id: str | None = None
     cwd: Path | None = None
     with path.open("rb") as stream:
-        for raw in stream:
+        while snapshot_bytes < size:
+            raw = stream.readline(size - snapshot_bytes)
+            if not raw:
+                raise ValueError("Codex trace truncated during snapshot")
             snapshot_bytes += len(raw)
             digest.update(raw)
-            if session_id is not None:
+            if session_id is not None and max_source_bytes is None:
                 continue
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 continue
-            payload = record.get("payload") if isinstance(record, Mapping) else None
+            if not isinstance(record, Mapping):
+                continue
+            payload = record.get("payload")
             if record.get("type") == "session_meta" and isinstance(payload, Mapping):
                 selected = payload.get("id") or payload.get("session_id")
                 selected_cwd = payload.get("cwd")
+                if max_source_bytes is not None and not (
+                    isinstance(selected, str)
+                    and selected
+                    and isinstance(selected_cwd, str)
+                    and Path(selected_cwd).is_absolute()
+                ):
+                    raise ValueError("Codex trace has incomplete session metadata")
                 if isinstance(selected, str) and selected:
+                    if session_id is not None and session_id != selected:
+                        raise ValueError("Codex trace changes session id")
                     session_id = selected
                 if isinstance(selected_cwd, str) and Path(selected_cwd).is_absolute():
-                    cwd = Path(selected_cwd).resolve(strict=False)
+                    normalized = Path(selected_cwd).resolve(strict=False)
+                    if cwd is not None and cwd != normalized:
+                        raise ValueError("Codex trace changes session cwd")
+                    cwd = normalized
     if session_id is None:
         raise ValueError(f"Codex trace has no session id: {path}")
     if cwd is None:
@@ -914,20 +936,34 @@ def ingest_codex_trace(
     *,
     attribution: Mapping[str, Any] | None = None,
     schema_version: int = EVIDENCE_SCHEMA_VERSION,
+    expected_session_id: str | None = None,
+    expected_cwd: Path | None = None,
+    max_source_bytes: int | None = None,
 ) -> tuple[Path | None, tuple[dict[str, Any], ...], dict[str, Any]]:
     if schema_version not in EVIDENCE_READER_VERSIONS:
         raise ValueError("unsupported evidence writer schema_version")
     selected = Path(path).expanduser().resolve()
     selected_attribution = dict(attribution or _attribution("exact_trace_path"))
     _validate_attribution(selected_attribution)
-    session_id, cwd, snapshot_bytes, snapshot_sha256 = _codex_snapshot(selected)
+    session_id, cwd, snapshot_bytes, snapshot_sha256 = _codex_snapshot(
+        selected, max_source_bytes=max_source_bytes
+    )
+    if (expected_session_id is not None and session_id != expected_session_id) or (
+        expected_cwd is not None and cwd != expected_cwd.resolve()
+    ):
+        raise ValueError("selected Codex session identity changed")
     events: list[dict[str, Any]] = []
     consumed = 0
+    digest = sha256()
+    line_number = 0
     with selected.open("rb") as stream:
-        for line_number, raw in enumerate(stream, start=1):
-            if consumed + len(raw) > snapshot_bytes:
-                break
+        while consumed < snapshot_bytes:
+            raw = stream.readline(snapshot_bytes - consumed)
+            if not raw:
+                raise ValueError("Codex trace truncated during ingestion")
             consumed += len(raw)
+            line_number += 1
+            digest.update(raw)
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -948,6 +984,8 @@ def ingest_codex_trace(
             )
             if event is not None:
                 events.append(event)
+    if digest.hexdigest() != snapshot_sha256:
+        raise ValueError("Codex trace changed during ingestion")
     destination, appended = append_evidence_events(state_home, events)
     boundary = {
         "path": str(selected),

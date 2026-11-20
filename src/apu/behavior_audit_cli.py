@@ -67,6 +67,8 @@ def add_behavior_parser(commands: argparse._SubParsersAction) -> None:
         help="inspect bounded provider-session evidence for behavioral findings",
     )
     subcommands = behavior.add_subparsers(dest="behavior_command", required=True)
+    from . import review_pilot
+    review_pilot.add_parser(subcommands)
     audit = subcommands.add_parser(
         "audit",
         help="audit recent or incident-marked sessions without storing content",
@@ -147,6 +149,9 @@ def add_behavior_parser(commands: argparse._SubParsersAction) -> None:
 
 
 def run_behavior(args: argparse.Namespace) -> int:
+    if args.behavior_command == "review":
+        from .review_pilot import run_cli
+        return run_cli(resolve_state_home(), args)
     if args.behavior_command == "prune":
         return _run_prune(args)
     if args.behavior_command == "gate-cost":

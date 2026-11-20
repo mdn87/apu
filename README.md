@@ -595,6 +595,50 @@ Do not run older APU versions or external state writers concurrently with apply.
 Referenced reports and provider logs are preserved. Pruning is an explicit
 operation; audits and the watcher never delete history automatically.
 
+## Nightly review of manual test handoffs
+
+The Dias pilot looks for a completed Claude Code or Codex turn that hands a
+concrete test or build command back to the operator. A candidate needs a
+verified source, an applicable request and evidence of local command access.
+The audit records uncertainty when the evidence is incomplete. It checks up to
+20 sessions and 256 MiB across the last seven days.
+
+```console
+apu behavior review run --cwd ABSOLUTE_DIAS_DIRECTORY
+apu behavior review status
+apu behavior review show REF
+apu behavior review label REF useful
+apu behavior review evaluate
+```
+
+Use the reference from the morning report or local status. `show` checks the
+original completion record again. Labels can be `useful`, `dismissed` or
+`unsure`. They measure the value of the reminder. Policy outcomes and recovery
+attestations still use their existing commands.
+
+On a Windows workstation set to Eastern time, register the daily 03:15 task
+from PowerShell. Supply the Python executable from the installed APU
+environment. The optional ledger path lets `evaluate` count verified reports.
+
+```powershell
+.\ops\windows\Register-NightlyReview.ps1 -Mode Enable -Workspace C:\work\dias -Pythonw C:\tools\apu\Scripts\pythonw.exe -DeliveryLedger C:\reports\apu-deliveries.json
+.\ops\windows\Register-NightlyReview.ps1 -Mode Status
+.\ops\windows\Register-NightlyReview.ps1 -Mode Disable
+```
+
+The task catches up when the workstation becomes available and retries a failed
+run once. APU stores the private lookup table and the transferable
+`summary.json` under `APU_HOME/behavior/review`. Only the latter goes to
+Taskmaster. A missed run, failed audit or coverage gap can appear in the report.
+A healthy audit with no new action stays quiet.
+
+After 14 calendar nights or ten useful/dismissed ratings, `evaluate` reports
+coverage, verified deliveries and ratings. It gives a usefulness rate with at
+least five decisive ratings. Record the operator's decision with
+`apu behavior review evaluate --decision continue|narrow|stop`. A useful
+example can be attached with `--useful-ref REF`. Disable the scheduled task
+and the Taskmaster collector opt-in when ending the pilot.
+
 ## Orca behavior evidence boundary
 
 APU can consume a version-1 `lugos.autowork.behavior-delegation-receipt` as
