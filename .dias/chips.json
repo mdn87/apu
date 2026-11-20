@@ -1059,8 +1059,8 @@
       "chipId": "apu:nightly-handoff-measure",
       "projectId": "apu",
       "title": "Detect and calibrate manual test handoffs",
-      "summary": "APU will flag a runnable check handed to Matt, suppress required stops and human-only work, and count candidates in seven days of Dias sessions.",
-      "stage": "planned",
+      "summary": "APU checks completed Dias turns for a runnable test handoff. It respects stops, human-only checks and commands the agent already ran.",
+      "stage": "done",
       "sequence": 310,
       "prereqs": [],
       "linkedRunIds": [],
@@ -1068,7 +1068,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-11-20T06:15:52Z",
-        "updatedAt": "2026-11-20T06:15:52Z"
+        "updatedAt": "2026-11-20T07:31:34.382Z"
       },
       "evidence": [
         {
@@ -1076,6 +1076,12 @@
           "at": "2026-11-20T06:15:52Z",
           "kind": "created",
           "message": "Positive Claude and Codex fixtures should each flag one handoff. Required stops stay quiet and ambiguous capability stays unknown. Shipped audits supply the inputs."
+        },
+        {
+          "entryId": "apu:nightly-handoff-measure:workstation-proof-20261120",
+          "at": "2026-11-20T07:31:34.382Z",
+          "kind": "stage-change",
+          "message": "APU PR #28. Fourteen verified Codex turns in two sessions yielded no handoff. Seven Claude transcripts had no recent completions. One mixed-session source was skipped."
         }
       ]
     },
@@ -1084,8 +1090,8 @@
       "chipId": "apu:nightly-review-summary",
       "projectId": "apu",
       "title": "Publish reviewable APU evidence",
-      "summary": "APU will export bounded coverage and opaque references. Workstation commands will show the evidence and record usefulness separately from policy outcomes.",
-      "stage": "planned",
+      "summary": "A local lookup rechecks the original evidence. The summary carries counts, action codes and opaque references. Usefulness labels are stored separately from policy outcomes.",
+      "stage": "done",
       "sequence": 320,
       "prereqs": [
         "apu:nightly-handoff-measure"
@@ -1095,7 +1101,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-11-20T06:15:52Z",
-        "updatedAt": "2026-11-20T06:15:52Z"
+        "updatedAt": "2026-11-20T07:31:34.382Z"
       },
       "evidence": [
         {
@@ -1103,6 +1109,12 @@
           "at": "2026-11-20T06:15:52Z",
           "kind": "created",
           "message": "Replay and growing logs must preserve identity. Labels must not change outcome counts. The exported summary must exclude raw text, paths and session IDs."
+        },
+        {
+          "entryId": "apu:nightly-review-summary:workstation-proof-20261120",
+          "at": "2026-11-20T07:31:34.382Z",
+          "kind": "stage-change",
+          "message": "References survived replay and appends. Local lookup detected changed and expired evidence. Repeated labels counted once. A failed audit retained its last successful coverage time."
         }
       ]
     },
@@ -1111,8 +1123,8 @@
       "chipId": "apu:nightly-workstation-audit",
       "projectId": "apu",
       "title": "Schedule the nightly workstation audit",
-      "summary": "Run the bounded Dias audit nightly at 03:15 New York time. Catch up after sleep, prevent overlapping runs and retain the last good coverage time on failure.",
-      "stage": "planned",
+      "summary": "Windows schedules the Dias audit at 03:15 Eastern. It catches up when available, ignores overlaps and retries a failed audit once after five minutes.",
+      "stage": "done",
       "sequence": 330,
       "prereqs": [
         "apu:nightly-review-summary"
@@ -1122,7 +1134,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-11-20T06:15:52Z",
-        "updatedAt": "2026-11-20T06:15:52Z"
+        "updatedAt": "2026-11-20T07:31:34.382Z"
       },
       "evidence": [
         {
@@ -1130,6 +1142,12 @@
           "at": "2026-11-20T06:15:52Z",
           "kind": "created",
           "message": "Exercise the installed Windows task, repeated starts, sleep catch-up, a clock change and retry exhaustion. Keep stale or failed coverage visible."
+        },
+        {
+          "entryId": "apu:nightly-workstation-audit:workstation-proof-20261120",
+          "at": "2026-11-20T07:31:34.382Z",
+          "kind": "stage-change",
+          "message": "Timer exited 0. A failed audit retried once after five minutes and kept its last success. Overlap, DST and missed-night replay passed. Physical wake is unverified."
         }
       ]
     },
@@ -1138,8 +1156,8 @@
       "chipId": "apu:nightly-taskmaster-transport",
       "projectId": "apu",
       "title": "Carry the APU summary into Taskmaster",
-      "summary": "Taskmaster will carry an optional, size-limited APU sidecar over the existing workstation route and isolate malformed or missing input from other report data.",
-      "stage": "planned",
+      "summary": "Taskmaster validates an APU summary of up to 8 KiB at both ends of the workstation connection and mirrors it beside its existing export.",
+      "stage": "done",
       "sequence": 340,
       "prereqs": [
         "apu:nightly-review-summary"
@@ -1149,7 +1167,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-11-20T06:15:52Z",
-        "updatedAt": "2026-11-20T06:15:52Z"
+        "updatedAt": "2026-11-20T07:31:34.382Z"
       },
       "evidence": [
         {
@@ -1157,6 +1175,12 @@
           "at": "2026-11-20T06:15:52Z",
           "kind": "created",
           "message": "Accept the v1 summary and exercise missing, malformed, oversized and unsupported inputs. Existing remote context, handoffs and Tuan health must still validate."
+        },
+        {
+          "entryId": "apu:nightly-taskmaster-transport:workstation-proof-20261120",
+          "at": "2026-11-20T07:31:34.382Z",
+          "kind": "stage-change",
+          "message": "Taskmaster PR #24. Both hosts agreed on the 411-byte live summary. Handoff and Tuan data passed validation through the collector and mirror with the pilot enabled and disabled."
         }
       ]
     },
@@ -1165,8 +1189,8 @@
       "chipId": "apu:nightly-report-line",
       "projectId": "apu",
       "title": "Deliver one actionable morning-report line",
-      "summary": "Taskmaster will show one new action or coverage problem, keep clean runs quiet and record a nudge as shown after verifying the delivered report file.",
-      "stage": "planned",
+      "summary": "The morning report shows at most one APU action or coverage notice. Taskmaster records delivery after verifying the written report.",
+      "stage": "done",
       "sequence": 350,
       "prereqs": [
         "apu:nightly-taskmaster-transport"
@@ -1176,7 +1200,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-11-20T06:15:52Z",
-        "updatedAt": "2026-11-20T06:15:52Z"
+        "updatedAt": "2026-11-20T07:31:34.382Z"
       },
       "evidence": [
         {
@@ -1184,6 +1208,12 @@
           "at": "2026-11-20T06:15:52Z",
           "kind": "created",
           "message": "Cover populated and empty inboxes, preview, failed and repeated delivery, partial coverage and stable evidence. A retry must not silently drop a nudge."
+        },
+        {
+          "entryId": "apu:nightly-report-line:workstation-proof-20261120",
+          "at": "2026-11-20T07:31:34.382Z",
+          "kind": "stage-change",
+          "message": "Empty and populated reports passed read-back, replay and rollback. The live report showed one monitoring reminder with partial coverage. Its digest matched the receipt."
         }
       ]
     },
@@ -1192,8 +1222,8 @@
       "chipId": "apu:nightly-pilot-proof",
       "projectId": "apu",
       "title": "Prove and roll back the pilot end to end",
-      "summary": "Verify a workstation run, the delivered morning report and local evidence lookup. Exercise rollback and keep controlled examples distinct from real findings.",
-      "stage": "planned",
+      "summary": "The workstation, host collector and morning report handled a controlled handoff and a real Dias audit. Both pilot settings were disabled, checked and restored.",
+      "stage": "done",
       "sequence": 360,
       "prereqs": [
         "apu:nightly-workstation-audit",
@@ -1204,7 +1234,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-11-20T06:15:52Z",
-        "updatedAt": "2026-11-20T06:15:52Z"
+        "updatedAt": "2026-11-20T07:31:34.382Z"
       },
       "evidence": [
         {
@@ -1212,6 +1242,12 @@
           "at": "2026-11-20T06:15:52Z",
           "kind": "created",
           "message": "Capture one real scheduled run and report, plus controlled positive and negative cases. Disable the pilot and verify baseline report delivery before restoring it."
+        },
+        {
+          "entryId": "apu:nightly-pilot-proof:workstation-proof-20261120",
+          "at": "2026-11-20T07:31:34.382Z",
+          "kind": "stage-change",
+          "message": "A 359-byte fixture crossed the real connection and resolved locally. The installed task ran at 02:28 Eastern and its live report passed. The daily 03:15 trigger is enabled."
         }
       ]
     },
@@ -1220,8 +1256,8 @@
       "chipId": "apu:nightly-pilot-evaluation",
       "projectId": "apu",
       "title": "Evaluate whether the nudges help",
-      "summary": "At 14 nights or ten decisive labels, report coverage, unique nudges and usefulness. Record whether to continue, narrow or stop the one-workspace pilot.",
-      "stage": "planned",
+      "summary": "Evaluate after 14 calendar nights or ten useful/dismissed ratings. Review coverage, unique deliveries and ratings, then record whether to continue, narrow or stop.",
+      "stage": "active",
       "sequence": 370,
       "prereqs": [
         "apu:nightly-pilot-proof"
@@ -1231,7 +1267,7 @@
       "aheadOfPrereqs": null,
       "timestamps": {
         "createdAt": "2026-11-20T06:15:52Z",
-        "updatedAt": "2026-11-20T06:15:52Z"
+        "updatedAt": "2026-11-20T07:31:34.382Z"
       },
       "evidence": [
         {
@@ -1239,6 +1275,12 @@
           "at": "2026-11-20T06:15:52Z",
           "kind": "created",
           "message": "Show the denominator and unknowns. Fewer than five decisive labels leaves usefulness uncertain. Record a concrete action Matt would otherwise have missed, if any."
+        },
+        {
+          "entryId": "apu:nightly-pilot-evaluation:workstation-proof-20261120",
+          "at": "2026-11-20T07:31:34.382Z",
+          "kind": "stage-change",
+          "message": "The first review found 0 handoffs and has 0 ratings. A reminder was delivered at 34 days with 0 of 10 qualifying outcomes. A usefulness rate needs five decisive ratings."
         }
       ]
     }
