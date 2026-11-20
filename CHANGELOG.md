@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.12.0 — 2026-11-20
+
+- Add an opt-in nightly review of completed Dias turns in Claude Code and Codex.
+  APU keeps source verification and usefulness labels on the workstation and
+  publishes a bounded summary for Taskmaster's morning report.
+
 ## 0.11.0 — 2026-10-25
 
 - Add an opt-in Claude native continuation panel after exact-session diagnosis
