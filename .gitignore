@@ -24,3 +24,4 @@ dist/
 .apu-mod-smoke/
 .claude-plugin/types/
 /tsconfig.json
+config/glas.models.local.json
