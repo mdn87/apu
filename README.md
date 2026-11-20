@@ -162,7 +162,7 @@ explicit network activity:
 
 ```console
 apu refresh guidance --profile profile.toml --output guidance-refresh.json
-apu refresh models --profile profile.toml --output model-refresh.json
+python scripts/refresh_models_with_glas.py --profile profile.toml --output model-refresh.json
 apu system audit --profile profile.toml --json system-inventory.json
 ```
 
@@ -178,8 +178,13 @@ apu guidance diff BEFORE_BASELINE AFTER_BASELINE
 
 Model refresh observes installed CLI versions and configured selectors
 offline, then resolves them only against fixed official provider listing
-endpoints. Provider credentials are read at request time from the process
-environment and are never persisted. Exact published model IDs can resolve
+endpoints. For an authenticated refresh, create an ignored
+`config/glas.models.local.json` manifest mapping BWS provider secrets to
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY`. Set `GLAS_PYTHON` to a Python installation with GLAS and
+its Bitwarden dependencies; set `GLAS_ROOT` if GLAS is run from a source
+checkout, and `GLAS_HOME` to the selected native-store profile's inventory.
+The wrapper removes inherited provider keys before the GLAS launch. An
+offline-only operation does not need GLAS. Exact published model IDs can resolve
 directly; aliases and omitted defaults remain visibly unverified unless the
 authoritative listing supplies their mapping. Failed refreshes preserve the
 matching last-known identity as stale rather than presenting it as current.
