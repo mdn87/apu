@@ -361,6 +361,19 @@ barriers prompt review instead of continuation. Selection failures explain
 how to resolve the mismatch or ambiguity. `--json` retains the existing
 diagnosis and attribution-error formats.
 
+`apu wtf` also recognizes requests that hand testing or verification back to the
+user (`user-verification-gate`). This is a possible workflow failure, not proof
+that every human check is unnecessary. Its v2 recovery instruction applies to
+CLI, API, data, artifact and UI work: the agent must run feasible authorized
+checks, diagnose and fix failures, retain evidence, and separate its verification
+from human acceptance. Missing physical access, subjective judgment and other
+real barriers remain barriers; independent work should not wait on them. No UX
+review mode is required. Existing v1 diagnoses retain their original prompts.
+
+This is corrective guidance, not an autonomous test runner or a guarantee of
+agent compliance. APU's operator-attested recovery result remains distinct from
+task verification and must not become a prerequisite for unrelated work.
+
 `apu ezpz` (also `apu-ezpz`) prepares recovery when the requested outcome is
 still unresolved: the agent stopped early, repeated an ineffective approach,
 or handed routine work and approval requests back to you. It marks a fresh
@@ -368,7 +381,7 @@ incident with `operator-requested-recovery` and reports `recovery-requested`,
 not a proven diagnosis. The optional description identifies what still needs
 fixing and travels with the continuation.
 
-The `primary-agent-outcome-recovery-v1` instruction tells the agent to verify
+The `primary-agent-outcome-recovery-v2` instruction tells the agent to verify
 the actual behavior, test its suspected cause, change an ineffective approach,
 and act within existing authorization. Tests passing or a process being healthy
 are supporting evidence, not proof that the user's task works. Necessary human

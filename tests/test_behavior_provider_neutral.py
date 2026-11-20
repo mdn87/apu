@@ -945,3 +945,39 @@ def test_apply_accepts_a_fresh_claude_code_session_binding(
     )
     assert len(calls) == 1
     assert "no_attribution" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "suffix,expected",
+    [
+        ("", "likely-autonomy-loss"),
+        (" Requires physical access to the printer.", "possible-legitimate-barrier"),
+        (" Authentication is required.", "possible-legitimate-barrier"),
+    ],
+)
+def test_claude_user_verification_handoff_keeps_barriers(tmp_path, suffix, expected):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "projects"
+    path = _write_claude_trace(traces, cwd)
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    records[-1]["message"]["content"].append(
+        {
+            "type": "text",
+            "text": "Please verify the generated artifact." + suffix,
+        }
+    )
+    path.write_text("\n".join(json.dumps(row) for row in records), encoding="utf-8")
+    state = tmp_path / "state"
+    _, incident = mark_incident(
+        state,
+        "inspect this handoff",
+        provider="claude-code",
+        trace_root=traces,
+        cwd=cwd,
+    )
+    assert "user-verification-gate" in incident["observed_signals"]
+    _, diagnosis = diagnose_incident(state, incident_id=incident["incident_id"])
+    assert diagnosis["status"] == expected
+    # Only safe codes/hashes, never the assistant's text, enter persisted evidence.
+    assert "Please verify" not in json.dumps(incident)

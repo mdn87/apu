@@ -691,3 +691,140 @@ def test_wtf_rejects_ignored_selectors_with_saved_incident(
     assert main(["wtf", "--incident", "incident-example", selector, "example"]) == 1
     assert "--incident cannot be combined" in capsys.readouterr().err
     assert not state.exists()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Please test the command and send me the output.",
+        "Please test the generated file; this does not require physical access.",
+        "Please verify the fixture. No subjective judgment is needed.",
+        "Please test the CLI; it does not require user approval.",
+        "Please test the login form; I already have an authenticated browser.",
+        "Please verify that the delete command rejects missing arguments in the fixture.",
+        "I need you to verify the exported CSV before I continue.",
+        "Waiting for human-verified results before proceeding.",
+        "This requires user testing before I can finish the script.",
+    ],
+)
+def test_wtf_detects_non_ui_user_verification_handoffs(
+    tmp_path, monkeypatch, capsys, message
+):
+    state = tmp_path / "state"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    path = _trace(traces, cwd)
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    records[-1]["payload"]["message"] = message
+    path.write_text("\n".join(json.dumps(row) for row in records), encoding="utf-8")
+    monkeypatch.setenv("APU_HOME", str(state))
+    assert wtf_main(["--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert "user-verification-gate" in diagnosis["observed_signals"]
+    assert diagnosis["status"] == "likely-autonomy-loss"
+    assert diagnosis["recommended_intervention"]["template_id"] == RESUME_TEMPLATE_ID
+    prompt = intervention_prompt(RESUME_TEMPLATE_ID)
+    assert "CLI command, API, data workflow" in prompt
+    assert "run them yourself" in prompt
+    assert "blocks only work that truly depends on it" in prompt
+    assert "operator recovery attestation is separate bookkeeping" in prompt
+    assert diagnosis["recommended_intervention"]["durable_policy_mutation"] is False
+    assert not (state / "behavior" / "interventions").exists()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "No human verification is required; I will run the tests.",
+        "I do not require human verification; I can test it myself.",
+        "We no longer need user testing before continuing.",
+        "The CLI check passed; optional feedback is welcome.",
+        "I verified the exported CSV and will continue the remaining work.",
+    ],
+)
+def test_wtf_does_not_invent_user_verification_from_status(
+    tmp_path, monkeypatch, capsys, message
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    path = _trace(traces, cwd)
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    records[-1]["payload"]["message"] = message
+    path.write_text("\n".join(json.dumps(row) for row in records), encoding="utf-8")
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    assert wtf_main(["--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert "user-verification-gate" not in diagnosis["observed_signals"]
+    assert diagnosis["status"] == "insufficient-evidence"
+
+
+@pytest.mark.parametrize(
+    "barrier",
+    [
+        "This requires physical interaction with the bearing.",
+        "Only you can judge the sound.",
+        "I cannot access the device.",
+        "This requires subjective acceptance.",
+        "Authentication is required.",
+        "Permission denied.",
+    ],
+)
+def test_user_verification_signal_never_overrides_real_barriers(
+    tmp_path, monkeypatch, capsys, barrier
+):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    path = _trace(traces, cwd)
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    records[-1]["payload"]["message"] = "Please test the result. " + barrier
+    path.write_text("\n".join(json.dumps(row) for row in records), encoding="utf-8")
+    monkeypatch.setenv("APU_HOME", str(tmp_path / "state"))
+    assert wtf_main(["--trace-root", str(traces), "--cwd", str(cwd), "--json"]) == 0
+    diagnosis = json.loads(capsys.readouterr().out)
+    assert "user-verification-gate" in diagnosis["observed_signals"]
+    assert diagnosis["status"] == "possible-legitimate-barrier"
+    assert intervene_main(["--dry-run"]) == 1
+    assert "legitimate barrier" in capsys.readouterr().err
+
+
+def test_operator_report_identifies_forced_user_testing(tmp_path):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    traces = tmp_path / "sessions"
+    _trace(traces, cwd)
+    state = tmp_path / "state"
+    _, incident = mark_incident(
+        state,
+        "agentic sessions keep forcing user testing and demanding human verified results",
+        trace_root=traces,
+        cwd=cwd,
+    )
+    assert "user-verification-gate" in incident["observed_signals"]
+    _, diagnosis = diagnose_incident(state, incident_id=incident["incident_id"])
+    assert diagnosis["recommended_intervention"]["template_id"] == RESUME_TEMPLATE_ID
+
+
+@pytest.mark.parametrize("template_id", [RESUME_TEMPLATE_ID, RECOVERY_TEMPLATE_ID])
+def test_current_recovery_templates_own_verification_without_faking_acceptance(
+    template_id,
+):
+    prompt = intervention_prompt(template_id)
+    assert "not only UX work" in prompt
+    assert "passed, failed, and unrun checks" in prompt
+    assert "Never invent evidence, weaken tests, bypass permissions" in prompt
+    assert "human acceptance from automated checks" in prompt
+
+
+def test_legacy_recovery_templates_remain_addressable():
+    legacy = intervention_prompt("primary-agent-autonomy-resume-v1")
+    assert "Own implementation and validation" not in legacy
+    assert intervention_prompt(RESUME_TEMPLATE_ID).startswith(legacy)
+    incident = {"description": "original operator report"}
+    legacy_recovery = intervention_prompt(
+        "primary-agent-outcome-recovery-v1", incident=incident
+    )
+    assert "original operator report" in legacy_recovery
+    assert "Own implementation and validation" not in legacy_recovery
