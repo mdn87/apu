@@ -357,13 +357,13 @@
           "entryId": "apu:gate-rule-gaps:durable-2026-09-09",
           "at": "2026-09-09T10:12:13Z",
           "kind": "note",
-          "message": "Durable path built: the script renders an approved APU plan; apu apply is now provider-neutral. Operator must run the apply; the harness denies it to the session."
+          "message": "Durable path built: the script renders an approved APU plan and the apply step is now provider-neutral. Operator must run the apply; the harness denies it to the session."
         },
         {
           "entryId": "apu:gate-rule-gaps:done-2026-09-23",
           "at": "2026-09-24T01:50:00Z",
           "kind": "stage-change",
-          "message": "Done 2026-09-23: new live-anchored script installed via apu apply with a receipt. Steer list, halt words, halt-vs-question, decision log, I4 all live; proof 31 rows, 0 mismatches."
+          "message": "Applied the live-anchored script with a receipt on 2026-09-23. Steer list, halt words, halt vs. question, decision log and I4 went live. Proof checked 31 rows with 0 mismatches."
         },
         {
           "entryId": "apu:gate-rule-gaps:dias-2026-09-23",
@@ -408,7 +408,7 @@
           "entryId": "apu:diagnosis-recovery:pr17-2026-10-18",
           "at": "2026-10-18T12:00:00Z",
           "kind": "note",
-          "message": "PR 17 (merged 2026-10-15) adds the optional apu-session Claude plugin 0.1.0: /apu-diagnose and /apu-prepare over the same CLI. Not yet installed on this host; operator step."
+          "message": "PR 17 (merged 2026-10-15) adds the optional apu-session Claude plugin 0.1.0 with diagnose and prepare steps over the same CLI. Not yet installed on this host; operator step."
         }
       ]
     },
@@ -463,7 +463,7 @@
       "chipId": "apu:apply-dias-note-paths",
       "projectId": "apu",
       "title": "Apply the Dias board note-path exemption to the live gate",
-      "summary": "Applied 2026-10-25 through apu apply (install-20261025T160221877474Z): the live Claude gate hook now treats .dias/ as a note path. Gate mode stays off.",
+      "summary": "Applied 2026-10-25 through an APU installation receipt: the live Claude gate hook now treats Dias board notes as a note path. Gate mode stays off.",
       "stage": "done",
       "sequence": 130,
       "prereqs": [
@@ -784,7 +784,7 @@
       "chipId": "apu:registry-supersession",
       "projectId": "apu",
       "title": "Acknowledge and supersede stale installation receipts",
-      "summary": "apu retire acknowledges a stale receipt; apply refuses an unacknowledged outside change without --acknowledge-drift; a continuous or acknowledged chain supersedes the old receipt.",
+      "summary": "Retiring acknowledges a stale receipt; apply refuses an unacknowledged outside change unless drift is acknowledged; a continuous or acknowledged chain supersedes the old receipt.",
       "stage": "done",
       "sequence": 220,
       "prereqs": [
@@ -802,7 +802,7 @@
           "entryId": "apu:registry-supersession:created-2026-10-25",
           "at": "2026-10-25T18:59:30.574Z",
           "kind": "created",
-          "message": "Authored after the Dias install left install-20260924 red in apu status; reviewed by Fable, verified against the code."
+          "message": "Authored after the Dias install left an older installation record red in the status view; reviewed by Fable, verified against the code."
         },
         {
           "entryId": "apu:registry-supersession:done-2026-10-25",
@@ -843,6 +843,402 @@
           "at": "2026-10-25T18:59:30.574Z",
           "kind": "stage-change",
           "message": "Published v0.10.0 at 0ddc016; CI passed 6 of 6 jobs. Wheel installed in a clean venv and reported 0.10.0."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:native-continuation",
+      "projectId": "apu",
+      "title": "Opt-in native Claude continuation",
+      "summary": "A panel button delivers a prepared continuation to the current Claude session, with durable duplicate prevention and recorded turn observations; merged as PR 26.",
+      "stage": "done",
+      "sequence": 240,
+      "prereqs": [
+        "apu:diagnosis-recovery",
+        "apu:release-0-10-0"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-25T21:11:39.000Z",
+        "updatedAt": "2026-10-25T21:11:39.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:native-continuation:created-2026-10-25",
+          "at": "2026-10-25T21:11:39.000Z",
+          "kind": "created",
+          "message": "Closes the gap where APU could diagnose and prepare a stalled session but could not deliver the continuation itself without a second provider process."
+        },
+        {
+          "entryId": "apu:native-continuation:done-2026-10-25",
+          "at": "2026-10-25T21:11:39.000Z",
+          "kind": "stage-change",
+          "message": "Merged with 14 of 14 CI checks passing. 722 Python tests pass (2 skipped) and 19 native plugin tests pass; a controlled Windows CLI turn was delivered and observed."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:release-0-11-0",
+      "projectId": "apu",
+      "title": "Cut the 0.11.0 release and roll it out",
+      "summary": "Tag 0.11.0, publish the GitHub release, and upgrade the installed CLI to 0.11.0 and the apu-session plugin to 0.2.0.",
+      "stage": "done",
+      "sequence": 250,
+      "prereqs": [
+        "apu:native-continuation"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-25T21:17:33.000Z",
+        "updatedAt": "2026-10-25T21:17:33.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:release-0-11-0:created-2026-10-25",
+          "at": "2026-10-25T21:17:33.000Z",
+          "kind": "created",
+          "message": "Follows the native continuation merge; the 0.10.0 release milestone was already closed."
+        },
+        {
+          "entryId": "apu:release-0-11-0:done-2026-10-25",
+          "at": "2026-10-25T21:17:33.000Z",
+          "kind": "stage-change",
+          "message": "Release published. A fresh installed Claude session registered the continue command and correctly refused it before diagnosis. Already-running sessions need a restart."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:recovery-attestation",
+      "projectId": "apu",
+      "title": "Observe a genuine recovery with operator attestation",
+      "summary": "Delivery is proven on a controlled turn. Recovery stays unverified until a real stalled session is continued and the operator records the outcome.",
+      "stage": "active",
+      "sequence": 260,
+      "prereqs": [
+        "apu:release-0-11-0"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-31T02:29:30.000Z",
+        "updatedAt": "2026-10-31T02:29:30.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:recovery-attestation:created-2026-10-30",
+          "at": "2026-10-31T02:29:30.000Z",
+          "kind": "created",
+          "message": "Opened from the native continuation record: model completion leaves recovery unverified, and no real task has yet been continued and attested."
+        },
+        {
+          "entryId": "apu:recovery-attestation:note-2026-10-30",
+          "at": "2026-10-31T02:29:30.000Z",
+          "kind": "note",
+          "message": "Needs a real stalled session and an operator result entry, so the agent cannot stage it. A fixture turn does not count."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:operator-effort-measure",
+      "projectId": "apu",
+      "title": "Measure the operator effort native continuation saves",
+      "summary": "Compare operator steps for a native continuation against a manual resume, using real attested recoveries, so the value is a measured number rather than a belief.",
+      "stage": "planned",
+      "sequence": 270,
+      "prereqs": [
+        "apu:recovery-attestation"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-31T02:29:30.000Z",
+        "updatedAt": "2026-10-31T02:29:30.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:operator-effort-measure:created-2026-10-30",
+          "at": "2026-10-31T02:29:30.000Z",
+          "kind": "created",
+          "message": "Listed as remaining work in the native continuation record; it depends on attested recoveries existing first."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:desktop-os-qualification",
+      "projectId": "apu",
+      "title": "Qualify native continuation on Desktop and other systems",
+      "summary": "Only a render harness and one controlled Windows CLI turn have run. Live Claude Desktop and non-Windows hosts are unqualified and must not be advertised as supported.",
+      "stage": "ready",
+      "sequence": 280,
+      "prereqs": [
+        "apu:release-0-11-0"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-31T02:29:30.000Z",
+        "updatedAt": "2026-10-31T02:29:30.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:desktop-os-qualification:created-2026-10-30",
+          "at": "2026-10-31T02:29:30.000Z",
+          "kind": "created",
+          "message": "Listed as remaining work in the native continuation record. Harness Desktop checks are explicitly not live Desktop proof."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:monitoring-window-outcomes",
+      "projectId": "apu",
+      "title": "Close the open installation monitoring windows",
+      "summary": "Two active installations have recorded 0 of 10 required material tasks, with their 30-day windows at day 5 and day 13 as of 2026-10-30.",
+      "stage": "planned",
+      "sequence": 290,
+      "prereqs": [
+        "apu:apply-dias-note-paths"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-31T02:29:30.000Z",
+        "updatedAt": "2026-10-31T02:29:30.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:monitoring-window-outcomes:created-2026-10-30",
+          "at": "2026-10-31T02:29:30.000Z",
+          "kind": "created",
+          "message": "Counts read from the APU status view on 2026-10-30. A third, older installation is retired and no longer displayed. Windows close as the operator records results."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:native-lifecycle-race",
+      "projectId": "apu",
+      "title": "Guard the in-flight session-switch race",
+      "summary": "Native submit lacks an expected-session argument or cancel handle. Clear, resume or directory changes mid-delivery lack an atomic guard. Revisit if the SDK adds either.",
+      "stage": "vague",
+      "sequence": 300,
+      "prereqs": [
+        "apu:native-continuation"
+      ],
+      "linkedRunIds": [],
+      "confidence": "unknown",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-10-31T02:29:30.000Z",
+        "updatedAt": "2026-10-31T02:29:30.000Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:native-lifecycle-race:created-2026-10-30",
+          "at": "2026-10-31T02:29:30.000Z",
+          "kind": "created",
+          "message": "Documented limit, not a scheduled task. Use the panel only in an idle main session until delivery settles; never as an unattended transport."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:nightly-handoff-measure",
+      "projectId": "apu",
+      "title": "Detect and calibrate manual test handoffs",
+      "summary": "APU will flag a runnable check handed to Matt, suppress required stops and human-only work, and count candidates in seven days of Dias sessions.",
+      "stage": "planned",
+      "sequence": 310,
+      "prereqs": [],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T06:15:52Z",
+        "updatedAt": "2026-11-20T06:15:52Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-handoff-measure:plan",
+          "at": "2026-11-20T06:15:52Z",
+          "kind": "created",
+          "message": "Positive Claude and Codex fixtures should each flag one handoff. Required stops stay quiet and ambiguous capability stays unknown. Shipped audits supply the inputs."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:nightly-review-summary",
+      "projectId": "apu",
+      "title": "Publish reviewable APU evidence",
+      "summary": "APU will export bounded coverage and opaque references. Workstation commands will show the evidence and record usefulness separately from policy outcomes.",
+      "stage": "planned",
+      "sequence": 320,
+      "prereqs": [
+        "apu:nightly-handoff-measure"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T06:15:52Z",
+        "updatedAt": "2026-11-20T06:15:52Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-review-summary:plan",
+          "at": "2026-11-20T06:15:52Z",
+          "kind": "created",
+          "message": "Replay and growing logs must preserve identity. Labels must not change outcome counts. The exported summary must exclude raw text, paths and session IDs."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:nightly-workstation-audit",
+      "projectId": "apu",
+      "title": "Schedule the nightly workstation audit",
+      "summary": "Run the bounded Dias audit nightly at 03:15 New York time. Catch up after sleep, prevent overlapping runs and retain the last good coverage time on failure.",
+      "stage": "planned",
+      "sequence": 330,
+      "prereqs": [
+        "apu:nightly-review-summary"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T06:15:52Z",
+        "updatedAt": "2026-11-20T06:15:52Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-workstation-audit:plan",
+          "at": "2026-11-20T06:15:52Z",
+          "kind": "created",
+          "message": "Exercise the installed Windows task, repeated starts, sleep catch-up, a clock change and retry exhaustion. Keep stale or failed coverage visible."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:nightly-taskmaster-transport",
+      "projectId": "apu",
+      "title": "Carry the APU summary into Taskmaster",
+      "summary": "Taskmaster will carry an optional, size-limited APU sidecar over the existing workstation route and isolate malformed or missing input from other report data.",
+      "stage": "planned",
+      "sequence": 340,
+      "prereqs": [
+        "apu:nightly-review-summary"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T06:15:52Z",
+        "updatedAt": "2026-11-20T06:15:52Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-taskmaster-transport:plan",
+          "at": "2026-11-20T06:15:52Z",
+          "kind": "created",
+          "message": "Accept the v1 summary and exercise missing, malformed, oversized and unsupported inputs. Existing remote context, handoffs and Tuan health must still validate."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:nightly-report-line",
+      "projectId": "apu",
+      "title": "Deliver one actionable morning-report line",
+      "summary": "Taskmaster will show one new action or coverage problem, keep clean runs quiet and record a nudge as shown after verifying the delivered report file.",
+      "stage": "planned",
+      "sequence": 350,
+      "prereqs": [
+        "apu:nightly-taskmaster-transport"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T06:15:52Z",
+        "updatedAt": "2026-11-20T06:15:52Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-report-line:plan",
+          "at": "2026-11-20T06:15:52Z",
+          "kind": "created",
+          "message": "Cover populated and empty inboxes, preview, failed and repeated delivery, partial coverage and stable evidence. A retry must not silently drop a nudge."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:nightly-pilot-proof",
+      "projectId": "apu",
+      "title": "Prove and roll back the pilot end to end",
+      "summary": "Verify a workstation run, the delivered morning report and local evidence lookup. Exercise rollback and keep controlled examples distinct from real findings.",
+      "stage": "planned",
+      "sequence": 360,
+      "prereqs": [
+        "apu:nightly-workstation-audit",
+        "apu:nightly-report-line"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T06:15:52Z",
+        "updatedAt": "2026-11-20T06:15:52Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-pilot-proof:plan",
+          "at": "2026-11-20T06:15:52Z",
+          "kind": "created",
+          "message": "Capture one real scheduled run and report, plus controlled positive and negative cases. Disable the pilot and verify baseline report delivery before restoring it."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "chipId": "apu:nightly-pilot-evaluation",
+      "projectId": "apu",
+      "title": "Evaluate whether the nudges help",
+      "summary": "At 14 nights or ten decisive labels, report coverage, unique nudges and usefulness. Record whether to continue, narrow or stop the one-workspace pilot.",
+      "stage": "planned",
+      "sequence": 370,
+      "prereqs": [
+        "apu:nightly-pilot-proof"
+      ],
+      "linkedRunIds": [],
+      "confidence": "reported",
+      "aheadOfPrereqs": null,
+      "timestamps": {
+        "createdAt": "2026-11-20T06:15:52Z",
+        "updatedAt": "2026-11-20T06:15:52Z"
+      },
+      "evidence": [
+        {
+          "entryId": "apu:nightly-pilot-evaluation:plan",
+          "at": "2026-11-20T06:15:52Z",
+          "kind": "created",
+          "message": "Show the denominator and unknowns. Fewer than five decisive labels leaves usefulness uncertain. Record a concrete action Matt would otherwise have missed, if any."
         }
       ]
     }

@@ -4,17 +4,17 @@
   "projectLabel": "APU",
   "assessmentState": "scored",
   "assessmentScope": "current-milestone",
-  "percentComplete": 100,
-  "milestonePhase": "closeout",
+  "percentComplete": 60,
+  "milestonePhase": "operational-proof",
   "portfolioGroup": "agent-platform",
   "displayPriority": 500,
-  "assessedAt": "2026-10-25T21:15:09.918658Z",
+  "assessedAt": "2026-10-31T02:29:30.000Z",
   "confidence": "reported",
-  "currentMilestone": "Release 0.10.0: Claude dispatch, package updates with verified restoration, evidence retention, and receipts that can be retired or superseded instead of staying red.",
-  "remainingSummary": "The 0.10.0 release milestone is closed. Native continuation is implemented and installed on 4070pc with a controlled Windows CLI proof. Genuine recovery attestation, live Desktop/other OS qualification and operator-effort measurement remain; existing sessions need restart to load plugin 0.2.0. Three existing monitoring windows still need operator outcomes.",
+  "currentMilestone": "Native Claude continuation qualification: released as 0.11.0 and installed; recovery attestation, live Desktop and other-OS checks and effort measurement remain.",
+  "remainingSummary": "Delivery is proven on a controlled Windows turn; recovery is unverified. Open: an attested real recovery, Desktop and other-OS checks, effort measurement, two monitoring windows.",
   "source": {
-    "label": "0.10.0 release evidence plus docs/incidents/2026-10-25-native-continuation.md; native delivery is distinct from verified recovery.",
-    "updatedAt": "2026-10-25"
+    "label": "Native continuation qualification record, 0.11.0 changelog and release, and the APU status view read on 2026-10-30; delivery is distinct from verified recovery.",
+    "updatedAt": "2026-10-30"
   },
-  "nextChipId": null
+  "nextChipId": "apu:recovery-attestation"
 }
