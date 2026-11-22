@@ -136,6 +136,48 @@ def test_local_lookup_checks_the_request_and_completion_but_allows_appends(tmp_p
     assert pilot.show_review(tmp_path, ref)["evidence_status"] == "expired"
 
 
+def test_local_lookup_shows_what_a_soak_hold_said(tmp_path):
+    from apu import review_pilot as pilot
+
+    held = "I'm holding the merge until the overnight soak finishes."
+    path = tmp_path / "trace.jsonl"
+    request = b'{"type":"user","text":"ship it"}\n'
+    answer = (
+        json.dumps(
+            {
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "last_agent_message": "Fixed. " + held,
+                },
+            }
+        )
+        + "\n"
+    ).encode()
+    path.write_bytes(request + answer)
+    ref = "ar-" + "2" * 32
+    state = {
+        "version": 1,
+        "labels": {},
+        "records": {
+            ref: {
+                "provider": "codex",
+                "ref": ref,
+                "handoff": "soak-hold",
+                "source_path": str(path),
+                "offset": len(request),
+                "length": len(answer),
+                "record_sha256": sha256(answer.rstrip()).hexdigest(),
+                "prefix_bytes": len(request + answer),
+                "prefix_sha256": sha256(request + answer).hexdigest(),
+            }
+        },
+    }
+    pilot.write_json_atomic(tmp_path / "behavior/review/pilot.json", state)
+    shown = pilot.show_review(tmp_path, ref)
+    assert shown["held_for"] == held and "requested_command" not in shown
+
+
 def test_a_pretrigger_catchup_and_scheduled_run_have_different_dates(
     tmp_path, monkeypatch
 ):

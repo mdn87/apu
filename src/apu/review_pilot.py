@@ -237,7 +237,7 @@ def show_review(home: Path, ref: str) -> dict:
     state = _state(home)
     result = dict(_record(state, ref))
     if "source_path" in result:
-        from .manual_review import review_command
+        from .manual_review import review_command, review_hold
 
         try:
             with Path(result["source_path"]).open("rb") as stream:
@@ -269,7 +269,11 @@ def show_review(home: Path, ref: str) -> dict:
                 context.update(raw)
                 match = match and context.hexdigest() == result["prefix_sha256"]
             result["evidence_status"] = "available" if match else "changed"
-            if match:
+            if match and result.get("handoff") == "soak-hold":
+                held = review_hold(result["provider"], raw)
+                if held:
+                    result["held_for"] = held
+            elif match:
                 command = review_command(result["provider"], raw)
                 if command:
                     result["requested_command"] = command
