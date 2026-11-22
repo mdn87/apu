@@ -250,6 +250,151 @@ def test_manual_review_native_completion(
     assert SECRET not in serialized and "pytest -q" not in serialized
 
 
+# Modeled on a real hold the operator rejected: a soak is no gate for a product
+# that is still being built.
+SOAK_HOLD = (
+    "**Not deployed yet, on purpose.** The 24-hour run began at 13:49 UTC. "
+    "Pushing `release` restarts the service, which would restart that run."
+)
+ASKED = "Make the display reload itself when a new build goes live."
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+@pytest.mark.parametrize(
+    ("instruction", "answer", "issued", "decision"),
+    [
+        (ASKED, SOAK_HOLD, "git status", "candidate"),
+        # Any shell command that worked shows the agent could have shipped.
+        (ASKED, SOAK_HOLD, "cd ../service && git log -1", "candidate"),
+        (
+            ASKED,
+            "Done and tested. Want me to deploy now? It would restart the 24-hour soak.",
+            "git status",
+            "candidate",
+        ),
+        (
+            ASKED,
+            "Fixed. I'm holding the merge until the overnight soak finishes.",
+            "git status",
+            "candidate",
+        ),
+        (
+            "We aren't doing a soak, deploy it. " + ASKED,
+            SOAK_HOLD,
+            "git status",
+            "candidate",
+        ),
+        (
+            "Let it soak for 24 hours before you deploy.",
+            "Holding the deploy until the 24-hour soak finishes.",
+            "git status",
+            "suppressed",
+        ),
+        ("Do not deploy today. " + ASKED, SOAK_HOLD, "git status", "suppressed"),
+        (
+            ASKED,
+            "Holding the release to production until the 24-hour soak finishes.",
+            "git status",
+            "unknown",
+        ),
+        (ASKED, SOAK_HOLD, None, "unknown"),
+        (
+            ASKED,
+            "Deployed. We aren't doing a soak, so nothing is held back.",
+            "git status",
+            None,
+        ),
+        (
+            ASKED,
+            "Stopped the soak sampler and deployed; I'm not waiting for the 24-hour run.",
+            "git status",
+            None,
+        ),
+        (
+            ASKED,
+            "The overnight soak passed, so I deployed the fix.",
+            "git status",
+            None,
+        ),
+        (ASKED, "Not deployed yet: the build fails on main.", "git status", None),
+        (
+            ASKED,
+            "> Not deployed yet, the 24-hour soak is running.\nI deployed it.",
+            "git status",
+            None,
+        ),
+    ],
+)
+def test_an_unrequested_soak_hold_is_reviewed_like_a_handoff(
+    tmp_path, provider, instruction, answer, issued, decision
+):
+    trace = Trace(tmp_path, provider)
+    trace.start(instruction)
+    if issued:
+        trace.shell(issued)
+    trace.finish(answer)
+    trace.write()
+    report = trace.audit()
+    assert [(r["handoff"], r["decision"]) for r in report["manual_review"]] == (
+        [("soak-hold", decision)] if decision else []
+    )
+    serialized = json.dumps(report)
+    assert "24-hour" not in serialized and "on purpose" not in serialized
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+@pytest.mark.parametrize("elsewhere", [False, True])
+def test_a_soak_hold_needs_a_shell_command_that_worked_here(
+    tmp_path, provider, elsewhere
+):
+    trace = Trace(tmp_path, provider)
+    trace.start(ASKED)
+    if elsewhere:
+        trace.shell("git log -1", workdir=tmp_path / "elsewhere")
+    else:
+        trace.shell("git push origin main:release", ok=False)
+    trace.finish(SOAK_HOLD)
+    trace.write()
+    assert all(r["decision"] != "candidate" for r in trace.audit()["manual_review"])
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_one_answer_can_hand_back_a_check_and_hold_for_a_soak(tmp_path, provider):
+    trace = Trace(tmp_path, provider)
+    trace.start()
+    trace.shell()
+    trace.finish(ANSWER + " I'm holding the deploy until the 24-hour soak finishes.")
+    trace.write()
+    review = trace.audit()["manual_review"]
+    assert sorted((r["handoff"], r["decision"]) for r in review) == [
+        ("soak-hold", "candidate"),
+        ("test-command", "candidate"),
+    ]
+    assert len({r["ref"] for r in review}) == 2
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_lookup_returns_the_sentences_that_held_for_the_soak(tmp_path, provider):
+    from apu.manual_review import review_hold
+
+    trace = Trace(tmp_path, provider)
+    trace.start(ASKED)
+    trace.shell()
+    trace.finish(
+        "Done and tested. Want me to deploy now? It would restart the 24-hour soak."
+    )
+    trace.write()
+    (result,) = trace.audit()["manual_review"]
+    with trace.path.open("rb") as source:
+        source.seek(result["offset"])
+        record = source.read(result["length"])
+    assert review_command(trace.source_provider, record) is None
+    assert (
+        review_hold(trace.source_provider, record)
+        == "Want me to deploy now? It would restart the 24-hour soak."
+    )
+
+
 @pytest.mark.parametrize("provider", PROVIDERS)
 def test_occurrence_links_one_original_completion_across_replay(tmp_path, provider):
     trace = Trace(tmp_path, provider)

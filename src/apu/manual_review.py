@@ -82,6 +82,63 @@ _QUOTE_INTRO = re.compile(
     r"[^.!?]{0,40}:\s*$",
     re.IGNORECASE,
 )
+_KEEP_GOING = re.compile(r"\b(?:not|never|don't) (?:stop|wait|pause)\b", re.IGNORECASE)
+# A soak: a long unattended run held as a gate (a soak, a burn-in run, an N-hour run).
+_SOAK_RUN = (
+    r"(?:soak\w*|burn[- ]in (?:runs?|tests?|periods?|windows?)|"
+    r"(?:\d+|one|two|three|twenty-four|forty-eight)[- ]?(?:hours?|hrs?|h|days?|nights?)"
+    r"[- ](?:runs?|soaks?|tests?|windows?|periods?|clocks?|burn[- ]in)|"
+    r"overnight (?:runs?|tests?|windows?)|stability (?:runs?|tests?|windows?|periods?))"
+)
+_SOAK = re.compile(
+    rf"\b(?:{_SOAK_RUN}|(?:monitor|watch|observe)\w* (?:it |this |that )?for "
+    r"(?:a |one |another |\d+ )?(?:days?|nights?|weeks?|hours?)|"
+    r"run(?:s|ning)? (?:overnight|for (?:a |one |another |\d+ )?(?:days?|nights?|hours?)))\b",
+    re.IGNORECASE,
+)
+# The sentence says there is no soak, it was stopped, or it is not a gate.
+_NOT_A_GATE = re.compile(
+    r"\b(?:no|without|skip\w*|drop\w*|cancel\w*|stop\w*)"
+    rf"(?: (?:the|a|any|this|that|its))?(?: \S+)? {_SOAK_RUN}|"
+    r"\b(?:not|never|\w+n[’']t) (?:doing|running|need\w*|using|holding|waiting|"
+    rf"gating|blocking)\b[^.!?]{{0,24}}?{_SOAK_RUN}|"
+    rf"{_SOAK_RUN}(?: \w+)? (?:(?:is|was|are|were) not|(?:isn|wasn|aren|weren)[’']t)\b",
+    re.IGNORECASE,
+)
+_NOT = r"(?<!not )(?<!n't )(?<!n’t )(?<!never )"
+# Work held back, deferred or put to the operator because of that run.
+_HOLD = re.compile(
+    r"\b(?:(?:not|never|\w+n[’']t|(?:have|has|did|will) not|not going to)"
+    r"(?: yet| been| be)* (?:deploy|push|merg|land|releas|ship|roll)\w*|"
+    rf"{_NOT}(?:hold|holds|holding|held)(?: (?:off|back))?(?: on)? (?:the |this |that |my |it )?"
+    r"(?:off|back|it|deploy\w*|push\w*|merg\w*|releas\w*|landing|rollout|ship\w*)|"
+    rf"on hold|{_NOT}(?:defer|postpon)\w* (?:the |this |that |my )?"
+    r"(?:deploy\w*|push\w*|merg\w*|releas\w*|landing|rollout)|"
+    rf"{_NOT}wait(?:s|ed|ing)? (?:for|until|on|out)|"
+    rf"(?:until|once|after|when) [^.!?]{{0,40}}?{_SOAK_RUN}[^.!?]{{0,20}}?"
+    r"(?:finishes|completes|passes|ends|clears|is (?:done|clean|over|complete)|"
+    r"has (?:finished|completed|passed|ended))|"
+    r"(?:restart|reset|interrupt|invalidate|break|void|spoil)s? (?:the |that |this |its |a )?"
+    r"[^.!?]{0,30}?(?:soak|burn[- ]in|run|clock|window)s?\b|"
+    r"let (?:it|this|that) (?:soak|bake|run)|"
+    r"(?:before|prior to) (?:deploying|pushing|merging|landing|releasing|shipping|"
+    r"rolling out|the (?:deploy|merge|release|push))|"
+    r"(?:want me to|should I|shall I)(?: go ahead and)? "
+    r"(?:deploy|push|merge|land|release|ship|roll))",
+    re.IGNORECASE,
+)
+_NO_SHIP = re.compile(
+    r"\b(?:(?:do not|don[’']t|never|no) (?:deploy|push|merg|land|releas|ship)\w*|"
+    r"hold (?:off|back))\b",
+    re.IGNORECASE,
+)
+# A soak can suit a shipped product; the review is about products still being built.
+_SHIPPED = re.compile(
+    r"\b(?:in production|to production|production (?:traffic|users|release|rollout|"
+    r"environment|servers?|deploy\w*)|customers?|end users|paying users|"
+    r"general availability)\b",
+    re.IGNORECASE,
+)
 _ID = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}")
 _SHELL_TOOLS = {
     "bash",
@@ -102,7 +159,8 @@ def _sentences(text):
             yield from re.split(r"(?<=[.!?])\s+", line)
 
 
-def _requested(text):
+def _own_sentences(text):
+    """The agent's own sentences: no fences, quotes or the line after a quote intro."""
     quoted_next = False
     for sentence in _sentences(text):
         if quoted_next:
@@ -111,6 +169,11 @@ def _requested(text):
         if _QUOTE_INTRO.search(sentence):
             quoted_next = True
             continue
+        yield sentence
+
+
+def _requested(text):
+    for sentence in _own_sentences(text):
         ask = _ASK.match(sentence)
         if ask is None:
             continue
@@ -132,8 +195,21 @@ def _requested(text):
     return None
 
 
-def review_command(provider: str, verified_raw: bytes) -> str | None:
-    """Extract the check on explicit local lookup, after the caller verifies these bytes."""
+def _held(text):
+    """The sentences holding work for a soak, with the sentence next to it that holds."""
+    sentences = list(_own_sentences(text))
+    for index, sentence in enumerate(sentences):
+        if not _SOAK.search(sentence) or _NOT_A_GATE.search(sentence):
+            continue
+        nearby = range(max(0, index - 1), min(len(sentences), index + 2))
+        held = [i for i in nearby if i == index or _HOLD.search(sentences[i])]
+        if any(_HOLD.search(sentences[i]) for i in held):
+            words = " ".join(sentences[i] for i in held)
+            return words if len(words) <= 240 else words[:239].rstrip() + "…"
+    return None
+
+
+def _final_answer(provider, verified_raw):
     try:
         row = json.loads(verified_raw)
     except (UnicodeError, ValueError):
@@ -161,7 +237,19 @@ def review_command(provider: str, verified_raw: bytes) -> str | None:
         answer = _claude_text(row)
     else:
         return None
-    return _requested(answer) if isinstance(answer, str) else None
+    return answer if isinstance(answer, str) else None
+
+
+def review_command(provider: str, verified_raw: bytes) -> str | None:
+    """Extract the check on explicit local lookup, after the caller verifies these bytes."""
+    answer = _final_answer(provider, verified_raw)
+    return None if answer is None else _requested(answer)
+
+
+def review_hold(provider: str, verified_raw: bytes) -> str | None:
+    """Extract the soak hold on explicit local lookup, after the caller verifies these bytes."""
+    answer = _final_answer(provider, verified_raw)
+    return None if answer is None else _held(answer)
 
 
 def _authorized(request, command):
@@ -218,9 +306,12 @@ class Turn:
     scope: bool = False
     restricted: bool = False
     shell_ok: bool = False
+    # Any shell command that succeeded here, wherever it pointed: the agent could act.
+    ran_shell: bool = False
     board_dirty: bool | None = None
     final: str = ""
     requests: dict[str, str] = field(default_factory=dict)
+    calls: set[str] = field(default_factory=set)
     attempted: set[str] = field(default_factory=set)
     issued: set[str] = field(default_factory=set)
 
@@ -282,12 +373,19 @@ def _shell_request(turn, call_id, name, args, matches_cwd):
     if workdir is not None and not matches_cwd(workdir):
         return
     command = args.get("cmd") or args.get("command")
+    if turn.scope and turn.user and isinstance(command, str):
+        turn.calls.add(call_id)
     if turn.shell(command):
         turn.requests[call_id] = command
 
 
 def _shell_result(turn, call_id, success, stdout):
-    if _identifier(call_id) and call_id in turn.requests:
+    if not _identifier(call_id):
+        return
+    if call_id in turn.calls:
+        turn.calls.discard(call_id)
+        turn.ran_shell |= success is True
+    if call_id in turn.requests:
         turn.outcome(turn.requests.pop(call_id), success, stdout)
 
 
@@ -367,6 +465,15 @@ def _codex(row, turn, matches_cwd, session):
         ):
             turn.board_dirty = None
             command = _native_command(item.get("command"))
+            if (
+                command
+                and turn.scope
+                and turn.user
+                and item.get("status") == "completed"
+                and type(item.get("exit_code")) is int
+                and item["exit_code"] == 0
+            ):
+                turn.ran_shell = True
             if (
                 turn.shell(command)
                 and type(item.get("exit_code")) is int
@@ -578,9 +685,7 @@ def _decision(turn, answer, command):
     if _PROHIBITION.search(request):
         return "suppressed", "explicit-stop"
     for sentence in _sentences(turn.user):
-        if not _STOP.search(sentence) or re.search(
-            r"\b(?:not|never|don't) (?:stop|wait|pause)\b", sentence, re.IGNORECASE
-        ):
+        if not _STOP.search(sentence) or _KEEP_GOING.search(sentence):
             continue
         if _DIRTY.search(sentence) and re.search(
             r"\bboard\b|\.dias[/\\]", sentence, re.IGNORECASE
@@ -612,6 +717,29 @@ def _decision(turn, answer, command):
     ):
         return "unknown", "authority-or-capability-uncertain"
     return "candidate", "authorized-executable-check"
+
+
+def _soak_decision(turn, answer):
+    """A soak the operator did not ask for, on work the agent could have landed itself."""
+    asked = list(_sentences(turn.user))
+    request = " ".join(asked)
+    answer = " ".join(_sentences(answer))
+    if _PROHIBITION.search(request) or _NO_SHIP.search(request):
+        return "suppressed", "explicit-stop"
+    if any(_SOAK.search(s) and not _NOT_A_GATE.search(s) for s in asked):
+        return "suppressed", "operator-requested-soak"
+    for sentence in asked:
+        if _STOP.search(sentence) and not _KEEP_GOING.search(sentence):
+            if re.search(r"\b(?:if|when|unless)\b", sentence, re.IGNORECASE):
+                return "unknown", "authority-or-capability-uncertain"
+            return "suppressed", "explicit-stop"
+    if _HUMAN.search(request) or _HUMAN.search(answer):
+        return "suppressed", "human-or-permission-barrier"
+    if _SHIPPED.search(request) or _SHIPPED.search(answer):
+        return "unknown", "shipped-product-uncertain"
+    if turn.restricted or not turn.ran_shell:
+        return "unknown", "authority-or-capability-uncertain"
+    return "candidate", "unrequested-soak-hold"
 
 
 def inspect_turns(candidate, events, verification, cutoff, now):
@@ -700,37 +828,36 @@ def inspect_turns(candidate, events, verification, cutoff, now):
         if record != marker["source"]["record_sha256"]:
             raise ValueError("review record changed")
         completed.add(finished.turn_id)
+        found = []
         command = _requested(answer)
-        if command is None:
-            continue
-        identity = json.dumps(
-            [
-                cwd,
-                candidate.provider,
-                candidate.session_id,
-                line,
-                record,
-                "manual-handoff/v1",
-            ]
-        )
-        decision, reason = _decision(finished, answer, command)
-        results.append(
-            {
-                "ref": "ar-" + sha256(identity.encode()).hexdigest()[:32],
-                "provider": candidate.provider,
-                "session_id": candidate.session_id,
-                "turn": finished.turn_id,
-                "line": line,
-                "source": "verified",
-                "decision": decision,
-                "reason": reason,
-                "source_path": str(path),
-                "offset": start,
-                "length": len(raw),
-                "record_sha256": record,
-                "prefix_bytes": offset,
-                "prefix_sha256": context_digest.hexdigest(),
-                "observed_at": observed.astimezone(UTC).isoformat(),
-            }
-        )
+        if command is not None:
+            found.append(
+                ("test-command", "manual-handoff/v1", _decision(finished, answer, command))
+            )
+        if _held(answer) is not None:
+            found.append(("soak-hold", "soak-hold/v1", _soak_decision(finished, answer)))
+        for handoff, version, (decision, reason) in found:
+            identity = json.dumps(
+                [cwd, candidate.provider, candidate.session_id, line, record, version]
+            )
+            results.append(
+                {
+                    "ref": "ar-" + sha256(identity.encode()).hexdigest()[:32],
+                    "provider": candidate.provider,
+                    "session_id": candidate.session_id,
+                    "turn": finished.turn_id,
+                    "line": line,
+                    "source": "verified",
+                    "handoff": handoff,
+                    "decision": decision,
+                    "reason": reason,
+                    "source_path": str(path),
+                    "offset": start,
+                    "length": len(raw),
+                    "record_sha256": record,
+                    "prefix_bytes": offset,
+                    "prefix_sha256": context_digest.hexdigest(),
+                    "observed_at": observed.astimezone(UTC).isoformat(),
+                }
+            )
     return results, len(completed)

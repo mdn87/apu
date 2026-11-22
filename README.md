@@ -608,6 +608,16 @@ verified source, an applicable request and evidence of local command access.
 The audit records uncertainty when the evidence is incomplete. It checks up to
 20 sessions and 256 MiB across the last seven days.
 
+It also looks for a soak hold: a final message that holds back a deploy, merge
+or push for a soak, burn-in or N-hour run, or asks the operator whether to go
+ahead because the step would restart one. A soak is rarely the right gate for a
+product still being built. A hold is a candidate only when the operator didn't
+ask for the soak, didn't tell the agent to wait or not ship, and a shell
+command succeeded in the same turn, which shows the agent could have shipped. A hold that mentions production or customers is recorded
+as uncertain, since a soak can suit a shipped product. Soak holds reach the
+morning report as manual handoffs. `show` names the handoff (`test-command` or
+`soak-hold`) and, for a soak hold, quotes the sentences that held the work.
+
 ```console
 apu behavior review run --cwd ABSOLUTE_DIAS_DIRECTORY
 apu behavior review status
