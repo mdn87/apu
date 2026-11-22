@@ -24,7 +24,8 @@ instruction precedence, and observed runs—not taste alone.
 4. **Find pressure multipliers.** Flag universal skill triggers, mandatory
    design gates, microtask plans, per-task reviewer loops, aggressive priority
    language, speculative edge-case requirements, and test rituals detached
-   from product risk.
+   from product risk. A soak, burn-in or N-hour run that gates deploys or the
+   next step on a product still being built is one of those rituals.
 5. **Choose a proportional tier.**
    - Direct: small, local, reversible work with a focused check.
    - Planned: real ambiguity, multiple coupled components, or meaningful

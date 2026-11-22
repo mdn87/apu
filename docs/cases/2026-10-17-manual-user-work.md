@@ -65,3 +65,21 @@ available results itself, explain necessary human actions, and retain required
 acceptance evidence. Record a concrete failure if it repeats unnecessary handoffs
 or skips a necessary check. No runtime success, automatic monitoring, or
 model-specific improvement is claimed by this installation.
+
+## 2026-11-22: soak holds
+
+A Claude Code session held a finished, tested deploy of a product still in
+development to protect a 24-hour run, and asked the operator whether to deploy
+because the deploy would restart it. The operator rejected the soak as an excuse
+not to work, and said a soak is not usually appropriate for a product in
+development.
+
+Three changes followed. The nightly review of manual handoffs flags soak holds
+(`soak-hold/v1`). Both templates gained a bullet that rules out soak gates on a
+product still being built, unless the user asks for one or the product already
+serves people who depend on it. The optimizing-agent-instructions skill counts
+such a gate as a test ritual detached from product risk.
+
+The global instruction files no longer carry this section; they were rewritten
+after the adoption above. Applying the template bullet to them is a new APU
+installation, which the operator approves separately.
